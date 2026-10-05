@@ -90,6 +90,12 @@ export default function AdminSettingsPage() {
         >
           <ShieldCheck size={16} /> Admin Security
         </button>
+        <a
+          href="/admin/data-management"
+          className="px-5 py-3 text-sm font-bold flex items-center gap-2 border-b-2 border-transparent text-[#355DAF] hover:text-[#141B47] transition-colors"
+        >
+          <Database size={16} /> Data Management &rarr;
+        </a>
       </div>
 
       {/* Tab Panels */}

@@ -1,11 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Search, User, Mail, Phone, CheckCircle2, ArrowRight } from "lucide-react";
+import { Search, User, Mail, Phone, CheckCircle2, ArrowRight, UserPlus } from "lucide-react";
+import { CreateCustomerDrawer } from "@/components/drawers/create-customer-drawer";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function ClientCustomersSearch({ customers }: { customers: any[] }) {
   const [search, setSearch] = useState("");
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const router = useRouter();
 
   const filtered = customers.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -16,16 +20,32 @@ export default function ClientCustomersSearch({ customers }: { customers: any[] 
 
   return (
     <div className="space-y-6">
-      <div className="relative w-full max-w-sm">
-        <input
-          type="text"
-          placeholder="Search by name, ID, phone or email..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 h-11 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 bg-white shadow-sm border-[#E5E7EB] text-[#172236]"
-        />
-        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="relative w-full max-w-sm">
+          <input
+            type="text"
+            placeholder="Search by name, ID, phone or email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 h-11 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 bg-white shadow-sm border-[#E5E7EB] text-[#172236]"
+          />
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsDrawerOpen(true)}
+          className="shrink-0 flex items-center justify-center gap-2 h-11 px-5 rounded-xl text-xs font-bold shadow-sm transition-all hover:opacity-90 bg-[#FFB800] text-[#07182F] cursor-pointer"
+        >
+          <UserPlus size={15} /> Add Customer
+        </button>
       </div>
+
+      <CreateCustomerDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onSuccess={() => router.refresh()}
+      />
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filtered.length === 0 ? (

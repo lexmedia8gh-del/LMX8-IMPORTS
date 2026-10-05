@@ -10,7 +10,8 @@ import {
 import { setShippingFeeAction } from "@/app/actions/admin-payments";
 import { Shipment } from "@/lib/db";
 import { ShipmentStatusBadge, STATUS_ORDER, ShipmentStatus, ShipmentTimeline, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
-import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign } from "lucide-react";
+import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign, Plus } from "lucide-react";
+import { AddTrackingEventDrawer } from "@/components/drawers/add-tracking-event-drawer";
 import Link from "next/link";
 
 export default function AdminShipmentDetails({ params }: { params: Promise<{ id: string }> }) {
@@ -18,6 +19,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
   
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isEventDrawerOpen, setIsEventDrawerOpen] = useState(false);
 
   // Timeline update form
   const [newStatus, setNewStatus] = useState<ShipmentStatus>("SHIPMENT_CREATED");
@@ -332,7 +334,25 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
         {/* RIGHT COLUMN: Timeline Management */}
         <div className="space-y-6">
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB]">
-            <h2 className="text-lg font-bold text-[#172236] mb-5">Update Tracking</h2>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-[#172236]">Update Tracking</h2>
+              <button
+                type="button"
+                onClick={() => setIsEventDrawerOpen(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={13} /> Open Drawer
+              </button>
+            </div>
+            
+            {/* Add Tracking Event Drawer */}
+            <AddTrackingEventDrawer
+              isOpen={isEventDrawerOpen}
+              onClose={() => setIsEventDrawerOpen(false)}
+              shipmentId={shipment.id}
+              currentStatus={shipment.status}
+              onSuccess={loadData}
+            />
             
             <form onSubmit={handleUpdateStatus} className="space-y-4">
               <div className="space-y-1.5">

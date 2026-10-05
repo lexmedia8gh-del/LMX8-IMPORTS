@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
   Users, Truck, Package, CreditCard, Search, Bell, Settings, Menu, 
-  LogOut, FileText, ArrowRightLeft, Paintbrush, PanelLeftClose, PanelLeftOpen 
+  LogOut, FileText, ArrowRightLeft, Paintbrush, PanelLeftClose, PanelLeftOpen, Database
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/batches", icon: <FileText className="w-5 h-5 shrink-0" />, label: "Delivery (Batches)" },
     { href: "/admin/transactions", icon: <ArrowRightLeft className="w-5 h-5 shrink-0" />, label: "Transactions" },
     { href: "/admin/notifications", icon: <Bell className="w-5 h-5 shrink-0" />, label: "Notifications" },
+    { href: "/admin/data-management", icon: <Database className="w-5 h-5 shrink-0" />, label: "Data Control" },
     { href: "/admin/settings?tab=branding", icon: <Paintbrush className="w-5 h-5 shrink-0" />, label: "Branding" },
     { href: "/admin/settings", icon: <Settings className="w-5 h-5 shrink-0" />, label: "Settings" },
   ];

@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import {
   getBatchesAction,
-  createBatchAction,
   getShipmentsAction,
   updateBatchStatusAction,
   closeBatchAction,
 } from "@/app/actions";
 import { Batch, Shipment } from "@/lib/db";
 import { Search, Plus, Package2, ArrowRight, AlertTriangle, Clock, Trash2, CheckCircle2 } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { CreateBatchDrawer } from "@/components/drawers/create-batch-drawer";
 import Link from "next/link";
 
 const BATCH_STATUSES = [
@@ -26,8 +25,7 @@ export default function AdminBatchesPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Close Batch Confirmation Modal State
   const [batchToClose, setBatchToClose] = useState<Batch | null>(null);
@@ -36,15 +34,6 @@ export default function AdminBatchesPage() {
   // Cleanup Trigger State
   const [cleaning, setCleaning] = useState(false);
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
-
-  // Form State
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    departure: "",
-    arrival: "",
-    status: "OPEN",
-  });
 
   const loadData = async () => {
     setLoading(true);
@@ -57,22 +46,6 @@ export default function AdminBatchesPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    await createBatchAction({
-      name: formData.name || formData.description,
-      description: formData.description,
-      departure: formData.departure,
-      arrival: formData.arrival,
-      status: formData.status,
-    });
-    await loadData();
-    setCreating(false);
-    setSheetOpen(false);
-    setFormData({ name: "", description: "", departure: "", arrival: "", status: "OPEN" });
-  };
 
   const handleStatusChange = async (batch: Batch, newStatus: string) => {
     if (newStatus === "CLOSED") {
@@ -144,81 +117,28 @@ export default function AdminBatchesPage() {
             onClick={handleManualCleanup}
             disabled={cleaning}
             title="Execute server-side permanent file deletion for batches past their 7-day retention period"
-            className="flex-1 sm:flex-initial px-3.5 sm:px-4 py-2.5 text-xs font-bold rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-[#0B1F44] flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+            className="flex-1 sm:flex-initial px-3.5 sm:px-4 py-2.5 text-xs font-bold rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-[#0B1F44] flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
           >
             <Trash2 size={15} className="text-red-500" />
             <span className="truncate">{cleaning ? "Processing..." : "Retention Cleanup"}</span>
           </button>
 
-          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-            <SheetTrigger className="flex-1 sm:flex-initial px-4 sm:px-5 py-2.5 text-sm font-bold rounded-xl transition-all hover:opacity-90 shadow-sm flex items-center justify-center gap-2 bg-[#FFB800] text-[#07182F]">
-              <Plus size={16} /> <span>Create Batch</span>
-            </SheetTrigger>
-            <SheetContent className="w-full sm:max-w-md bg-[#F7F9FC] overflow-y-auto">
-              <SheetHeader className="mb-6">
-                <SheetTitle className="text-xl font-bold text-[#172236]">Create New Batch</SheetTitle>
-              </SheetHeader>
-              <form onSubmit={handleCreate} className="space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#172236]">Batch Name / Description</label>
-                  <input
-                    required
-                    placeholder="e.g. October Sea Freight Consignment"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-4 h-11 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 bg-white border-[#E5E7EB]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#172236]">Est. Departure</label>
-                    <input
-                      type="date"
-                      required
-                      value={formData.departure}
-                      onChange={(e) => setFormData({ ...formData, departure: e.target.value })}
-                      className="w-full px-4 h-11 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 bg-white border-[#E5E7EB]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#172236]">Est. Arrival</label>
-                    <input
-                      type="date"
-                      required
-                      value={formData.arrival}
-                      onChange={(e) => setFormData({ ...formData, arrival: e.target.value })}
-                      className="w-full px-4 h-11 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 bg-white border-[#E5E7EB]"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#172236]">Initial Status</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-4 h-11 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 bg-white border-[#E5E7EB]"
-                  >
-                    <option value="OPEN">OPEN</option>
-                    <option value="IN TRANSIT">IN TRANSIT</option>
-                    <option value="ARRIVED IN GHANA">ARRIVED IN GHANA</option>
-                    <option value="PROCESSING / COLLECTION">PROCESSING / COLLECTION</option>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="w-full h-12 mt-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm bg-[#0B1F44] text-white disabled:opacity-50"
-                >
-                  {creating ? "Creating..." : "Generate Batch ID"}
-                </button>
-              </form>
-            </SheetContent>
-          </Sheet>
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen(true)}
+            className="flex-1 sm:flex-initial px-4 sm:px-5 py-2.5 text-sm font-bold rounded-xl transition-all hover:opacity-90 shadow-sm flex items-center justify-center gap-2 bg-[#FFB800] text-[#07182F] cursor-pointer"
+          >
+            <Plus size={16} /> <span>Create Batch</span>
+          </button>
         </div>
       </div>
+
+      {/* Create Batch Drawer */}
+      <CreateBatchDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onSuccess={loadData}
+      />
 
       {cleanupMessage && (
         <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-center gap-2">
