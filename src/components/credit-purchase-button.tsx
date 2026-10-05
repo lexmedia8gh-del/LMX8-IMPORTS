@@ -33,8 +33,8 @@ export function CreditPurchaseButton({
     <button
       onClick={handlePurchase}
       disabled={loading}
-      className={`w-full py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed ${
-        popular ? "bg-[#FFB800] text-[#07182F]" : "bg-[#0B1F44] text-white"
+      className={`w-full py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${
+        popular ? "bg-accent text-white" : "bg-primary text-white"
       }`}
     >
       {loading ? (

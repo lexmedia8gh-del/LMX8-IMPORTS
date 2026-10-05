@@ -33,6 +33,14 @@ export async function initializeCreditPurchaseAction(packageId: keyof typeof CRE
       },
     });
 
+    console.log("Paystack configuration diagnostic:", {
+      PAYSTACK_SECRET_KEY_configured: !!process.env.PAYSTACK_SECRET_KEY,
+      paymentType: "CREDIT_PURCHASE",
+      amount: pkg.price,
+      reference,
+      customerId: customer.id,
+    });
+
     const paystackData = await initializePayment({
       amount: pkg.price,
       email: customer.email || "no-reply@lmx8.com", // Paystack requires an email
@@ -53,7 +61,7 @@ export async function initializeCreditPurchaseAction(packageId: keyof typeof CRE
     return { success: true, authorizationUrl: paystackData.authorization_url };
   } catch (error: any) {
     console.error("Initialize Credit Purchase Error:", error);
-    return { error: "Failed to initialize payment." };
+    return { error: error?.message || "Failed to initialize payment." };
   }
 }
 
@@ -101,6 +109,15 @@ export async function initializeShippingPaymentAction(shipmentId: string, callba
       },
     });
 
+    console.log("Paystack configuration diagnostic:", {
+      PAYSTACK_SECRET_KEY_configured: !!process.env.PAYSTACK_SECRET_KEY,
+      paymentType: "SHIPPING_FEE",
+      amount: outstanding,
+      reference,
+      customerId: customer.id,
+      shipmentId: shipment.id,
+    });
+
     const paystackData = await initializePayment({
       amount: outstanding,
       email: customer.email || "no-reply@lmx8.com",
@@ -122,7 +139,7 @@ export async function initializeShippingPaymentAction(shipmentId: string, callba
 
   } catch (error: any) {
     console.error("Initialize Shipping Payment Error:", error);
-    return { error: "Failed to initialize payment." };
+    return { error: error?.message || "Failed to initialize payment." };
   }
 }
 

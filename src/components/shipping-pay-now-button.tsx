@@ -24,8 +24,7 @@ export function ShippingPayNowButton({ shipmentId }: { shipmentId: string }) {
     <button
       onClick={handlePay}
       disabled={loading}
-      className="w-full py-4 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
-      style={{ background: "#FFB800", color: "#07182F" }}
+      className="w-full py-4 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-md disabled:opacity-60 disabled:cursor-not-allowed bg-accent text-white cursor-pointer"
     >
       {loading ? (
         <>
