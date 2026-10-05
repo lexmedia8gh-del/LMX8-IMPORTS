@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+enum ShipmentStatus {
+  SHIPMENT_CREATED
+  PREPARING_SHIPMENT
+  SHIPPED
+  IN_TRANSIT
+  ARRIVED_AT_DESTINATION
+  CUSTOMS_CLEARANCE
+  OUT_FOR_DELIVERY
+  DELIVERED
+  ON_HOLD
+}
+
+enum TransactionType {
+  PURCHASE
+  SOURCING_REQUEST
+  REFUND
+  ADMIN_ADJUSTMENT
+  BONUS
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum SourcingStatus {
+  PENDING
+  QUOTED
+  APPROVED
+  REJECTED
+  PURCHASED
+  SHIPPED
+}
+
+model Customer {
+  id                 String              @id @default(uuid())
+  customerIdentifier String              @unique // e.g. LMX8-00125
+  name               String
+  phone              String?
+  email              String?
+  status             String              @default("ACTIVE")
+  pinHash            String?             // bcrypt hash of 6-digit PIN — never store plaintext
+  loginAttempts      Int                 @default(0)
+  lockedUntil        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  shipments          Shipment[]
+  creditAccount      CreditAccount?
+  creditTransactions CreditTransaction[]
+  sourcingRequests   SourcingRequest[]
+  payments           Payment[]
+  notifications      Notification[]
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String?  // bcrypt hash — never store plaintext
+  pinHash      String?  // bcrypt hash of 6-8 digit PIN
+  role         Role     @default(STAFF)
+  status       String   @default("ACTIVE")
+  loginAttempts Int     @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  trackingEvents TrackingEvent[]
+  shipmentPhotos ShipmentPhoto[]
+  auditLogs      AuditLog[]
+}
+
+model Batch {
+  id             String     @id @default(uuid())
+  batchNumber    String     @unique
+  name           String
+  description    String?
+  status         String     @default("OPEN")
+  departure      DateTime?
+  arrival        DateTime?
+  closedAt       DateTime?
+  fileDeletionAt DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  shipments      Shipment[]
+}
+
+model Shipment {
+  id               String          @id @default(uuid())
+  trackingNumber   String          @unique // E.g. SHP-xxxxx
+  description      String
+  quantity         Int?
+  weight           Float?
+  status           ShipmentStatus  @default(SHIPMENT_CREATED)
+  origin           String?
+  destination      String?
+  shippingMethod   String?
+  estimatedArrival DateTime?
+  fee              Float           @default(0.0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  customerId       String
+  customer         Customer        @relation(fields: [customerId], references: [id])
+  
+  batchId          String?
+  batch            Batch?          @relation(fields: [batchId], references: [id])
+
+  trackingEvents   TrackingEvent[]
+  photos           ShipmentPhoto[]
+  payments         Payment[]
+
+  @@index([customerId])
+  @@index([batchId])
+  @@index([trackingNumber])
+}
+
+model TrackingEvent {
+  id          String         @id @default(uuid())
+  status      ShipmentStatus
+  location    String?
+  note        String?
+  timestamp   DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+
+  shipmentId  String
+  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  adminId     String?
+  admin       AdminUser?     @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId])
+  @@index([timestamp])
+}
+
+model ShipmentPhoto {
+  id          String     @id @default(uuid())
+  bucket      String     @default("shipment-files")
+  objectPath  String
+  filename    String
+  mimeType    String?
+  size        Int?
+  caption     String?
+  status      String     @default("ACTIVE") // ACTIVE, PENDING_DELETION, DELETED
+  deletedAt   DateTime?
+  createdAt   DateTime   @default(now())
+
+  batchId     String?
+  shipmentId  String
+  shipment    Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  adminId     String?
+  admin       AdminUser? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId])
+  @@index([batchId])
+  @@index([status])
+}
+
+model CreditAccount {
+  id         String   @id @default(uuid())
+  balance    Int      @default(0) // Balance in credits
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customerId String   @unique
+  customer   Customer @relation(fields: [customerId], references: [id])
+}
+
+model CreditTransaction {
+  id             String          @id @default(uuid())
+  type           TransactionType
+  amount         Int
+  balanceBefore  Int
+  balanceAfter   Int
+  reference      String?
+  description    String?
+  createdAt      DateTime        @default(now())
+
+  customerId     String
+  customer       Customer        @relation(fields: [customerId], references: [id])
+
+  paymentId      String?
+  payment        Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+}
+
+model SourcingRequest {
+  id                     String          @id @default(uuid())
+  requestNumber          String          @unique
+  productDetails         String
+  quantity               Int?
+  preferredSizeColor     String?
+  additionalInstructions String?
+  status                 SourcingStatus  @default(PENDING)
+  creditsUsed            Int             @default(0)
+  adminNotes             String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  idempotencyKey         String?         @unique
+
+  customerId             String
+  customer               Customer        @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+}
+
+enum PaymentType {
+  CREDIT_PURCHASE
+  SHIPPING_FEE
+}
+
+model Payment {
+  id                    String         @id @default(uuid())
+  reference             String         @unique
+  amount                Float
+  currency              String         @default("GHS")
+  status                PaymentStatus  @default(PENDING)
+  type                  PaymentType    @default(CREDIT_PURCHASE)
+  provider              String?        // e.g., "PAYSTACK"
+  providerTransactionId String?
+  metadata              Json?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  customerId            String
+  customer              Customer       @relation(fields: [customerId], references: [id])
+  
+  shipmentId            String?
+  shipment              Shipment?      @relation(fields: [shipmentId], references: [id])
+
+  creditTransactions    CreditTransaction[]
+
+  @@index([customerId])
+  @@index([reference])
+  @@index([shipmentId])
+}
+
+model AuditLog {
+  id          String     @id @default(uuid())
+  action      String
+  entityType  String
+  entityId    String
+  description String?
+  metadata    Json?
+  timestamp   DateTime   @default(now())
+
+  adminId     String?
+  admin       AdminUser? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([adminId])
+  @@index([entityType, entityId])
+}
+
+enum NotificationType {
+  SHIPMENT
+  PAYMENT
+  DELIVERY
+  ACCOUNT
+  SYSTEM
+}
+
+model Notification {
+  id              String           @id @default(uuid())
+  customerId      String
+  customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type            NotificationType @default(SYSTEM)
+  title           String
+  message         String
+  read            Boolean          @default(false)
+  actionUrl       String?
+  idempotencyKey  String?          @unique
+  shipmentId      String?
+  paymentId       String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([customerId])
+  @@index([customerId, read])
+  @@index([createdAt])
+}

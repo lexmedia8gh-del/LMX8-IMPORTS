@@ -1,0 +1,160 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-poppins);
+  --font-heading: var(--font-inter);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* ── LMX8 Brand Tokens ── */
+  --color-lmx-navy:      #0B1F44;
+  --color-lmx-deep:      #07182F;
+  --color-lmx-card-navy: #102846;
+  --color-lmx-mid:       #122B4F;
+  --color-lmx-gold:      #FFB800;
+  --color-lmx-yellow:    #F5C518;
+  --color-lmx-success:   #10B981;
+  --color-lmx-error:     #EF4444;
+  --color-lmx-warn:      #F59E0B;
+  --color-lmx-surface:   #F7F9FC;
+  --color-lmx-text:      #172236;
+  --color-lmx-muted:     #94A3B8;
+  --color-lmx-meta:      #667085;
+
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+  --radius-2xl: 20px;
+}
+
+:root {
+  --background: #F7F9FC;
+  --foreground: #172236;
+
+  --card: #FFFFFF;
+  --card-foreground: #172236;
+
+  --popover: #FFFFFF;
+  --popover-foreground: #172236;
+
+  --primary: #0B1F44;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #122B4F;
+  --secondary-foreground: #FFFFFF;
+
+  --muted: #F1F5F9;
+  --muted-foreground: #667085;
+
+  --accent: #FFB800;
+  --accent-foreground: #172236;
+
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #FFB800;
+
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ── Utility helpers ── */
+.lmx-sidebar    { background: #07182F; }
+.lmx-topbar     { background: #0B1F44; }
+.lmx-card-dark  { background: #102846; border: 1px solid rgba(255,255,255,0.08); }
+.lmx-card-light { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; }
+
+/* ── Brand alias classes (used by admin layout) ── */
+.bg-brand-navy      { background-color: #0B1F44; }
+.bg-brand-secondary { background-color: #122B4F; }
+.bg-brand-gold      { background-color: #FFB800; }
+.bg-brand-light     { background-color: #F1F5F9; }
+.bg-brand-error     { background-color: #EF4444; }
+.text-brand-navy    { color: #0B1F44; }
+.text-brand-gold    { color: #FFB800; }
+.text-brand-error   { color: #EF4444; }
+.hover\:bg-brand-secondary:hover { background-color: #122B4F; }
+.hover\:bg-brand-light:hover     { background-color: #F1F5F9; }
+.hover\:text-brand-navy:hover    { color: #0B1F44; }
+.hover\:bg-brand-secondary\/50:hover { background-color: rgba(18,43,79,0.5); }
+.hover\:bg-brand-gold\/20:hover  { background-color: rgba(255,184,0,0.2); }
+.bg-brand-gold\/10               { background-color: rgba(255,184,0,0.1); }
+.ring-brand-gold                 { --tw-ring-color: #FFB800; }
+
+/* Cinematic hero overlay */
+.hero-overlay {
+  background: linear-gradient(
+    105deg,
+    rgba(7,24,47,0.97) 0%,
+    rgba(7,24,47,0.88) 40%,
+    rgba(7,24,47,0.55) 65%,
+    rgba(7,24,47,0.10) 100%
+  );
+}
+
+/* Yellow focus ring on inputs */
+.lmx-input:focus {
+  outline: none;
+  border-color: #FFB800;
+  box-shadow: 0 0 0 3px rgba(255,184,0,0.18);
+}
+
+/* Gold line accent */
+.gold-line { display: block; width: 40px; height: 3px; background: #FFB800; border-radius: 2px; }
+
+/* Smooth page fade */
+.page-fade { animation: pageFade 0.25s ease both; }
+@keyframes pageFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* Input focus visible utility */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: #FFB800 !important;
+  box-shadow: 0 0 0 3px rgba(255,184,0,0.18);
+}
