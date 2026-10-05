@@ -7,16 +7,27 @@ import { Users, Truck, Package, CreditCard, Search, Bell, Settings, Menu, LogOut
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdminAction } from "@/app/actions";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [adminInfo, setAdminInfo] = useState<{ name: string; role: string } | null>(null);
+  const [branding, setBranding] = useState<any>(null);
+
+  const loadBranding = () => {
+    import("@/app/actions/branding").then((m) => {
+      m.getBrandSettingsAction().then(setBranding).catch(console.error);
+    });
+  };
 
   useEffect(() => {
     getCurrentAdminAction()
       .then(a => setAdminInfo({ name: a.name, role: a.role }))
       .catch(() => {});
+    loadBranding();
+    window.addEventListener("lmx8-branding-updated", loadBranding);
+    return () => window.removeEventListener("lmx8-branding-updated", loadBranding);
   }, []);
   
   const navItems = [
@@ -43,9 +54,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             title={isCollapsed && !mobile ? item.label : undefined}
             className={`flex items-center gap-3 px-4 py-3 mx-2 rounded-lg text-sm font-medium transition-all duration-200 ${
               isActive 
-                ? 'bg-brand-secondary text-brand-gold shadow-sm' 
-                : 'text-gray-400 hover:text-white hover:bg-brand-secondary/50'
+                ? 'shadow-sm' 
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
             } ${isCollapsed && !mobile ? 'justify-center px-2' : ''}`}
+            style={isActive ? { backgroundColor: branding?.accentColor || "#F2901F", color: "#07182F" } : {}}
           >
             {item.icon} 
             {(!isCollapsed || mobile) && <span className="truncate">{item.label}</span>}
@@ -60,16 +72,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Desktop Sidebar */}
       <aside 
         className={`hidden md:flex flex-col shrink-0 shadow-xl z-20 transition-all duration-300 relative ${isCollapsed ? 'w-20' : 'w-64'}`}
-        style={{ background: "#07182F", color: "#FFFFFF" }}
+        style={{ background: branding?.primaryColor || "#141B47", color: "#FFFFFF" }}
       >
-        <div className="h-20 flex items-center px-6 overflow-hidden shrink-0 border-b border-white/5">
+        <div className="h-20 flex items-center px-5 overflow-hidden shrink-0 border-b border-white/5">
           <Link href="/admin" className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-brand-gold rounded-lg flex items-center justify-center font-bold text-brand-navy shrink-0 shadow-sm">A</div>
-            {!isCollapsed && (
-              <div className="whitespace-nowrap transition-opacity duration-300">
-                <span className="text-lg font-bold tracking-wide leading-none block">LMX8</span>
-                <span className="text-[10px] uppercase tracking-widest text-brand-gold block">Admin</span>
-              </div>
+            {isCollapsed ? (
+              <BrandLogo
+                variant="symbol"
+                primaryColor={branding?.primaryColor}
+                secondaryColor={branding?.secondaryColor}
+                accentColor={branding?.accentColor}
+                customImageUrl={branding?.brandMarkUrl}
+                height={32}
+              />
+            ) : (
+              <BrandLogo
+                variant="full-light"
+                primaryColor={branding?.primaryColor}
+                secondaryColor={branding?.secondaryColor}
+                accentColor={branding?.accentColor}
+                customImageUrl={branding?.lightLogoUrl}
+                height={36}
+              />
             )}
           </Link>
         </div>
@@ -110,16 +134,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <SheetTrigger className="md:hidden hover:bg-brand-light p-2 rounded-md transition-colors">
                 <Menu className="w-6 h-6 text-[#0F172A]" />
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 bg-brand-navy text-white p-0 border-none flex flex-col">
+              <SheetContent side="left" className="w-72 p-0 border-none flex flex-col" style={{ backgroundColor: branding?.primaryColor || "#141B47", color: "white" }}>
                 <SheetTitle className="sr-only">Menu</SheetTitle>
-                <div className="h-20 flex items-center px-6 shrink-0 border-b border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-brand-gold rounded-lg flex items-center justify-center font-bold text-brand-navy shadow-sm">A</div>
-                    <div>
-                      <span className="text-lg font-bold tracking-wide leading-none block">LMX8</span>
-                      <span className="text-[10px] uppercase tracking-widest text-brand-gold block">Admin</span>
-                    </div>
-                  </div>
+                <div className="h-20 flex items-center px-5 shrink-0 border-b border-white/5">
+                  <Link href="/admin">
+                    <BrandLogo
+                      variant="full-light"
+                      primaryColor={branding?.primaryColor}
+                      secondaryColor={branding?.secondaryColor}
+                      accentColor={branding?.accentColor}
+                      customImageUrl={branding?.lightLogoUrl}
+                      height={36}
+                    />
+                  </Link>
                 </div>
                 <nav className="flex-1 py-6 space-y-1 overflow-y-auto">
                   <NavLinks mobile={true} />
@@ -157,7 +184,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <span className="text-[#0F172A] font-bold text-sm block leading-none">{adminInfo?.name ?? "Admin"}</span>
                   <span className="text-[#64748B] text-[10px] uppercase tracking-wider block mt-1">{adminInfo?.role ?? "..."}</span>
                 </div>
-                <div className="w-9 h-9 bg-brand-navy text-white rounded-full flex items-center justify-center text-sm font-bold shadow-sm">
+                <div className="w-9 h-9 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-sm" style={{ backgroundColor: branding?.secondaryColor || "#355DAF" }}>
                   {adminInfo?.name?.charAt(0) ?? "A"}
                 </div>
               </button>

@@ -5,6 +5,8 @@ import { formatCurrency } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/auth";
 import { ShippingPayNowButton } from "@/components/shipping-pay-now-button";
+import { BrandLogo } from "@/components/brand-logo";
+import { getBrandSettings } from "@/lib/branding";
 
 export default async function PaymentCheckoutPage({
   params,
@@ -13,6 +15,7 @@ export default async function PaymentCheckoutPage({
 }) {
   const { id } = await params;
   const customer = await requireCustomerSession();
+  const branding = await getBrandSettings();
 
   // id here is the Prisma Shipment UUID (from the payments list link)
   const shipment = await prisma.shipment.findUnique({

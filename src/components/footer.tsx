@@ -1,23 +1,49 @@
+"use client";
 import Link from "next/link";
 import { Globe } from "lucide-react";
+import { useState, useEffect } from "react";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function Footer() {
+  const [branding, setBranding] = useState<any>(null);
+
+  const loadBranding = () => {
+    import("@/app/actions/branding").then((m) => {
+      m.getBrandSettingsAction().then(setBranding).catch(console.error);
+    });
+  };
+
+  useEffect(() => {
+    loadBranding();
+    window.addEventListener("lmx8-branding-updated", loadBranding);
+    return () => window.removeEventListener("lmx8-branding-updated", loadBranding);
+  }, []);
+
+  const primaryBg = branding?.primaryColor || "#141B47";
+  const secondaryColor = branding?.secondaryColor || "#355DAF";
+  const accentColor = branding?.accentColor || "#F2901F";
+  const businessName = branding?.businessName || "LMX8 IMPORTS";
+  const tagline = branding?.tagline || "Your Goods. Our Priority.";
+
   return (
-    <footer style={{ background: "#07182F", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+    <footer style={{ background: primaryBg, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
       <div className="max-w-7xl mx-auto px-6 lg:px-10 py-14">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
           {/* Brand */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center font-black text-lg shrink-0" style={{ background: "#FFB800", color: "#07182F", fontFamily: "var(--font-poppins)" }}>L</div>
-              <div>
-                <div className="font-bold text-white text-lg tracking-wider leading-none" style={{ fontFamily: "var(--font-poppins)" }}>LMX<span style={{ color: "#FFB800" }}>8</span></div>
-                <div className="text-[10px] tracking-[0.2em] uppercase mt-0.5" style={{ color: "#94A3B8" }}>Imports</div>
-              </div>
+              <BrandLogo
+                variant="full-light"
+                primaryColor={primaryBg}
+                secondaryColor={secondaryColor}
+                accentColor={accentColor}
+                customImageUrl={branding?.lightLogoUrl}
+                height={32}
+              />
             </div>
             <p className="text-sm leading-relaxed" style={{ color: "#94A3B8" }}>
               From China to Ghana.<br />
-              <span style={{ color: "#FFB800" }}>Your Goods. Our Priority.</span>
+              <span style={{ color: accentColor }}>{tagline}</span>
             </p>
             <div className="flex items-center gap-2 text-xs" style={{ color: "#667085" }}>
               <Globe className="w-3.5 h-3.5" />
@@ -62,7 +88,7 @@ export function Footer() {
         </div>
 
         <div className="mt-12 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs" style={{ borderTop: "1px solid rgba(255,255,255,0.07)", color: "#667085" }}>
-          <p>© {new Date().getFullYear()} LMX8 IMPORTS. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} {businessName}. All rights reserved.</p>
           <p>Quality Products. Global Sourcing. Delivered to You.</p>
         </div>
       </div>

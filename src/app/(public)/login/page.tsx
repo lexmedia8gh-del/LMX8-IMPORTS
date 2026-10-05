@@ -2,14 +2,21 @@
 
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { loginCustomerAction, loginAdminAction } from "@/app/actions/auth";
+import { BrandLogo } from "@/components/brand-logo";
+import { getBrandSettingsAction } from "@/app/actions/branding";
 
 export default function LoginPage() {
   const [activeTab, setActiveTab] = useState<"customer" | "admin">("customer");
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [branding, setBranding] = useState<any>(null);
+
+  useEffect(() => {
+    getBrandSettingsAction().then(setBranding).catch(console.error);
+  }, []);
 
   const handleCustomerSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -40,26 +47,38 @@ export default function LoginPage() {
     });
   };
 
+  const primaryColor = branding?.primaryColor || "#141B47";
+  const secondaryColor = branding?.secondaryColor || "#355DAF";
+  const accentColor = branding?.accentColor || "#F2901F";
+  const tagline = branding?.tagline || "Your Goods. Our Priority.";
+
+  // Darker shade for contrast overlays and inputs
+  const darkNavy = "#0C102B";
+  const cardNavy = "#1D265A";
+
   return (
-    <div className="min-h-screen flex" style={{ background: "#07182F" }}>
+    <div className="min-h-screen flex" style={{ background: darkNavy }}>
       {/* ── LEFT PANEL ── */}
       <div className="hidden lg:flex w-[55%] relative flex-col justify-between p-12 overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: "url('https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&w=2127&auto=format&fit=crop')" }}
         />
-        <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(7,24,47,0.95) 0%, rgba(7,24,47,0.75) 60%, rgba(7,24,47,0.50) 100%)" }} />
+        <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${primaryColor}F2 0%, ${primaryColor}BF 60%, ${primaryColor}73 100%)` }} />
 
-        <Link href="/" className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-xl" style={{ background: "#FFB800", color: "#07182F", fontFamily: "var(--font-poppins)" }}>L</div>
-          <div>
-            <div className="text-xl font-bold tracking-wider text-white leading-none" style={{ fontFamily: "var(--font-poppins)" }}>LMX<span style={{ color: "#FFB800" }}>8</span></div>
-            <div className="text-[10px] tracking-[0.2em] uppercase mt-0.5" style={{ color: "#94A3B8" }}>Imports</div>
-          </div>
+        <Link href="/" className="relative z-10 block">
+          <BrandLogo
+            variant="full-light"
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            accentColor={accentColor}
+            customImageUrl={branding?.lightLogoUrl}
+            height={44}
+          />
         </Link>
 
         <div className="relative z-10 space-y-5">
-          <span className="gold-line"></span>
+          <span className="gold-line" style={{ backgroundColor: accentColor }}></span>
           <h2 style={{ fontFamily: "var(--font-poppins)" }} className="text-4xl md:text-5xl font-bold text-white leading-tight">
             Welcome back!
           </h2>
@@ -71,20 +90,28 @@ export default function LoginPage() {
         <div className="relative z-10">
           <p className="text-sm italic" style={{ color: "#667085" }}>
             From China to Ghana.<br />
-            <span style={{ color: "#FFB800" }}>Your Goods. Our Priority.</span>
+            <span style={{ color: accentColor }}>{tagline}</span>
           </p>
         </div>
       </div>
 
       {/* ── RIGHT PANEL ── */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-12" style={{ background: "#0B1F44" }}>
-        <div className="absolute top-6 left-6 lg:hidden flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-base" style={{ background: "#FFB800", color: "#07182F", fontFamily: "var(--font-poppins)" }}>L</div>
-          <span className="text-lg font-bold text-white" style={{ fontFamily: "var(--font-poppins)" }}>LMX<span style={{ color: "#FFB800" }}>8</span></span>
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-12" style={{ background: primaryColor }}>
+        <div className="absolute top-6 left-6 lg:hidden">
+          <Link href="/">
+            <BrandLogo
+              variant="full-light"
+              primaryColor={primaryColor}
+              secondaryColor={secondaryColor}
+              accentColor={accentColor}
+              customImageUrl={branding?.lightLogoUrl}
+              height={36}
+            />
+          </Link>
         </div>
 
         <div className="w-full max-w-md space-y-8">
-          <div className="rounded-2xl p-8 transition-all" style={{ background: "#07182F", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="rounded-2xl p-8 transition-all" style={{ background: darkNavy, border: "1px solid rgba(255,255,255,0.08)" }}>
             
             {activeTab === "customer" ? (
               // CUSTOMER VIEW
@@ -103,7 +130,7 @@ export default function LoginPage() {
                       required
                       placeholder="LMX8-00125 or 024XXXXXXX"
                       className="w-full px-4 h-12 rounded-xl text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-yellow-400 transition-all lmx-input"
-                      style={{ background: "#0B1F44", border: "1px solid rgba(255,255,255,0.12)" }}
+                      style={{ background: darkNavy, border: "1px solid rgba(255,255,255,0.12)" }}
                     />
                   </div>
 
@@ -119,12 +146,12 @@ export default function LoginPage() {
                         pattern="\d{6}"
                         title="PIN must be exactly 6 digits"
                         className="w-full px-4 pr-11 h-12 rounded-xl text-center tracking-[0.4em] font-mono text-base text-white placeholder:text-gray-500 focus:outline-none focus:border-yellow-400 transition-all lmx-input"
-                        style={{ background: "#0B1F44", border: "1px solid rgba(255,255,255,0.12)" }}
+                        style={{ background: darkNavy, border: "1px solid rgba(255,255,255,0.12)" }}
                       />
                       <button 
                         type="button" 
                         onClick={() => setShowPin(!showPin)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1" 
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer" 
                         style={{ color: "#667085" }}
                       >
                         {showPin ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -141,15 +168,15 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={isPending}
-                    className="mt-4 w-full h-12 rounded-xl text-sm font-bold transition-all hover:opacity-90 hover:scale-[1.01] disabled:opacity-50 disabled:hover:scale-100"
-                    style={{ background: "#FFB800", color: "#07182F" }}
+                    className="mt-4 w-full h-12 rounded-xl text-sm font-bold transition-all hover:opacity-90 hover:scale-[1.01] disabled:opacity-50 disabled:hover:scale-100 cursor-pointer"
+                    style={{ background: accentColor, color: "#FFFFFF" }}
                   >
                     {isPending ? "Authenticating..." : "SIGN IN"}
                   </button>
                 </form>
 
                 <p className="mt-8 text-center text-xs" style={{ color: "#667085" }}>
-                  <button onClick={() => { setActiveTab("admin"); setError(null); setShowPin(false); }} className="font-semibold transition-colors hover:text-white" style={{ color: "#94A3B8" }}>
+                  <button onClick={() => { setActiveTab("admin"); setError(null); setShowPin(false); }} className="font-semibold transition-colors hover:text-white cursor-pointer" style={{ color: "#94A3B8" }}>
                     Administrator Login
                   </button>
                 </p>
@@ -175,13 +202,13 @@ export default function LoginPage() {
                         maxLength={8}
                         required
                         placeholder="• • • • • •"
-                        className="w-full px-4 pr-11 h-12 rounded-xl text-center tracking-[0.5em] text-lg font-mono border-none focus:outline-none focus:border-yellow-400 transition-all text-white placeholder:text-gray-500"
-                        style={{ background: "#0B1F44", border: "1px solid rgba(255,255,255,0.12)" }}
+                        className="w-full px-4 pr-11 h-12 rounded-xl text-center tracking-[0.5em] text-lg font-mono border-none focus:outline-none focus:border-yellow-400 transition-all text-white placeholder:text-gray-500 lmx-input"
+                        style={{ background: darkNavy, border: "1px solid rgba(255,255,255,0.12)" }}
                       />
                       <button 
                         type="button" 
                         onClick={() => setShowPin(!showPin)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1" 
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer" 
                         style={{ color: "#667085" }}
                       >
                         {showPin ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -198,15 +225,15 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={isPending}
-                    className="mt-4 w-full h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm disabled:opacity-50"
-                    style={{ background: "#FFB800", color: "#07182F" }}
+                    className="mt-4 w-full h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm disabled:opacity-50 cursor-pointer"
+                    style={{ background: accentColor, color: "#FFFFFF" }}
                   >
                     {isPending ? "Authenticating..." : "SIGN IN"}
                   </button>
                 </form>
 
                 <p className="mt-8 text-center text-xs">
-                  <button onClick={() => { setActiveTab("customer"); setError(null); setShowPin(false); }} className="font-semibold transition-colors hover:text-white" style={{ color: "#94A3B8" }}>
+                  <button onClick={() => { setActiveTab("customer"); setError(null); setShowPin(false); }} className="font-semibold transition-colors hover:text-white cursor-pointer" style={{ color: "#94A3B8" }}>
                     &larr; Back to Customer Login
                   </button>
                 </p>

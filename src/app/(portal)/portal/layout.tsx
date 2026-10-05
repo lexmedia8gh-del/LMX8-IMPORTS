@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { getCurrentCustomerAction } from "@/app/actions";
+import { BrandLogo } from "@/components/brand-logo";
 import {
   getNotificationsAction,
   getUnreadCountAction,
@@ -63,17 +64,44 @@ function SidebarContent({
   onClose?: () => void;
 }) {
   const pathname = usePathname();
+  const [branding, setBranding] = useState<any>(null);
+
+  useEffect(() => {
+    import("@/app/actions/branding").then((m) => {
+      m.getBrandSettingsAction().then(setBranding).catch(console.error);
+    });
+    const reload = () => {
+      import("@/app/actions/branding").then((m) => {
+        m.getBrandSettingsAction().then(setBranding).catch(console.error);
+      });
+    };
+    window.addEventListener("lmx8-branding-updated", reload);
+    return () => window.removeEventListener("lmx8-branding-updated", reload);
+  }, []);
+
   return (
-    <div className="flex flex-col h-full" style={{ background: "#07182F" }}>
+    <div className="flex flex-col h-full" style={{ background: branding?.primaryColor || "#07182F" }}>
       {/* Logo */}
       <div className="h-16 md:h-20 flex items-center px-5 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-        <Link href="/" className="flex items-center gap-3" onClick={onClose}>
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-base shrink-0" style={{ background: "#FFB800", color: "#07182F", fontFamily: "var(--font-poppins)" }}>L</div>
-          {!collapsed && (
-            <div>
-              <div className="font-bold text-white leading-none" style={{ fontFamily: "var(--font-poppins)" }}>LMX<span style={{ color: "#FFB800" }}>8</span></div>
-              <div className="text-[10px] tracking-[0.2em] uppercase mt-0.5" style={{ color: "#94A3B8" }}>Imports</div>
-            </div>
+        <Link href="/" onClick={onClose}>
+          {collapsed ? (
+            <BrandLogo
+              variant="symbol"
+              primaryColor={branding?.primaryColor}
+              secondaryColor={branding?.secondaryColor}
+              accentColor={branding?.accentColor}
+              customImageUrl={branding?.brandMarkUrl}
+              height={32}
+            />
+          ) : (
+            <BrandLogo
+              variant="full-light"
+              primaryColor={branding?.primaryColor}
+              secondaryColor={branding?.secondaryColor}
+              accentColor={branding?.accentColor}
+              customImageUrl={branding?.lightLogoUrl}
+              height={36}
+            />
           )}
         </Link>
       </div>
@@ -92,9 +120,13 @@ function SidebarContent({
               className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-150 ${
                 active ? "text-white shadow-sm" : "text-gray-400 hover:text-white hover:bg-white/5"
               } ${collapsed ? "justify-center" : ""}`}
-              style={active ? { background: "#122B4F", borderLeft: "3px solid #FFB800", paddingLeft: collapsed ? "12px" : "10px" } : {}}
+              style={active ? { 
+                background: branding?.secondaryColor || "#122B4F", 
+                borderLeft: `3px solid ${branding?.accentColor || "#FFB800"}`, 
+                paddingLeft: collapsed ? "12px" : "10px" 
+              } : {}}
             >
-              <Icon className={`shrink-0 ${active ? "text-yellow-400" : ""}`} size={18} />
+              <Icon className={`shrink-0 ${active ? "text-yellow-400" : ""}`} size={18} style={active ? { color: branding?.accentColor || undefined } : {}} />
               {!collapsed && <span>{label}</span>}
             </Link>
           );
@@ -332,6 +364,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [collapsed, setCollapsed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [customerInfo, setCustomerInfo] = useState<{ id: string; name: string } | null>(null);
+  const [branding, setBranding] = useState<any>(null);
 
   // Notifications state
   const [notifOpen, setNotifOpen] = useState(false);
@@ -340,12 +373,21 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [notifLoading, setNotifLoading] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
 
+  const loadBranding = () => {
+    import("@/app/actions/branding").then((m) => {
+      m.getBrandSettingsAction().then(setBranding).catch(console.error);
+    });
+  };
+
   useEffect(() => {
     getCurrentCustomerAction()
       .then((c) => setCustomerInfo({ id: c.id, name: c.name }))
       .catch(() => setCustomerInfo(null));
     // Initial unread count
     getUnreadCountAction().then(setUnreadCount).catch(() => {});
+    loadBranding();
+    window.addEventListener("lmx8-branding-updated", loadBranding);
+    return () => window.removeEventListener("lmx8-branding-updated", loadBranding);
   }, []);
 
   // Refresh unread count on route changes
@@ -398,7 +440,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       {/* Desktop Sidebar */}
       <aside
         className={`hidden md:flex flex-col shrink-0 transition-all duration-300 ${collapsed ? "w-20" : "w-64"}`}
-        style={{ background: "#07182F" }}
+        style={{ background: branding?.primaryColor || "#07182F" }}
       >
         <SidebarContent collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
       </aside>
@@ -416,7 +458,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         {/* Topbar */}
         <header
           className="h-16 md:h-20 flex items-center justify-between px-4 md:px-6 shrink-0 sticky top-0 z-30"
-          style={{ background: "#0B1F44", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+          style={{ background: branding?.primaryColor || "#141B47", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
         >
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -428,8 +470,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             </button>
             <div className="flex items-center gap-2">
               <span className="hidden sm:flex text-sm font-bold text-white items-center gap-2">
-                <div className="w-6 h-6 rounded flex items-center justify-center font-black text-[#0B1F44] text-[10px]" style={{ background: "#FFB800" }}>L</div>
-                LMX8
+                <BrandLogo
+                  variant="symbol"
+                  primaryColor={branding?.primaryColor}
+                  secondaryColor={branding?.secondaryColor}
+                  accentColor={branding?.accentColor}
+                  customImageUrl={branding?.brandMarkUrl}
+                  height={24}
+                />
+                {branding?.shortName || "LMX8"}
               </span>
               <span className="hidden sm:block text-gray-500 mx-2">/</span>
               <span className="text-sm font-semibold text-white capitalize truncate block">

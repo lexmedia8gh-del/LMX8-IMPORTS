@@ -300,3 +300,24 @@ model Notification {
   @@index([customerId, read])
   @@index([createdAt])
 }
+
+model BrandSettings {
+  id                 String   @id @default("singleton")
+  businessName       String   @default("LMX8 IMPORTS")
+  shortName          String   @default("LMX8")
+  tagline            String   @default("Your Goods. Our Priority.")
+  primaryColor       String   @default("#141B47")
+  secondaryColor     String   @default("#355DAF")
+  accentColor        String   @default("#F2901F")
+  mainLogo           String?  // Storage path or data URL
+  lightLogo          String?  // Storage path or data URL
+  darkLogo           String?  // Storage path or data URL
+  brandMark          String?  // Storage path or data URL
+  favicon            String?  // Storage path or data URL
+  invoiceLogo        String?  // Storage path or data URL
+  invoiceFooterLogo  String?  // Storage path or data URL
+  invoiceStamp       String?  // Storage path or data URL
+  updatedAt          DateTime @updatedAt
+  updatedBy          String?  // Admin User ID
+}
+

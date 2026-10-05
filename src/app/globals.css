@@ -30,12 +30,12 @@
   --color-card: var(--card);
 
   /* ── LMX8 Brand Tokens ── */
-  --color-lmx-navy:      #0B1F44;
-  --color-lmx-deep:      #07182F;
-  --color-lmx-card-navy: #102846;
-  --color-lmx-mid:       #122B4F;
-  --color-lmx-gold:      #FFB800;
-  --color-lmx-yellow:    #F5C518;
+  --color-lmx-navy:      #141B47;
+  --color-lmx-deep:      #0C102B;
+  --color-lmx-card-navy: #1D265A;
+  --color-lmx-mid:       #355DAF;
+  --color-lmx-gold:      #F2901F;
+  --color-lmx-yellow:    #FAB763;
   --color-lmx-success:   #10B981;
   --color-lmx-error:     #EF4444;
   --color-lmx-warn:      #F59E0B;
@@ -61,24 +61,24 @@
   --popover: #FFFFFF;
   --popover-foreground: #172236;
 
-  --primary: #0B1F44;
+  --primary: #141B47;
   --primary-foreground: #FFFFFF;
 
-  --secondary: #122B4F;
+  --secondary: #355DAF;
   --secondary-foreground: #FFFFFF;
 
   --muted: #F1F5F9;
   --muted-foreground: #667085;
 
-  --accent: #FFB800;
-  --accent-foreground: #172236;
+  --accent: #F2901F;
+  --accent-foreground: #FFFFFF;
 
   --destructive: #EF4444;
   --destructive-foreground: #FFFFFF;
 
   --border: #E5E7EB;
   --input: #E5E7EB;
-  --ring: #FFB800;
+  --ring: #F2901F;
 
   --radius: 0.75rem;
 }
@@ -95,48 +95,48 @@
 }
 
 /* ── Utility helpers ── */
-.lmx-sidebar    { background: #07182F; }
-.lmx-topbar     { background: #0B1F44; }
-.lmx-card-dark  { background: #102846; border: 1px solid rgba(255,255,255,0.08); }
+.lmx-sidebar    { background: #0C102B; }
+.lmx-topbar     { background: #141B47; }
+.lmx-card-dark  { background: #1D265A; border: 1px solid rgba(255,255,255,0.08); }
 .lmx-card-light { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; }
 
 /* ── Brand alias classes (used by admin layout) ── */
-.bg-brand-navy      { background-color: #0B1F44; }
-.bg-brand-secondary { background-color: #122B4F; }
-.bg-brand-gold      { background-color: #FFB800; }
+.bg-brand-navy      { background-color: #141B47; }
+.bg-brand-secondary { background-color: #355DAF; }
+.bg-brand-gold      { background-color: #F2901F; }
 .bg-brand-light     { background-color: #F1F5F9; }
 .bg-brand-error     { background-color: #EF4444; }
-.text-brand-navy    { color: #0B1F44; }
-.text-brand-gold    { color: #FFB800; }
+.text-brand-navy    { color: #141B47; }
+.text-brand-gold    { color: #F2901F; }
 .text-brand-error   { color: #EF4444; }
-.hover\:bg-brand-secondary:hover { background-color: #122B4F; }
+.hover\:bg-brand-secondary:hover { background-color: #355DAF; }
 .hover\:bg-brand-light:hover     { background-color: #F1F5F9; }
-.hover\:text-brand-navy:hover    { color: #0B1F44; }
-.hover\:bg-brand-secondary\/50:hover { background-color: rgba(18,43,79,0.5); }
-.hover\:bg-brand-gold\/20:hover  { background-color: rgba(255,184,0,0.2); }
-.bg-brand-gold\/10               { background-color: rgba(255,184,0,0.1); }
-.ring-brand-gold                 { --tw-ring-color: #FFB800; }
+.hover\:text-brand-navy:hover    { color: #141B47; }
+.hover\:bg-brand-secondary\/50:hover { background-color: rgba(53,93,175,0.5); }
+.hover\:bg-brand-gold\/20:hover  { background-color: rgba(242,144,31,0.2); }
+.bg-brand-gold\/10               { background-color: rgba(242,144,31,0.1); }
+.ring-brand-gold                 { --tw-ring-color: #F2901F; }
 
 /* Cinematic hero overlay */
 .hero-overlay {
   background: linear-gradient(
     105deg,
-    rgba(7,24,47,0.97) 0%,
-    rgba(7,24,47,0.88) 40%,
-    rgba(7,24,47,0.55) 65%,
-    rgba(7,24,47,0.10) 100%
+    rgba(20,27,71,0.97) 0%,
+    rgba(20,27,71,0.88) 40%,
+    rgba(20,27,71,0.55) 65%,
+    rgba(20,27,71,0.10) 100%
   );
 }
 
-/* Yellow focus ring on inputs */
+/* Orange focus ring on inputs */
 .lmx-input:focus {
   outline: none;
-  border-color: #FFB800;
-  box-shadow: 0 0 0 3px rgba(255,184,0,0.18);
+  border-color: #F2901F;
+  box-shadow: 0 0 0 3px rgba(242,144,31,0.18);
 }
 
-/* Gold line accent */
-.gold-line { display: block; width: 40px; height: 3px; background: #FFB800; border-radius: 2px; }
+/* Orange line accent */
+.gold-line { display: block; width: 40px; height: 3px; background: #F2901F; border-radius: 2px; }
 
 /* Smooth page fade */
 .page-fade { animation: pageFade 0.25s ease both; }
@@ -155,6 +155,6 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   outline: none;
-  border-color: #FFB800 !important;
-  box-shadow: 0 0 0 3px rgba(255,184,0,0.18);
+  border-color: #F2901F !important;
+  box-shadow: 0 0 0 3px rgba(242,144,31,0.18);
 }
