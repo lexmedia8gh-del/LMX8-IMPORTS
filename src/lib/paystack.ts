@@ -1,15 +1,13 @@
 import crypto from "crypto";
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
-if (!PAYSTACK_SECRET_KEY || PAYSTACK_SECRET_KEY.includes("PASTE_YOUR") || PAYSTACK_SECRET_KEY === "sk_test_placeholder_key") {
-  console.warn("WARNING: PAYSTACK_SECRET_KEY is not configured or uses a placeholder.");
-}
-
+// Dynamic runtime secret key check
 function requirePaystackSecret() {
-  if (!PAYSTACK_SECRET_KEY || PAYSTACK_SECRET_KEY.includes("PASTE_YOUR") || PAYSTACK_SECRET_KEY === "sk_test_placeholder_key") {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey || secretKey.includes("PASTE_YOUR") || secretKey === "sk_test_placeholder_key" || secretKey === "") {
+    console.error("Paystack configuration error: PAYSTACK_SECRET_KEY is missing or invalid.");
     throw new Error("Paystack is not configured. Please set PAYSTACK_SECRET_KEY.");
   }
-  return PAYSTACK_SECRET_KEY;
+  return secretKey;
 }
 
 export async function initializePayment(data: {
@@ -21,24 +19,61 @@ export async function initializePayment(data: {
 }) {
   const secretKey = requirePaystackSecret();
 
-  const response = await fetch("https://api.paystack.co/transaction/initialize", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${secretKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      amount: data.amount * 100, // Paystack expects amount in kobo/pesewas
-      email: data.email,
-      reference: data.reference,
-      callback_url: data.callback_url,
-      metadata: data.metadata,
-      currency: "GHS",
-    }),
-  });
+  // Validate amount
+  if (!data.amount || data.amount <= 0 || isNaN(data.amount)) {
+    console.error("Paystack initialization validation failed: invalid amount", { amount: data.amount });
+    throw new Error("Invalid payment amount.");
+  }
 
-  const result = await response.json();
-  if (!result.status) {
+  // Validate email address
+  if (!data.email || !data.email.includes("@")) {
+    console.error("Paystack initialization validation failed: invalid email", { email: data.email });
+    throw new Error("A valid email address is required for payment initialization.");
+  }
+
+  // Prevent floating-point errors by rounding to nearest integer (pesewas/cents)
+  const rawAmount = Math.round(data.amount * 100);
+
+  let response;
+  try {
+    response = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: rawAmount,
+        email: data.email,
+        reference: data.reference,
+        callback_url: data.callback_url,
+        metadata: data.metadata,
+        currency: "GHS",
+      }),
+    });
+  } catch (err: any) {
+    console.error("Paystack API connection failure:", {
+      error: err?.message || "Network error",
+    });
+    throw new Error("Unable to reach payment provider. Please check your network connection.");
+  }
+
+  let result;
+  try {
+    result = await response.json();
+  } catch (err: any) {
+    console.error("Paystack API response parsing failure:", {
+      status: response.status,
+      error: err?.message || "Invalid JSON",
+    });
+    throw new Error(`Invalid response from payment provider (HTTP ${response.status}).`);
+  }
+
+  if (!response.ok || !result.status) {
+    console.error("Paystack initialization failed", {
+      status: response.status,
+      message: result.message || "Failed to initialize payment with Paystack",
+    });
     throw new Error(result.message || "Failed to initialize payment with Paystack");
   }
 
@@ -48,15 +83,37 @@ export async function initializePayment(data: {
 export async function verifyPayment(reference: string) {
   const secretKey = requirePaystackSecret();
 
-  const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${secretKey}`,
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+      },
+    });
+  } catch (err: any) {
+    console.error("Paystack Verification connection failure:", {
+      error: err?.message || "Network error",
+    });
+    throw new Error("Unable to reach payment provider for verification.");
+  }
 
-  const result = await response.json();
-  if (!result.status) {
+  let result;
+  try {
+    result = await response.json();
+  } catch (err: any) {
+    console.error("Paystack Verification response parsing failure:", {
+      status: response.status,
+      error: err?.message || "Invalid JSON",
+    });
+    throw new Error(`Invalid verification response from payment provider (HTTP ${response.status}).`);
+  }
+
+  if (!response.ok || !result.status) {
+    console.error("Paystack verification failed", {
+      status: response.status,
+      message: result.message || "Failed to verify payment with Paystack",
+    });
     throw new Error(result.message || "Failed to verify payment with Paystack");
   }
 
@@ -64,10 +121,12 @@ export async function verifyPayment(reference: string) {
 }
 
 export function verifyWebhookSignature(payload: string, signature: string): boolean {
-  if (!PAYSTACK_SECRET_KEY || PAYSTACK_SECRET_KEY.includes("PASTE_YOUR") || PAYSTACK_SECRET_KEY === "sk_test_placeholder_key") {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey || secretKey.includes("PASTE_YOUR") || secretKey === "sk_test_placeholder_key" || secretKey === "") {
+    console.error("Webhook verification aborted: Paystack secret key is missing or invalid.");
     return false;
   }
-  const hash = crypto.createHmac("sha512", PAYSTACK_SECRET_KEY).update(payload).digest("hex");
+  const hash = crypto.createHmac("sha512", secretKey).update(payload).digest("hex");
   if (hash.length !== signature.length) return false;
   return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature));
 }

@@ -1,0 +1,7 @@
+{
+  "name": "LMX8 IMPORTS",
+  "description": "Premium China to Ghana Logistics, Shipping, Sourcing and Payment Tracking Platform",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
