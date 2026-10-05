@@ -84,12 +84,12 @@ export default async function PaymentsPage() {
                 <div className="mt-4 flex items-center justify-between pt-3 border-t border-[#F1F5F9]">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: "#667085" }}>Outstanding</p>
-                    <p className="font-black text-xl" style={{ color: "#0B1F44" }}>{formatCurrency(s.outstanding)}</p>
+                    <p className="font-black text-xl" style={{ color: "#141B47" }}>{formatCurrency(s.outstanding)}</p>
                   </div>
                   <Link href={`/portal/payments/${s.id}`}>
                     <button
-                      className="flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-xl transition-all hover:opacity-90 shadow-sm"
-                      style={{ background: "#FFB800", color: "#07182F" }}
+                      className="flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-xl transition-all hover:opacity-90 shadow-sm text-white cursor-pointer"
+                      style={{ background: "#F2901F" }}
                     >
                       Pay Now <ArrowRight size={16} />
                     </button>

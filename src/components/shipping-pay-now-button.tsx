@@ -1,38 +1,54 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { initializeShippingPaymentAction } from "@/app/actions/payments";
 
 export function ShippingPayNowButton({ shipmentId }: { shipmentId: string }) {
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   async function handlePay() {
     setLoading(true);
-    const callbackUrl = `${window.location.origin}/portal/payments/verify`;
-    const res = await initializeShippingPaymentAction(shipmentId, callbackUrl);
+    setErrorMessage(null);
+    try {
+      const callbackUrl = `${window.location.origin}/portal/payments/verify`;
+      const res = await initializeShippingPaymentAction(shipmentId, callbackUrl);
 
-    if (res.success && res.authorizationUrl) {
-      window.location.href = res.authorizationUrl;
-    } else {
-      alert(res.error || "Failed to initialize payment.");
+      if (res.success && res.authorizationUrl) {
+        window.location.href = res.authorizationUrl;
+      } else {
+        setErrorMessage(res.error || "Failed to initialize payment. Please try again.");
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Failed to initialize payment. Please check your network.");
       setLoading(false);
     }
   }
 
   return (
-    <button
-      onClick={handlePay}
-      disabled={loading}
-      className="w-full py-4 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-md disabled:opacity-60 disabled:cursor-not-allowed bg-accent text-white cursor-pointer"
-    >
-      {loading ? (
-        <>
-          <Loader2 size={16} className="animate-spin" /> Processing…
-        </>
-      ) : (
-        "Pay Now with Paystack"
+    <div className="space-y-3">
+      {errorMessage && (
+        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+          <div className="flex-1">{errorMessage}</div>
+        </div>
       )}
-    </button>
+      <button
+        onClick={handlePay}
+        disabled={loading}
+        className="w-full py-4 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-md disabled:opacity-60 disabled:cursor-not-allowed text-white cursor-pointer"
+        style={{ background: "#F2901F" }}
+      >
+        {loading ? (
+          <>
+            <Loader2 size={16} className="animate-spin" /> Processing…
+          </>
+        ) : (
+          "Pay Now with Paystack"
+        )}
+      </button>
+    </div>
   );
 }

@@ -5,9 +5,10 @@ import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 export default async function PaymentVerificationPage({
   searchParams,
 }: {
-  searchParams: { reference?: string };
+  searchParams: Promise<{ reference?: string }> | { reference?: string };
 }) {
-  const reference = searchParams.reference;
+  const resolved = await Promise.resolve(searchParams);
+  const reference = resolved?.reference;
 
   if (!reference) {
     return (
@@ -16,7 +17,7 @@ export default async function PaymentVerificationPage({
         <h2 className="text-xl font-bold text-[#172236]">Invalid Request</h2>
         <p className="text-sm text-[#667085] mt-2 mb-6">No payment reference provided.</p>
         <Link href="/portal/credits">
-          <button className="px-6 py-2.5 bg-[#0B1F44] text-white text-sm font-bold rounded-xl hover:opacity-90">
+          <button className="px-6 py-2.5 bg-[#141B47] text-white text-sm font-bold rounded-xl hover:opacity-90">
             Return to Credits
           </button>
         </Link>
@@ -33,7 +34,7 @@ export default async function PaymentVerificationPage({
         <h2 className="text-xl font-bold text-[#172236]">Verification Failed</h2>
         <p className="text-sm text-[#667085] mt-2 mb-6">{result.error}</p>
         <Link href="/portal/credits">
-          <button className="px-6 py-2.5 bg-[#0B1F44] text-white text-sm font-bold rounded-xl hover:opacity-90">
+          <button className="px-6 py-2.5 bg-[#141B47] text-white text-sm font-bold rounded-xl hover:opacity-90">
             Return to Credits
           </button>
         </Link>
@@ -49,7 +50,7 @@ export default async function PaymentVerificationPage({
         <p className="text-sm text-[#667085] mt-2 mb-6">Your payment has been verified and processed successfully.</p>
         <div className="flex gap-4">
           <Link href="/portal/credits">
-            <button className="px-6 py-2.5 bg-[#0B1F44] text-white text-sm font-bold rounded-xl hover:opacity-90">
+            <button className="px-6 py-2.5 bg-[#141B47] text-white text-sm font-bold rounded-xl hover:opacity-90">
               View Credits
             </button>
           </Link>
@@ -70,7 +71,7 @@ export default async function PaymentVerificationPage({
         <h2 className="text-xl font-bold text-[#172236]">Payment Failed</h2>
         <p className="text-sm text-[#667085] mt-2 mb-6">Your payment could not be completed.</p>
         <Link href="/portal/credits">
-          <button className="px-6 py-2.5 bg-[#0B1F44] text-white text-sm font-bold rounded-xl hover:opacity-90">
+          <button className="px-6 py-2.5 bg-[#141B47] text-white text-sm font-bold rounded-xl hover:opacity-90">
             Try Again
           </button>
         </Link>

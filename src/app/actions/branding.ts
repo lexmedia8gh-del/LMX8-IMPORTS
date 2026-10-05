@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, getSession } from "@/lib/auth";
-import { getBrandSettings, clearBrandingCache, BrandSettingsType, DEFAULT_BRANDING } from "@/lib/branding";
+import { getBrandSettings, clearBrandingCache, BrandSettingsType, DEFAULT_BRANDING, ensureBrandSettingsTable } from "@/lib/branding";
 import { STORAGE_BUCKET, generateSignedUrl, generateSignedUploadUrl, deleteFileFromStorage } from "@/lib/storage";
 
 // Helper to resolve Supabase storage paths to short-lived signed URLs for safe browser display
@@ -89,6 +89,7 @@ export async function updateBrandIdentityAction(data: {
   }
 
   try {
+    await ensureBrandSettingsTable();
     const settings = await prisma.brandSettings.upsert({
       where: { id: "singleton" },
       create: {
@@ -192,6 +193,7 @@ export async function confirmBrandingAssetUploadAction(
 
   try {
     // 1. Fetch current settings to see if there is an old file to clean up
+    await ensureBrandSettingsTable();
     const current = await prisma.brandSettings.findUnique({
       where: { id: "singleton" },
     });
@@ -245,6 +247,7 @@ export async function removeBrandingAssetAction(
   const admin = await requireAdminSession();
 
   try {
+    await ensureBrandSettingsTable();
     const current = await prisma.brandSettings.findUnique({
       where: { id: "singleton" },
     });

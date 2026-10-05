@@ -34,6 +34,37 @@ export const DEFAULT_BRANDING: BrandSettingsType = {
   invoiceStamp: null,
 };
 
+export async function ensureBrandSettingsTable() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "BrandSettings" (
+        "id" TEXT NOT NULL DEFAULT 'singleton',
+        "businessName" TEXT NOT NULL DEFAULT 'LMX8 IMPORTS',
+        "shortName" TEXT NOT NULL DEFAULT 'LMX8',
+        "tagline" TEXT NOT NULL DEFAULT 'Your Goods. Our Priority.',
+        "primaryColor" TEXT NOT NULL DEFAULT '#141B47',
+        "secondaryColor" TEXT NOT NULL DEFAULT '#355DAF',
+        "accentColor" TEXT NOT NULL DEFAULT '#F2901F',
+        "mainLogo" TEXT,
+        "lightLogo" TEXT,
+        "darkLogo" TEXT,
+        "brandMark" TEXT,
+        "favicon" TEXT,
+        "invoiceLogo" TEXT,
+        "invoiceFooterLogo" TEXT,
+        "invoiceStamp" TEXT,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedBy" TEXT,
+        CONSTRAINT "BrandSettings_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    return true;
+  } catch (err) {
+    console.warn("[Branding Service] Unable to ensure BrandSettings table via raw SQL:", err);
+    return false;
+  }
+}
+
 // Global cache to prevent constant database hits during renders
 let cachedBranding: BrandSettingsType | null = null;
 let lastCacheTime = 0;
@@ -71,8 +102,11 @@ export async function getBrandSettings(): Promise<BrandSettingsType> {
     } else {
       cachedBranding = DEFAULT_BRANDING;
     }
-  } catch (error) {
-    // Fail-safe: if the table isn't migrated yet, return the default LMX8 brand settings
+  } catch (error: any) {
+    // Fail-safe: if the table isn't migrated yet, attempt auto-creation and return default LMX8 values
+    if (error?.code === "P2021" || error?.message?.includes("does not exist") || error?.message?.includes("BrandSettings")) {
+      ensureBrandSettingsTable().catch(() => {});
+    }
     console.warn("[Branding Service] Database settings unavailable, using official default LMX8 brand values.");
     cachedBranding = DEFAULT_BRANDING;
   }

@@ -2,10 +2,10 @@ import crypto from "crypto";
 
 // Dynamic runtime secret key check
 function requirePaystackSecret() {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim();
   if (!secretKey || secretKey.includes("PASTE_YOUR") || secretKey === "sk_test_placeholder_key" || secretKey === "") {
-    console.error("Paystack configuration error: PAYSTACK_SECRET_KEY is missing or invalid.");
-    throw new Error("Paystack is not configured. Please set PAYSTACK_SECRET_KEY.");
+    console.error("Paystack configuration error: PAYSTACK_SECRET_KEY is missing or invalid. Configured:", false);
+    throw new Error("Paystack payment gateway is not configured. Please contact administrator.");
   }
   return secretKey;
 }
@@ -121,7 +121,7 @@ export async function verifyPayment(reference: string) {
 }
 
 export function verifyWebhookSignature(payload: string, signature: string): boolean {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim();
   if (!secretKey || secretKey.includes("PASTE_YOUR") || secretKey === "sk_test_placeholder_key" || secretKey === "") {
     console.error("Webhook verification aborted: Paystack secret key is missing or invalid.");
     return false;

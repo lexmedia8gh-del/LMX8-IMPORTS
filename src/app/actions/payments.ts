@@ -6,6 +6,16 @@ import { initializePayment } from "@/lib/paystack";
 import { processPaymentSuccess } from "@/lib/payment-processor";
 import { CREDIT_PACKAGES, CreditPackageId } from "@/lib/credit-packages";
 
+function getCustomerPaystackEmail(customer: { email?: string | null; customerIdentifier?: string; id: string }) {
+  if (customer.email && customer.email.trim().includes("@")) {
+    return customer.email.trim();
+  }
+  const identifier = (customer.customerIdentifier || customer.id || "customer")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase();
+  return `${identifier}@lmx8imports.com`;
+}
+
 export async function initializeCreditPurchaseAction(packageId: keyof typeof CREDIT_PACKAGES, callbackUrl: string) {
   const customer = await requireCustomerSession();
   
@@ -34,34 +44,48 @@ export async function initializeCreditPurchaseAction(packageId: keyof typeof CRE
     });
 
     console.log("Paystack configuration diagnostic:", {
-      PAYSTACK_SECRET_KEY_configured: !!process.env.PAYSTACK_SECRET_KEY,
+      PAYSTACK_SECRET_KEY_configured: !!process.env.PAYSTACK_SECRET_KEY?.trim(),
       paymentType: "CREDIT_PURCHASE",
       amount: pkg.price,
+      currency: "GHS",
       reference,
       customerId: customer.id,
     });
 
+    const customerEmail = getCustomerPaystackEmail(customer);
+
     const paystackData = await initializePayment({
       amount: pkg.price,
-      email: customer.email || "no-reply@lmx8.com", // Paystack requires an email
+      email: customerEmail,
       reference: payment.reference,
       callback_url: callbackUrl,
     });
 
-    // Log initialization
-    await prisma.auditLog.create({
+    // Non-blocking audit log
+    prisma.auditLog.create({
       data: {
         action: "PAYMENT_INITIALIZED",
         entityType: "Payment",
         entityId: payment.id,
         description: `Initialized ${pkg.name} credit purchase payment`,
       },
-    });
+    }).catch(e => console.warn("Audit log non-blocking error:", e?.message));
 
     return { success: true, authorizationUrl: paystackData.authorization_url };
   } catch (error: any) {
-    console.error("Initialize Credit Purchase Error:", error);
-    return { error: error?.message || "Failed to initialize payment." };
+    console.error("Paystack initialization failed", {
+      paymentType: "CREDIT_PURCHASE",
+      amount: pkg.price,
+      currency: "GHS",
+      reference,
+      customerId: customer.id,
+      errorMessage: error?.message,
+    });
+    return {
+      error: error?.message?.includes("network") || error?.message?.includes("fetch")
+        ? "Network issue connecting to payment provider. Please try again."
+        : error?.message || "Failed to initialize payment."
+    };
   }
 }
 
@@ -110,36 +134,51 @@ export async function initializeShippingPaymentAction(shipmentId: string, callba
     });
 
     console.log("Paystack configuration diagnostic:", {
-      PAYSTACK_SECRET_KEY_configured: !!process.env.PAYSTACK_SECRET_KEY,
+      PAYSTACK_SECRET_KEY_configured: !!process.env.PAYSTACK_SECRET_KEY?.trim(),
       paymentType: "SHIPPING_FEE",
       amount: outstanding,
+      currency: "GHS",
       reference,
       customerId: customer.id,
       shipmentId: shipment.id,
     });
 
+    const customerEmail = getCustomerPaystackEmail(customer);
+
     const paystackData = await initializePayment({
       amount: outstanding,
-      email: customer.email || "no-reply@lmx8.com",
+      email: customerEmail,
       reference: payment.reference,
       callback_url: callbackUrl,
     });
 
-    // Log initialization
-    await prisma.auditLog.create({
+    // Non-blocking audit log
+    prisma.auditLog.create({
       data: {
         action: "PAYMENT_INITIALIZED",
         entityType: "Payment",
         entityId: payment.id,
         description: `Initialized shipping fee payment for ${shipment.trackingNumber}`,
       },
-    });
+    }).catch(e => console.warn("Audit log non-blocking error:", e?.message));
 
     return { success: true, authorizationUrl: paystackData.authorization_url };
 
   } catch (error: any) {
-    console.error("Initialize Shipping Payment Error:", error);
-    return { error: error?.message || "Failed to initialize payment." };
+    console.error("Paystack initialization failed", {
+      paymentType: "SHIPPING_FEE",
+      amount: outstanding,
+      currency: "GHS",
+      reference,
+      customerId: customer.id,
+      shipmentId: shipment.id,
+      errorMessage: error?.message,
+    });
+    return {
+      error: error?.message?.includes("network") || error?.message?.includes("fetch")
+        ? "Network issue connecting to payment provider. Please try again."
+        : error?.message || "Failed to initialize payment."
+    };
   }
 }
 

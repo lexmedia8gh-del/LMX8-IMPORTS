@@ -63,12 +63,7 @@ export default async function PaymentCheckoutPage({
               Complete payment to release cargo.
             </p>
           </div>
-          <div
-            className="w-10 h-10 flex items-center justify-center rounded-xl font-black text-lg"
-            style={{ background: "#FFB800", color: "#07182F", fontFamily: "var(--font-poppins)" }}
-          >
-            L
-          </div>
+          <BrandLogo variant="symbol" height={36} />
         </div>
 
         {/* Shipment details */}
@@ -143,7 +138,7 @@ export default async function PaymentCheckoutPage({
               <span className="font-bold text-base" style={{ color: "#172236" }}>
                 TOTAL DUE
               </span>
-              <span className="font-black text-xl" style={{ color: "#0B1F44" }}>
+              <span className="font-black text-xl" style={{ color: "#141B47" }}>
                 {formatCurrency(outstanding)}
               </span>
             </div>
