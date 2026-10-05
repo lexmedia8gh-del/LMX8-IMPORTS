@@ -1,10 +1,11 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { requireCustomerSession } from "@/lib/auth";
-import { initializePayment } from "@/lib/paystack";
+import { requireCustomerSession, getCurrentCustomer } from "@/lib/auth";
+import { initializePayment, verifyPayment } from "@/lib/paystack";
 import { processPaymentSuccess } from "@/lib/payment-processor";
 import { CREDIT_PACKAGES, CreditPackageId } from "@/lib/credit-packages";
+import { getPaymentCallbackUrl } from "@/lib/urls";
 
 function getCustomerPaystackEmail(customer: { email?: string | null; customerIdentifier?: string; id: string }) {
   if (customer.email && customer.email.trim().includes("@")) {
@@ -53,13 +54,22 @@ export async function initializeCreditPurchaseAction(packageId: keyof typeof CRE
     });
 
     const customerEmail = getCustomerPaystackEmail(customer);
+    const effectiveCallbackUrl = callbackUrl?.trim() || getPaymentCallbackUrl();
 
     const paystackData = await initializePayment({
       amount: pkg.price,
       email: customerEmail,
       reference: payment.reference,
-      callback_url: callbackUrl,
+      callback_url: effectiveCallbackUrl,
     });
+
+    // If Paystack generated or altered the reference, update our local record
+    if (paystackData?.reference && paystackData.reference !== payment.reference) {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { reference: paystackData.reference },
+      });
+    }
 
     // Non-blocking audit log
     prisma.auditLog.create({
@@ -71,7 +81,11 @@ export async function initializeCreditPurchaseAction(packageId: keyof typeof CRE
       },
     }).catch(e => console.warn("Audit log non-blocking error:", e?.message));
 
-    return { success: true, authorizationUrl: paystackData.authorization_url };
+    return { 
+      success: true, 
+      authorizationUrl: paystackData.authorization_url,
+      reference: paystackData.reference || payment.reference,
+    };
   } catch (error: any) {
     console.error("Paystack initialization failed", {
       paymentType: "CREDIT_PURCHASE",
@@ -144,13 +158,22 @@ export async function initializeShippingPaymentAction(shipmentId: string, callba
     });
 
     const customerEmail = getCustomerPaystackEmail(customer);
+    const effectiveCallbackUrl = callbackUrl?.trim() || getPaymentCallbackUrl();
 
     const paystackData = await initializePayment({
       amount: outstanding,
       email: customerEmail,
       reference: payment.reference,
-      callback_url: callbackUrl,
+      callback_url: effectiveCallbackUrl,
     });
+
+    // If Paystack generated or altered the reference, update our local record
+    if (paystackData?.reference && paystackData.reference !== payment.reference) {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { reference: paystackData.reference },
+      });
+    }
 
     // Non-blocking audit log
     prisma.auditLog.create({
@@ -162,7 +185,11 @@ export async function initializeShippingPaymentAction(shipmentId: string, callba
       },
     }).catch(e => console.warn("Audit log non-blocking error:", e?.message));
 
-    return { success: true, authorizationUrl: paystackData.authorization_url };
+    return { 
+      success: true, 
+      authorizationUrl: paystackData.authorization_url,
+      reference: paystackData.reference || payment.reference,
+    };
 
   } catch (error: any) {
     console.error("Paystack initialization failed", {
@@ -182,33 +209,106 @@ export async function initializeShippingPaymentAction(shipmentId: string, callba
   }
 }
 
-
 export async function verifyPaymentAction(reference: string) {
-  const customer = await requireCustomerSession();
-
-  const payment = await prisma.payment.findUnique({
-    where: { reference },
-  });
-
-  if (!payment) {
-    return { error: "Payment not found." };
-  }
-
-  if (payment.customerId !== customer.id) {
-    return { error: "Unauthorized." };
-  }
-
-  if (payment.status === "PENDING") {
-    // Attempt verification
-    const result = await processPaymentSuccess(reference);
-    if (result.success) {
-      return { success: true, status: "SUCCESS" };
-    } else {
-      // Could be FAILED or still PENDING if Paystack hasn't processed it yet
-      const updated = await prisma.payment.findUnique({ where: { reference } });
-      return { success: true, status: updated?.status || "PENDING" };
+  try {
+    const cleanRef = decodeURIComponent(reference?.trim() || "");
+    if (!cleanRef) {
+      return { error: "No payment reference provided." };
     }
-  }
 
-  return { success: true, status: payment.status };
+    const customer = await getCurrentCustomer();
+    if (!customer) {
+      return { 
+        unauthorized: true, 
+        error: "Please log in to your account to confirm and view your payment." 
+      };
+    }
+
+    // Find the payment record by internal reference or provider transaction ID
+    let payment = await prisma.payment.findFirst({
+      where: {
+        OR: [
+          { reference: cleanRef },
+          { providerTransactionId: cleanRef },
+        ],
+      },
+      include: {
+        shipment: { select: { id: true, trackingNumber: true, description: true } },
+      },
+    });
+
+    // If not found locally, check with Paystack in case Paystack returned its own reference
+    if (!payment) {
+      try {
+        const paystackData = await verifyPayment(cleanRef);
+        if (paystackData?.reference) {
+          payment = await prisma.payment.findUnique({
+            where: { reference: paystackData.reference },
+            include: {
+              shipment: { select: { id: true, trackingNumber: true, description: true } },
+            },
+          });
+        }
+      } catch (lookupErr) {
+        console.warn("Paystack remote lookup error for ref:", cleanRef, lookupErr);
+      }
+    }
+
+    if (!payment) {
+      return { error: `Payment record not found. Please contact support with reference: ${cleanRef}` };
+    }
+
+    // IDOR protection: Verify payment belongs to current authenticated customer
+    if (payment.customerId !== customer.id) {
+      return { error: "Unauthorized: This payment does not belong to your account." };
+    }
+
+    // If already verified and marked SUCCESS (idempotent path - refresh protection)
+    if (payment.status === "SUCCESS") {
+      return {
+        success: true,
+        status: "SUCCESS",
+        alreadyProcessed: true,
+        payment: {
+          reference: payment.reference,
+          amount: payment.amount,
+          currency: payment.currency,
+          type: payment.type,
+          shipmentTrackingNumber: payment.shipment?.trackingNumber || null,
+        },
+      };
+    }
+
+    // Process payment atomically via processPaymentSuccess
+    const result = await processPaymentSuccess(payment.reference);
+    if (result.success) {
+      const updated = await prisma.payment.findUnique({
+        where: { id: payment.id },
+        include: {
+          shipment: { select: { id: true, trackingNumber: true, description: true } },
+        },
+      });
+      return {
+        success: true,
+        status: "SUCCESS",
+        payment: {
+          reference: updated?.reference || payment.reference,
+          amount: updated?.amount || payment.amount,
+          currency: updated?.currency || payment.currency,
+          type: updated?.type || payment.type,
+          shipmentTrackingNumber: updated?.shipment?.trackingNumber || null,
+        },
+      };
+    } else {
+      const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
+      return {
+        success: false,
+        status: updated?.status || "FAILED",
+        error: result.error || "Payment verification could not be confirmed.",
+      };
+    }
+  } catch (error: any) {
+    console.error("verifyPaymentAction unexpected error:", error);
+    return { error: error?.message || "An unexpected error occurred during verification." };
+  }
 }

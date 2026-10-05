@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { createSession, clearSession, getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
-export async function loginCustomerAction(identifier: string, pin: string) {
+export async function loginCustomerAction(identifier: string, pin: string, redirectUrl?: string) {
   if (!identifier || !pin) {
     return { error: "Customer ID or Phone Number and PIN are required." };
   }
@@ -137,7 +137,8 @@ export async function loginCustomerAction(identifier: string, pin: string) {
   }
   
   // Need to redirect outside try/catch because redirect throws an internal Next.js error
-  redirect("/portal");
+  const destination = (redirectUrl && redirectUrl.startsWith("/")) ? redirectUrl : "/portal";
+  redirect(destination);
 }
 
 export async function loginAdminAction(pin: string) {

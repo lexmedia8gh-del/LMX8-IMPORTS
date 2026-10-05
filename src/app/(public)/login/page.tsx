@@ -25,8 +25,11 @@ export default function LoginPage() {
     const identifier = formData.get("identifier") as string;
     const pin = formData.get("pin") as string;
 
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const redirectParam = params?.get("redirect") || params?.get("callbackUrl") || undefined;
+
     startTransition(async () => {
-      const result = await loginCustomerAction(identifier, pin);
+      const result = await loginCustomerAction(identifier, pin, redirectParam);
       if (result?.error) {
         setError(result.error);
       }
