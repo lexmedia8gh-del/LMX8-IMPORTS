@@ -32,14 +32,7 @@ export function Footer() {
           {/* Brand */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <BrandLogo
-                variant="full-light"
-                primaryColor={primaryBg}
-                secondaryColor={secondaryColor}
-                accentColor={accentColor}
-                customImageUrl={branding?.lightLogoUrl}
-                height={32}
-              />
+              <BrandLogo variant="light" height={32} />
             </div>
             <p className="text-sm leading-relaxed" style={{ color: "#94A3B8" }}>
               From China to Ghana.<br />

@@ -85,23 +85,9 @@ function SidebarContent({
       <div className="h-16 md:h-20 flex items-center px-5 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
         <Link href="/" onClick={onClose}>
           {collapsed ? (
-            <BrandLogo
-              variant="symbol"
-              primaryColor={branding?.primaryColor}
-              secondaryColor={branding?.secondaryColor}
-              accentColor={branding?.accentColor}
-              customImageUrl={branding?.brandMarkUrl}
-              height={32}
-            />
+            <BrandLogo variant="symbol" height={32} />
           ) : (
-            <BrandLogo
-              variant="full-light"
-              primaryColor={branding?.primaryColor}
-              secondaryColor={branding?.secondaryColor}
-              accentColor={branding?.accentColor}
-              customImageUrl={branding?.lightLogoUrl}
-              height={36}
-            />
+            <BrandLogo variant="light" height={36} />
           )}
         </Link>
       </div>
@@ -470,14 +456,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             </button>
             <div className="flex items-center gap-2">
               <span className="hidden sm:flex text-sm font-bold text-white items-center gap-2">
-                <BrandLogo
-                  variant="symbol"
-                  primaryColor={branding?.primaryColor}
-                  secondaryColor={branding?.secondaryColor}
-                  accentColor={branding?.accentColor}
-                  customImageUrl={branding?.brandMarkUrl}
-                  height={24}
-                />
+                <BrandLogo variant="symbol" height={24} />
                 {branding?.shortName || "LMX8"}
               </span>
               <span className="hidden sm:block text-gray-500 mx-2">/</span>

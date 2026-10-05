@@ -70,14 +70,7 @@ export default function LoginPage() {
         <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${primaryColor}F2 0%, ${primaryColor}BF 60%, ${primaryColor}73 100%)` }} />
 
         <Link href="/" className="relative z-10 block">
-          <BrandLogo
-            variant="full-light"
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-            accentColor={accentColor}
-            customImageUrl={branding?.lightLogoUrl}
-            height={44}
-          />
+          <BrandLogo variant="light" height={44} />
         </Link>
 
         <div className="relative z-10 space-y-5">
@@ -102,14 +95,7 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12" style={{ background: primaryColor }}>
         <div className="absolute top-6 left-6 lg:hidden">
           <Link href="/">
-            <BrandLogo
-              variant="full-light"
-              primaryColor={primaryColor}
-              secondaryColor={secondaryColor}
-              accentColor={accentColor}
-              customImageUrl={branding?.lightLogoUrl}
-              height={36}
-            />
+            <BrandLogo variant="light" height={36} />
           </Link>
         </div>
 

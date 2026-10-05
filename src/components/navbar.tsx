@@ -38,14 +38,7 @@ export function Navbar() {
 
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3 shrink-0">
-          <BrandLogo
-            variant="full-light"
-            primaryColor={primaryBg}
-            secondaryColor={secondaryColor}
-            accentColor={accentColor}
-            customImageUrl={branding?.lightLogoUrl}
-            height={36}
-          />
+          <BrandLogo variant="light" height={36} />
         </Link>
 
         {/* Desktop Nav */}

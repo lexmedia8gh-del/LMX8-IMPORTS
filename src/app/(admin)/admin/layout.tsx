@@ -77,23 +77,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="h-20 flex items-center px-5 overflow-hidden shrink-0 border-b border-white/5">
           <Link href="/admin" className="flex items-center gap-3">
             {isCollapsed ? (
-              <BrandLogo
-                variant="symbol"
-                primaryColor={branding?.primaryColor}
-                secondaryColor={branding?.secondaryColor}
-                accentColor={branding?.accentColor}
-                customImageUrl={branding?.brandMarkUrl}
-                height={32}
-              />
+              <BrandLogo variant="symbol" height={32} />
             ) : (
-              <BrandLogo
-                variant="full-light"
-                primaryColor={branding?.primaryColor}
-                secondaryColor={branding?.secondaryColor}
-                accentColor={branding?.accentColor}
-                customImageUrl={branding?.lightLogoUrl}
-                height={36}
-              />
+              <BrandLogo variant="light" height={36} />
             )}
           </Link>
         </div>

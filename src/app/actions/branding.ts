@@ -2,8 +2,16 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, getSession } from "@/lib/auth";
-import { getBrandSettings, clearBrandingCache, BrandSettingsType, DEFAULT_BRANDING, ensureBrandSettingsTable } from "@/lib/branding";
+import { 
+  getBrandSettings, 
+  clearBrandingCache, 
+  BrandSettingsType, 
+  ResolvedBrandSettings, 
+  DEFAULT_BRANDING, 
+  ensureBrandSettingsTable 
+} from "@/lib/branding";
 import { STORAGE_BUCKET, generateSignedUrl, generateSignedUploadUrl, deleteFileFromStorage } from "@/lib/storage";
+import { revalidatePath } from "next/cache";
 
 // Helper to resolve Supabase storage paths to short-lived signed URLs for safe browser display
 async function resolveLogoUrl(path: string | null): Promise<string | null> {
@@ -114,6 +122,11 @@ export async function updateBrandIdentityAction(data: {
     });
 
     clearBrandingCache();
+    try {
+      revalidatePath("/", "layout");
+    } catch (e) {
+      // Non-blocking in background/test contexts
+    }
 
     // Log the change
     await prisma.auditLog.create({
@@ -215,6 +228,9 @@ export async function confirmBrandingAssetUploadAction(
     });
 
     clearBrandingCache();
+    try {
+      revalidatePath("/", "layout");
+    } catch (e) {}
 
     // 3. Delete the old file from Supabase storage asynchronously to clean up space
     if (oldPath && oldPath !== objectPath && !oldPath.startsWith("http")) {
@@ -265,6 +281,9 @@ export async function removeBrandingAssetAction(
     });
 
     clearBrandingCache();
+    try {
+      revalidatePath("/", "layout");
+    } catch (e) {}
 
     if (oldPath && !oldPath.startsWith("http")) {
       deleteFileFromStorage(oldPath, STORAGE_BUCKET).catch(err => {
