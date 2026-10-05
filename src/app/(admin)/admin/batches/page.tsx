@@ -139,22 +139,22 @@ export default function AdminBatchesPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <button
             onClick={handleManualCleanup}
             disabled={cleaning}
             title="Execute server-side permanent file deletion for batches past their 7-day retention period"
-            className="px-4 py-2.5 text-xs font-bold rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-[#0B1F44] flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
+            className="flex-1 sm:flex-initial px-3.5 sm:px-4 py-2.5 text-xs font-bold rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-[#0B1F44] flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
           >
             <Trash2 size={15} className="text-red-500" />
-            {cleaning ? "Processing..." : "Run Retention Cleanup"}
+            <span className="truncate">{cleaning ? "Processing..." : "Retention Cleanup"}</span>
           </button>
 
           <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-            <SheetTrigger className="px-5 py-2.5 text-sm font-bold rounded-xl transition-all hover:opacity-90 shadow-sm flex items-center gap-2 bg-[#FFB800] text-[#07182F]">
-              <Plus size={16} /> Create Batch
+            <SheetTrigger className="flex-1 sm:flex-initial px-4 sm:px-5 py-2.5 text-sm font-bold rounded-xl transition-all hover:opacity-90 shadow-sm flex items-center justify-center gap-2 bg-[#FFB800] text-[#07182F]">
+              <Plus size={16} /> <span>Create Batch</span>
             </SheetTrigger>
-            <SheetContent className="w-full sm:max-w-md bg-[#F7F9FC]">
+            <SheetContent className="w-full sm:max-w-md bg-[#F7F9FC] overflow-y-auto">
               <SheetHeader className="mb-6">
                 <SheetTitle className="text-xl font-bold text-[#172236]">Create New Batch</SheetTitle>
               </SheetHeader>
@@ -170,7 +170,7 @@ export default function AdminBatchesPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-[#172236]">Est. Departure</label>
                     <input

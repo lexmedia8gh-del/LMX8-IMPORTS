@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, useCallback, use } from "react";
 import {
   getShipmentByIdAction,
   updateShipmentStatusAction,
@@ -28,7 +28,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
 
   // Real file upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -37,7 +37,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
   const [updatingFee, setUpdatingFee] = useState(false);
   const [feeMessage, setFeeMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const found = await getShipmentByIdAction(id);
@@ -50,7 +50,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
       console.error(e);
     }
     setLoading(false);
-  };
+  }, [id]);
 
   const handleUpdateFee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +73,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
 
   useEffect(() => {
     loadData();
-  }, [id]);
+  }, [loadData]);
 
   const handleUpdateStatus = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,7 +174,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-[#E5E7EB]">
         <div>
           <h1 className="text-2xl font-bold text-[#172236]">{shipment.id}</h1>
-          <p className="text-sm text-[#667085] mt-1">{shipment.description} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Customer: <span className="font-semibold text-[#172236]">{shipment.customerId}</span></p>
+          <p className="text-sm text-[#667085] mt-1">{shipment.description} · Customer: <span className="font-semibold text-[#172236]">{shipment.customerId}</span></p>
         </div>
         <div className="flex items-center gap-3 bg-[#F7F9FC] px-4 py-2 rounded-lg border border-[#E5E7EB]">
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085]">Current Status</span>

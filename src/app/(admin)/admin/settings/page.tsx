@@ -8,6 +8,16 @@ import AdminBrandingSettings from "@/components/admin-branding-settings";
 export default function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState<"system" | "branding" | "security">("system");
 
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab");
+      if (tab === "branding" || tab === "security" || tab === "system") {
+        setActiveTab(tab);
+      }
+    }
+  }, []);
+
   const systemSections = [
     {
       icon: <Globe size={20} className="text-[#3B82F6]" />,

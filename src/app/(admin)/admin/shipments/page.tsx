@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getShipmentsAction, createShipmentAction, getCustomersAction } from "@/app/actions";
 import { Shipment } from "@/lib/db";
 import { ShipmentStatusBadge, STATUS_ORDER, ShipmentStatus, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
@@ -17,7 +17,7 @@ export default function AdminShipmentsPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // Form state â€” use Prisma enum values only
+  // Form state — use Prisma enum values only
   const [formData, setFormData] = useState({
     customerId: "",
     description: "",
@@ -28,8 +28,7 @@ export default function AdminShipmentsPage() {
     status: "SHIPMENT_CREATED" as ShipmentStatus
   });
 
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [data, custData] = await Promise.all([
@@ -38,18 +37,18 @@ export default function AdminShipmentsPage() {
       ]);
       setShipments(data);
       setCustomers(custData);
-      if (custData.length > 0 && !formData.customerId) {
-        setFormData(f => ({ ...f, customerId: custData[0].id }));
+      if (custData.length > 0) {
+        setFormData(f => f.customerId ? f : { ...f, customerId: custData[0].id });
       }
     } catch (e) {
       console.error(e);
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,51 +212,87 @@ export default function AdminShipmentsPage() {
             <p className="text-sm mt-1 mb-6 text-[#667085]">Try adjusting your search or filters.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
-                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Tracking ID</th>
-                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Customer</th>
-                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Details</th>
-                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Batch</th>
-                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Status</th>
-                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-right text-[#667085]">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F1F5F9]">
-                {filtered.map(s => (
-                  <tr key={s.id} className="hover:bg-gray-50/50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <Link href={`/admin/shipments/${s.id}`} className="font-bold text-sm text-[#0B1F44] hover:text-[#FFB800] transition-colors">
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Tracking ID</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Customer</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Details</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Batch</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Status</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-right text-[#667085]">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F1F5F9]">
+                  {filtered.map(s => (
+                    <tr key={s.id} className="hover:bg-gray-50/50 transition-colors group">
+                      <td className="px-6 py-4">
+                        <Link href={`/admin/shipments/${s.id}`} className="font-bold text-sm text-[#0B1F44] hover:text-[#F2901F] transition-colors">
+                          {s.id}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm font-medium text-[#172236]">{s.customerId}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-[#172236] font-medium">{s.description}</p>
+                        <p className="text-[11px] text-[#667085] mt-0.5">{s.origin} → {s.destination}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs font-medium text-[#667085]">{s.batch || 'Unassigned'}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <ShipmentStatusBadge status={s.status} adminMode />
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <Link href={`/admin/shipments/${s.id}`}>
+                          <button className="px-4 py-2 rounded-xl text-xs font-bold transition-colors bg-[#F1F5F9] text-[#0B1F44] hover:bg-[#E5E7EB]">
+                            Manage
+                          </button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card Rows */}
+            <div className="block md:hidden divide-y divide-[#F1F5F9]">
+              {filtered.map(s => (
+                <div key={s.id} className="p-4 space-y-3 hover:bg-gray-50/50 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <Link href={`/admin/shipments/${s.id}`} className="font-bold text-sm text-[#0B1F44] hover:text-[#F2901F] transition-colors block">
                         {s.id}
                       </Link>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm font-medium text-[#172236]">{s.customerId}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm text-[#172236] font-medium">{s.description}</p>
-                      <p className="text-[11px] text-[#667085] mt-0.5">{s.origin} → {s.destination}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs font-medium text-[#667085]">{s.batch || 'Unassigned'}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <ShipmentStatusBadge status={s.status} adminMode />
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Link href={`/admin/shipments/${s.id}`}>
-                        <button className="px-4 py-1.5 rounded-lg text-xs font-bold transition-colors bg-[#F1F5F9] text-[#0B1F44] hover:bg-[#E5E7EB]">
-                          Manage
-                        </button>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      <span className="text-xs font-semibold text-[#667085]">Customer: {s.customerId}</span>
+                    </div>
+                    <ShipmentStatusBadge status={s.status} adminMode />
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-[#172236]">{s.description}</p>
+                    <p className="text-[11px] text-[#667085] mt-0.5">{s.origin} → {s.destination}</p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-[#667085] bg-gray-100 px-2 py-0.5 rounded font-mono">
+                      Batch: {s.batch || "Unassigned"}
+                    </span>
+                    <Link href={`/admin/shipments/${s.id}`}>
+                      <button className="px-4 py-2 rounded-xl text-xs font-bold bg-[#0B1F44] text-white hover:bg-[#355DAF] transition-colors min-h-[40px] flex items-center">
+                        Manage Shipment
+                      </button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>
