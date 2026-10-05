@@ -34,7 +34,7 @@ export default function Home() {
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
           style={{
-            backgroundImage: "url('https://images.unsplash.com/photo-1494412574643-ff11b0a5c1c3?q=90&w=2070&auto=format&fit=crop')",
+            backgroundImage: "url('/images/hero_container_ship_1791241771807.jpg')",
           }}
         />
         {/* Directional overlay */}
@@ -182,7 +182,7 @@ export default function Home() {
               <p className="text-xl font-bold italic" style={{ color: primaryColor }}>Shop Smarter. <span style={{ color: accentColor }}>Get It Faster.</span></p>
             </div>
             <div className="relative rounded-2xl overflow-hidden h-[460px] shadow-2xl">
-              <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&w=2127&auto=format&fit=crop')" }} />
+              <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/images/air_freight_cargo_1791241781252.jpg')" }} />
               <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${primaryColor}33, ${primaryColor}80)` }} />
             </div>
           </div>
@@ -194,7 +194,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 lg:px-10">
           <div className="grid md:grid-cols-2 gap-16 items-center">
             <div className="relative rounded-2xl overflow-hidden h-[460px] shadow-2xl order-2 md:order-1">
-              <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1532629345422-7515f3d16bb6?q=80&w=2070&auto=format&fit=crop')" }} />
+              <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/images/sea_freight_terminal_1791241790980.jpg')" }} />
               <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${primaryColor}80, ${primaryColor}26)` }} />
               <div className="absolute top-5 right-5 bg-white/90 backdrop-blur-sm rounded-xl p-4 shadow-xl text-right">
                 <p className="text-xs italic" style={{ color: "#667085" }}>Your Goods. Across Oceans. To You.</p>
@@ -271,7 +271,7 @@ export default function Home() {
 
       {/* ═══════════════════════════════ FINAL CTA ══════════════════════════ */}
       <section className="relative py-24 overflow-hidden" style={{ background: primaryColor }}>
-        <div className="absolute inset-0 bg-cover bg-center opacity-15" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1586528116311-ad8ed7c66310?q=80&w=2070&auto=format&fit=crop')" }} />
+        <div className="absolute inset-0 bg-cover bg-center opacity-15" style={{ backgroundImage: "url('/images/logistics_warehouse_1791241802667.jpg')" }} />
         <div className="relative z-10 max-w-7xl mx-auto px-6 lg:px-10 text-center space-y-10">
           <span className="text-sm font-bold tracking-widest uppercase" style={{ color: accentColor }}>More Than Just Shipping</span>
           <h2 style={{ fontFamily: "var(--font-poppins)" }} className="text-4xl md:text-5xl font-bold text-white max-w-2xl mx-auto leading-tight">

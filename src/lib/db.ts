@@ -22,7 +22,9 @@ export type Shipment = {
   customerId: string;
   description: string;
   batch?: string;
+  batchName?: string;
   batchStatus?: string;
+  batchStageLabel?: string;
   status: ShipmentStatus;
   registeredDate: string;
   lastUpdated: string;

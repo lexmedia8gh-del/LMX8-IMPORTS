@@ -162,6 +162,7 @@ export default async function AdminPaymentsPage() {
             </div>
           </>
         )}
+      </div>
     </div>
   );
 }

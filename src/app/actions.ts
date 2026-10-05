@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ShipmentStatus } from "@/components/shipment-status";
 import { getSession, requireAdminSession, requireCustomerSession } from "@/lib/auth";
 import { Shipment as UIShipment, Batch as UIBatch } from "@/lib/db";
+import { normalizeBatchStatus, getBatchCustomerLabel } from "@/lib/batch-status";
 import {
   generateSignedUrl,
   uploadFileToPrivateStorage,
@@ -28,20 +29,38 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
     })
   );
 
+  // If shipment belongs to a batch and shipment is not individually completed or on hold,
+  // the shipment inherits the batch's current logistics stage!
+  const hasBatch = !!s.batch;
+  const isIndividualOverride = s.status === "DELIVERED" || s.status === "ON_HOLD";
+  const effectiveStatus: ShipmentStatus = (hasBatch && s.batch.status && s.batch.status !== "CLOSED" && !isIndividualOverride)
+    ? normalizeBatchStatus(s.batch.status)
+    : (s.status as ShipmentStatus);
+
+  const batchStatusStr = s.batch?.status || undefined;
+  const batchStageLabel = s.batch ? getBatchCustomerLabel(s.batch.status) : undefined;
+  const estimatedArrivalStr = s.estimatedArrival
+    ? s.estimatedArrival.toISOString().split("T")[0]
+    : s.batch?.arrival
+    ? s.batch.arrival.toISOString().split("T")[0]
+    : undefined;
+
   return {
     id: s.trackingNumber,
-    customerId: s.customer.customerIdentifier,
+    customerId: s.customer?.customerIdentifier || s.customerId,
     description: s.description,
     batch: s.batch?.batchNumber,
-    batchStatus: s.batch?.status,
-    status: s.status as ShipmentStatus,
+    batchName: s.batch?.name,
+    batchStatus: batchStatusStr,
+    batchStageLabel,
+    status: effectiveStatus,
     registeredDate: s.createdAt.toISOString().split("T")[0],
     lastUpdated: s.updatedAt.toISOString().split("T")[0],
     fee: s.fee,
-    origin: s.origin || undefined,
-    destination: s.destination || undefined,
-    shippingMethod: s.shippingMethod || undefined,
-    estimatedArrival: s.estimatedArrival ? s.estimatedArrival.toISOString().split("T")[0] : undefined,
+    origin: s.origin || "Shenzhen, China",
+    destination: s.destination || "Accra, Ghana",
+    shippingMethod: s.shippingMethod || (s.batch?.description?.toLowerCase().includes("air") ? "Air Freight" : "Sea Freight"),
+    estimatedArrival: estimatedArrivalStr,
     trackingEvents: (s.trackingEvents || []).map((e: any) => ({
       id: e.id,
       status: e.status as ShipmentStatus,
@@ -93,6 +112,65 @@ export async function getShipmentByIdAction(trackingNumber: string): Promise<UIS
   return mapPrismaShipment(shipment);
 }
 
+/**
+ * Public tracking lookup without exposing private customer documents or IDOR data
+ */
+export async function getPublicShipmentTrackingAction(trackingNumber: string) {
+  if (!trackingNumber) return null;
+  const cleanId = trackingNumber.trim().toUpperCase();
+
+  const shipment = await prisma.shipment.findFirst({
+    where: {
+      OR: [
+        { trackingNumber: cleanId },
+        { trackingNumber: trackingNumber.trim() },
+        { id: trackingNumber.trim() },
+      ],
+    },
+    include: {
+      trackingEvents: { orderBy: { timestamp: "asc" } },
+      batch: true,
+    },
+  });
+
+  if (!shipment) return null;
+
+  const hasBatch = !!shipment.batch;
+  const isIndividualOverride = shipment.status === "DELIVERED" || shipment.status === "ON_HOLD";
+  const effectiveStatus: ShipmentStatus = (hasBatch && shipment.batch && shipment.batch.status && shipment.batch.status !== "CLOSED" && !isIndividualOverride)
+    ? normalizeBatchStatus(shipment.batch.status)
+    : (shipment.status as ShipmentStatus);
+
+  const estimatedArrivalStr = shipment.estimatedArrival
+    ? shipment.estimatedArrival.toISOString().split("T")[0]
+    : shipment.batch?.arrival
+    ? shipment.batch.arrival.toISOString().split("T")[0]
+    : undefined;
+
+  return {
+    id: shipment.trackingNumber,
+    description: shipment.description,
+    batch: shipment.batch?.batchNumber,
+    batchName: shipment.batch?.name,
+    batchStatus: shipment.batch?.status,
+    batchStageLabel: shipment.batch ? getBatchCustomerLabel(shipment.batch.status) : undefined,
+    status: effectiveStatus,
+    registeredDate: shipment.createdAt.toISOString().split("T")[0],
+    lastUpdated: shipment.updatedAt.toISOString().split("T")[0],
+    origin: shipment.origin || "Shenzhen, China",
+    destination: shipment.destination || "Accra, Ghana",
+    shippingMethod: shipment.shippingMethod || (shipment.batch?.description?.toLowerCase().includes("air") ? "Air Freight" : "Sea Freight"),
+    estimatedArrival: estimatedArrivalStr,
+    trackingEvents: (shipment.trackingEvents || []).map((e: any) => ({
+      id: e.id,
+      status: e.status as ShipmentStatus,
+      date: e.timestamp.toISOString().split("T")[0],
+      location: e.location || undefined,
+      note: e.note || undefined,
+    })),
+  };
+}
+
 export async function createShipmentAction(data: any): Promise<UIShipment> {
   const admin = await requireAdminSession();
 
@@ -104,32 +182,45 @@ export async function createShipmentAction(data: any): Promise<UIShipment> {
 
   const trackingNumber = `SHP-${Math.floor(Math.random() * 90000) + 10000}`;
 
-  // data.status arrives as a Prisma enum value (e.g. "SHIPMENT_CREATED").
-  // Default to SHIPMENT_CREATED if not provided or unrecognised.
-  const validStatuses = [
-    "SHIPMENT_CREATED", "PREPARING_SHIPMENT", "SHIPPED", "IN_TRANSIT",
-    "ARRIVED_AT_DESTINATION", "CUSTOMS_CLEARANCE", "OUT_FOR_DELIVERY",
-    "DELIVERED", "ON_HOLD",
-  ] as const;
-  type PrismaShipmentStatus = typeof validStatuses[number];
-  const prismaStatus: PrismaShipmentStatus = validStatuses.includes(data.status)
-    ? data.status
-    : "SHIPMENT_CREATED";
+  // Batch lookup if batchId or batchNumber passed
+  let batchRecord = null;
+  if (data.batchId || data.batch) {
+    batchRecord = await prisma.batch.findFirst({
+      where: {
+        OR: [
+          { id: data.batchId || "" },
+          { batchNumber: data.batch || data.batchId || "" },
+        ]
+      }
+    });
+    if (batchRecord && batchRecord.status === "CLOSED") {
+      throw new Error("Cannot assign shipment to a closed batch.");
+    }
+  }
+
+  // Derive status safely
+  const rawStatus = data.status || (batchRecord ? batchRecord.status : "SHIPMENT_CREATED");
+  const prismaStatus: ShipmentStatus = normalizeBatchStatus(rawStatus);
 
   const shipment = await prisma.shipment.create({
     data: {
       trackingNumber,
       description: data.description,
       status: prismaStatus,
-      origin: data.origin,
-      destination: data.destination,
-      shippingMethod: data.shippingMethod,
-      estimatedArrival: data.estimatedArrival ? new Date(data.estimatedArrival) : null,
+      origin: data.origin || "Shenzhen, China",
+      destination: data.destination || "Accra, Ghana",
+      shippingMethod: data.shippingMethod || "Sea Freight",
+      estimatedArrival: data.estimatedArrival 
+        ? new Date(data.estimatedArrival) 
+        : (batchRecord?.arrival ? new Date(batchRecord.arrival) : null),
       customerId: customer.id,
+      batchId: batchRecord?.id || null,
       trackingEvents: {
         create: {
           status: prismaStatus,
-          note: "Shipment created in system.",
+          note: batchRecord 
+            ? `Shipment registered and assigned to ${batchRecord.name} (${batchRecord.batchNumber}) at stage ${getBatchCustomerLabel(batchRecord.status)}`
+            : "Shipment registered in system.",
           adminId: admin.id,
         },
       },
@@ -137,7 +228,77 @@ export async function createShipmentAction(data: any): Promise<UIShipment> {
     include: { trackingEvents: true, photos: true, customer: true, batch: true },
   });
 
+  await prisma.auditLog.create({
+    data: {
+      action: "SHIPMENT_CREATED",
+      entityType: "Shipment",
+      entityId: shipment.id,
+      description: `Shipment ${trackingNumber} created for customer ${customer.customerIdentifier}${batchRecord ? ` in ${batchRecord.batchNumber}` : ''}`,
+      adminId: admin.id,
+      metadata: {
+        trackingNumber,
+        customerIdentifier: customer.customerIdentifier,
+        batchNumber: batchRecord?.batchNumber || null,
+        status: prismaStatus,
+      },
+    },
+  });
+
   return mapPrismaShipment(shipment);
+}
+
+export async function assignShipmentToBatchAction(trackingNumber: string, batchNumberOrId: string | null) {
+  const admin = await requireAdminSession();
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { trackingNumber },
+  });
+
+  if (!shipment) throw new Error("Shipment not found.");
+
+  let targetBatch = null;
+  if (batchNumberOrId && batchNumberOrId !== "unassigned") {
+    targetBatch = await prisma.batch.findFirst({
+      where: {
+        OR: [
+          { id: batchNumberOrId },
+          { batchNumber: batchNumberOrId },
+        ],
+      },
+    });
+    if (!targetBatch) throw new Error("Target batch not found.");
+    if (targetBatch.status === "CLOSED") throw new Error("Cannot assign to a closed batch.");
+  }
+
+  const updated = await prisma.shipment.update({
+    where: { trackingNumber },
+    data: {
+      batchId: targetBatch ? targetBatch.id : null,
+      // If assigned to an active batch, update shipment status to match
+      status: targetBatch && targetBatch.status !== "CLOSED" 
+        ? normalizeBatchStatus(targetBatch.status) 
+        : shipment.status,
+    },
+    include: { trackingEvents: true, photos: true, customer: true, batch: true },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: targetBatch ? "SHIPMENT_ASSIGNED_TO_BATCH" : "SHIPMENT_REMOVED_FROM_BATCH",
+      entityType: "Shipment",
+      entityId: shipment.id,
+      description: targetBatch 
+        ? `Shipment ${trackingNumber} assigned to Batch ${targetBatch.batchNumber} (${targetBatch.name})`
+        : `Shipment ${trackingNumber} unassigned from Batch`,
+      adminId: admin.id,
+      metadata: {
+        trackingNumber,
+        batchNumber: targetBatch?.batchNumber || null,
+      },
+    },
+  });
+
+  return mapPrismaShipment(updated);
 }
 
 
@@ -469,36 +630,144 @@ export async function createBatchAction(data: any): Promise<UIBatch> {
 }
 
 /**
- * Updates batch operational status (OPEN, IN TRANSIT, ARRIVED IN GHANA, PROCESSING / COLLECTION).
+ * Updates batch operational logistics stage.
+ * Automatically propagates to all assigned shipments, records timeline events,
+ * and notifies affected customers idempotently.
  * If CLOSED is selected, delegates to closeBatchAction.
  */
-export async function updateBatchStatusAction(batchNumber: string, newStatus: string) {
+export async function updateBatchStatusAction(
+  batchNumber: string, 
+  newStatus: string,
+  note?: string,
+  location?: string
+) {
   const admin = await requireAdminSession();
 
   if (newStatus === "CLOSED") {
     return closeBatchAction(batchNumber);
   }
 
-  const batch = await prisma.batch.update({
+  const batch = await prisma.batch.findUnique({
+    where: { batchNumber },
+    include: {
+      shipments: {
+        include: {
+          customer: true,
+        },
+      },
+    },
+  });
+
+  if (!batch) {
+    throw new Error("Batch not found.");
+  }
+
+  const previousStatus = batch.status;
+  const normalizedStage = normalizeBatchStatus(newStatus);
+  const stageLabel = getBatchCustomerLabel(newStatus);
+
+  // 1. Update batch status
+  const updatedBatch = await prisma.batch.update({
     where: { batchNumber },
     data: { status: newStatus },
   });
+
+  // 2. If status transitioned, propagate to all non-delivered/non-hold shipments and notify customers
+  if (previousStatus !== newStatus) {
+    const { createNotificationInternal } = await import("@/app/actions/notifications");
+
+    for (const shipment of batch.shipments) {
+      if (shipment.status !== "DELIVERED" && shipment.status !== "ON_HOLD") {
+        // Update shipment status in database
+        await prisma.shipment.update({
+          where: { id: shipment.id },
+          data: { status: normalizedStage },
+        });
+
+        // Add tracking event to shipment timeline
+        await prisma.trackingEvent.create({
+          data: {
+            status: normalizedStage,
+            note: note || `Batch ${batch.name || batch.batchNumber} updated to '${stageLabel}'`,
+            location: location || (normalizedStage === "ARRIVED_AT_DESTINATION" || normalizedStage === "CUSTOMS_CLEARANCE" || normalizedStage === "OUT_FOR_DELIVERY" ? "Accra, Ghana" : "China / International Transit"),
+            shipmentId: shipment.id,
+            adminId: admin.id,
+          },
+        });
+      }
+
+      // Idempotent customer notification
+      await createNotificationInternal({
+        customerId: shipment.customerId,
+        type: "SHIPMENT",
+        title: `Shipment Update: ${stageLabel}`,
+        message: `Your shipment ${shipment.trackingNumber} (${batch.name || batch.batchNumber}) is now: ${stageLabel}.`,
+        actionUrl: `/portal/shipments/${shipment.trackingNumber}`,
+        idempotencyKey: `batch-status-${batch.id}-${shipment.id}-${newStatus}`,
+        shipmentId: shipment.id,
+      }).catch(console.error);
+    }
+  }
 
   await prisma.auditLog.create({
     data: {
       action: "BATCH_STATUS_UPDATED",
       entityType: "Batch",
       entityId: batch.id,
-      description: `Batch ${batchNumber} status updated to '${newStatus}' by ${admin.name}`,
+      description: `Batch ${batchNumber} (${batch.name}) status updated to '${newStatus}' by ${admin.name}. ${batch.shipments.length} shipment(s) updated.`,
       adminId: admin.id,
       metadata: {
         batchNumber,
+        previousStatus,
         newStatus,
+        normalizedStage,
+        shipmentsCount: batch.shipments.length,
       },
     },
   });
 
-  return { success: true, status: batch.status };
+  return { success: true, status: updatedBatch.status, stageLabel };
+}
+
+/**
+ * Fetches single batch details along with all assigned shipments for admin view
+ */
+export async function getBatchDetailsAction(batchNumber: string) {
+  await requireAdminSession();
+
+  const batch = await prisma.batch.findUnique({
+    where: { batchNumber },
+    include: {
+      shipments: {
+        include: {
+          customer: true,
+          trackingEvents: true,
+          photos: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  });
+
+  if (!batch) return null;
+
+  const mappedShipments = await Promise.all(batch.shipments.map(mapPrismaShipment));
+
+  return {
+    id: batch.batchNumber,
+    dbId: batch.id,
+    name: batch.name,
+    description: batch.description || "",
+    status: batch.status,
+    stageLabel: getBatchCustomerLabel(batch.status),
+    departure: batch.departure ? batch.departure.toISOString().split("T")[0] : "",
+    arrival: batch.arrival ? batch.arrival.toISOString().split("T")[0] : "",
+    closedAt: batch.closedAt ? batch.closedAt.toISOString() : null,
+    fileDeletionAt: batch.fileDeletionAt ? batch.fileDeletionAt.toISOString() : null,
+    createdAt: batch.createdAt.toISOString().split("T")[0],
+    shipmentCount: batch.shipments.length,
+    shipments: mappedShipments,
+  };
 }
 
 /**
