@@ -99,22 +99,33 @@ export async function getShipmentsAction(): Promise<UIShipment[]> {
 }
 
 export async function getShipmentByIdAction(trackingNumber: string): Promise<UIShipment | null> {
-  const session = await getSession();
-  if (!session) throw new Error("Unauthorized");
+  try {
+    const session = await getSession();
+    if (!session) return null;
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { trackingNumber },
-    include: { trackingEvents: true, photos: true, customer: true, batch: true },
-  });
+    const shipment = await prisma.shipment.findFirst({
+      where: {
+        OR: [
+          { id: trackingNumber },
+          { trackingNumber: trackingNumber },
+          { trackingNumber: trackingNumber.toUpperCase() },
+        ],
+      },
+      include: { trackingEvents: true, photos: true, customer: true, batch: true },
+    });
 
-  if (!shipment) return null;
+    if (!shipment) return null;
 
-  // Strict IDOR Protection: customer can only view their own shipment
-  if (session.type === "customer" && shipment.customerId !== session.id) {
-    throw new Error("Forbidden");
+    // Strict IDOR Protection: customer can only view their own shipment
+    if (session.type === "customer" && shipment.customerId !== session.id) {
+      throw new Error("Forbidden");
+    }
+
+    return mapPrismaShipment(shipment);
+  } catch (err) {
+    console.warn("[Action] getShipmentByIdAction fallback triggered:", err);
+    return null;
   }
-
-  return mapPrismaShipment(shipment);
 }
 
 /**

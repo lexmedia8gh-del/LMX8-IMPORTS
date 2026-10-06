@@ -17,9 +17,15 @@ export default async function PaymentCheckoutPage({
   const customer = await requireCustomerSession();
   const branding = await getBrandSettings();
 
-  // id here is the Prisma Shipment UUID (from the payments list link)
-  const shipment = await prisma.shipment.findUnique({
-    where: { id },
+  // id here can be Prisma UUID or tracking number
+  const shipment = await prisma.shipment.findFirst({
+    where: {
+      OR: [
+        { id },
+        { trackingNumber: id },
+        { trackingNumber: id.toUpperCase() },
+      ],
+    },
     include: {
       payments: {
         where: { type: "SHIPPING_FEE", status: "SUCCESS" },
