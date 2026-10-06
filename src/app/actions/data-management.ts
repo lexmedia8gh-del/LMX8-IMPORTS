@@ -795,3 +795,294 @@ export async function cleanupTestDataAction(confirmationText: string, adminPin: 
     deletedBatchesCount,
   };
 }
+
+/**
+ * Safe Bulk Reset / Delete Selected Records Action
+ */
+export async function deleteSelectedDataRecordsAction(
+  entityType: "shipments" | "batches" | "customers" | "events" | "notifications",
+  recordIds: string[],
+  confirmationText: string,
+  adminPin?: string
+) {
+  const admin = await requireAdminSession();
+
+  if (!Array.isArray(recordIds) || recordIds.length === 0) {
+    return { error: "No records selected for deletion." };
+  }
+
+  if (confirmationText.trim().toUpperCase() !== "DELETE") {
+    return { error: "Confirmation text must be 'DELETE'." };
+  }
+
+  if (adminPin) {
+    const isPinValid = await verifyAdminPinInternal(admin.id, adminPin);
+    if (!isPinValid) {
+      return { error: "Invalid Admin PIN." };
+    }
+  }
+
+  switch (entityType) {
+    case "shipments": {
+      const shipments = await prisma.shipment.findMany({
+        where: {
+          OR: [{ id: { in: recordIds } }, { trackingNumber: { in: recordIds } }],
+        },
+        include: {
+          photos: true,
+          trackingEvents: true,
+          payments: true,
+        },
+      });
+
+      if (shipments.length === 0) {
+        return { error: "No matching shipment records found." };
+      }
+
+      const shipmentIds = shipments.map((s) => s.id);
+      const trackingNumbers = shipments.map((s) => s.trackingNumber);
+
+      for (const s of shipments) {
+        for (const p of s.photos) {
+          if (p.objectPath && !p.objectPath.startsWith("http")) {
+            await deleteFileFromStorage(p.objectPath, p.bucket).catch(() => {});
+          }
+        }
+      }
+
+      await prisma.$transaction([
+        prisma.payment.updateMany({
+          where: { shipmentId: { in: shipmentIds } },
+          data: { shipmentId: null },
+        }),
+        prisma.notification.deleteMany({
+          where: { shipmentId: { in: shipmentIds } },
+        }),
+        prisma.shipmentPhoto.deleteMany({
+          where: { shipmentId: { in: shipmentIds } },
+        }),
+        prisma.trackingEvent.deleteMany({
+          where: { shipmentId: { in: shipmentIds } },
+        }),
+        prisma.shipment.deleteMany({
+          where: { id: { in: shipmentIds } },
+        }),
+        prisma.auditLog.create({
+          data: {
+            action: "SHIPMENT_BULK_DELETED",
+            entityType: "Shipment",
+            entityId: shipmentIds.join(","),
+            description: `Bulk deleted ${shipments.length} shipment(s) (${trackingNumbers.join(", ")}) by ${admin.name}`,
+            adminId: admin.id,
+            metadata: {
+              count: shipments.length,
+              trackingNumbers,
+            },
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        deletedCount: shipments.length,
+        identifiers: trackingNumbers,
+      };
+    }
+
+    case "batches": {
+      const batches = await prisma.batch.findMany({
+        where: {
+          OR: [{ id: { in: recordIds } }, { batchNumber: { in: recordIds } }],
+        },
+        include: {
+          shipments: { select: { id: true, trackingNumber: true } },
+        },
+      });
+
+      if (batches.length === 0) {
+        return { error: "No matching batch records found." };
+      }
+
+      const blockedBatches = batches.filter((b) => b.shipments.length > 0);
+      if (blockedBatches.length > 0) {
+        const details = blockedBatches
+          .map((b) => `'${b.batchNumber}' (${b.shipments.length} assigned shipments)`)
+          .join(", ");
+        return {
+          error: `Cannot delete selected batches. The following batch(es) contain active shipments: ${details}. Please reassign or delete their shipments first.`,
+        };
+      }
+
+      const batchIds = batches.map((b) => b.id);
+      const batchNumbers = batches.map((b) => b.batchNumber);
+
+      await prisma.$transaction([
+        prisma.shipmentPhoto.deleteMany({
+          where: { batchId: { in: batchIds } },
+        }),
+        prisma.batch.deleteMany({
+          where: { id: { in: batchIds } },
+        }),
+        prisma.auditLog.create({
+          data: {
+            action: "BATCH_BULK_DELETED",
+            entityType: "Batch",
+            entityId: batchIds.join(","),
+            description: `Bulk deleted ${batches.length} batch(es) (${batchNumbers.join(", ")}) by ${admin.name}`,
+            adminId: admin.id,
+            metadata: {
+              count: batches.length,
+              batchNumbers,
+            },
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        deletedCount: batches.length,
+        identifiers: batchNumbers,
+      };
+    }
+
+    case "customers": {
+      const customers = await prisma.customer.findMany({
+        where: {
+          OR: [{ id: { in: recordIds } }, { customerIdentifier: { in: recordIds } }],
+        },
+        include: {
+          shipments: true,
+          payments: true,
+          sourcingRequests: true,
+        },
+      });
+
+      if (customers.length === 0) {
+        return { error: "No matching customer records found." };
+      }
+
+      const blockedCustomers = customers.filter(
+        (c) => c.payments.length > 0 || c.shipments.length > 0 || c.sourcingRequests.length > 0
+      );
+
+      if (blockedCustomers.length > 0) {
+        const details = blockedCustomers.map((c) => `'${c.customerIdentifier}'`).join(", ");
+        return {
+          error: `Cannot delete selected customer(s). The following account(s) have historical shipments/payments: ${details}. Please use 'Deactivate Customer' instead to preserve financial records.`,
+        };
+      }
+
+      const customerIds = customers.map((c) => c.id);
+      const customerIdentifiers = customers.map((c) => c.customerIdentifier);
+
+      await prisma.$transaction([
+        prisma.notification.deleteMany({
+          where: { customerId: { in: customerIds } },
+        }),
+        prisma.creditTransaction.deleteMany({
+          where: { customerId: { in: customerIds } },
+        }),
+        prisma.creditAccount.deleteMany({
+          where: { customerId: { in: customerIds } },
+        }),
+        prisma.customer.deleteMany({
+          where: { id: { in: customerIds } },
+        }),
+        prisma.auditLog.create({
+          data: {
+            action: "CUSTOMER_BULK_DELETED",
+            entityType: "Customer",
+            entityId: customerIds.join(","),
+            description: `Bulk deleted ${customers.length} customer(s) (${customerIdentifiers.join(", ")}) by ${admin.name}`,
+            adminId: admin.id,
+            metadata: {
+              count: customers.length,
+              customerIdentifiers,
+            },
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        deletedCount: customers.length,
+        identifiers: customerIdentifiers,
+      };
+    }
+
+    case "events": {
+      const events = await prisma.trackingEvent.findMany({
+        where: { id: { in: recordIds } },
+      });
+
+      if (events.length === 0) {
+        return { error: "No matching tracking events found." };
+      }
+
+      const eventIds = events.map((e) => e.id);
+
+      await prisma.$transaction([
+        prisma.trackingEvent.deleteMany({
+          where: { id: { in: eventIds } },
+        }),
+        prisma.auditLog.create({
+          data: {
+            action: "TRACKING_EVENT_BULK_DELETED",
+            entityType: "TrackingEvent",
+            entityId: eventIds.join(","),
+            description: `Bulk deleted ${events.length} tracking event(s) by ${admin.name}`,
+            adminId: admin.id,
+            metadata: {
+              count: events.length,
+            },
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        deletedCount: events.length,
+        identifiers: eventIds,
+      };
+    }
+
+    case "notifications": {
+      const notifications = await prisma.notification.findMany({
+        where: { id: { in: recordIds } },
+      });
+
+      if (notifications.length === 0) {
+        return { error: "No matching notifications found." };
+      }
+
+      const notifIds = notifications.map((n) => n.id);
+
+      await prisma.$transaction([
+        prisma.notification.deleteMany({
+          where: { id: { in: notifIds } },
+        }),
+        prisma.auditLog.create({
+          data: {
+            action: "NOTIFICATION_BULK_DELETED",
+            entityType: "Notification",
+            entityId: notifIds.join(","),
+            description: `Bulk deleted ${notifications.length} notification(s) by ${admin.name}`,
+            adminId: admin.id,
+            metadata: {
+              count: notifications.length,
+            },
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        deletedCount: notifications.length,
+        identifiers: notifIds,
+      };
+    }
+
+    default:
+      return { error: "Invalid entity type for bulk deletion." };
+  }
+}

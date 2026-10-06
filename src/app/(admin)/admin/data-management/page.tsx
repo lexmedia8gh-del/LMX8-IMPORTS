@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useTransition } from "react";
+import React, { useState, useEffect, useCallback, useTransition, useMemo } from "react";
 import { 
   Database, Truck, Layers, Users, Clock, Bell, Shield, 
   AlertTriangle, Trash2, Eye, RefreshCw, Search, CheckCircle2, 
-  X, Lock, ShieldAlert, ArrowRight, UserX, UserCheck
+  X, Lock, ShieldAlert, ArrowRight, UserX, UserCheck, ChevronDown,
+  CheckSquare, Square
 } from "lucide-react";
 import { AdminDrawer } from "@/components/admin-drawer";
 import { 
@@ -18,6 +19,7 @@ import {
   deleteTrackingEventSafeAction,
   deleteNotificationSafeAction,
   cleanupTestDataAction,
+  deleteSelectedDataRecordsAction,
 } from "@/app/actions/data-management";
 import Link from "next/link";
 
@@ -31,17 +33,27 @@ export default function AdminDataManagementPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [isPending, startTransition] = useTransition();
 
+  // Selection state for bulk operations
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   // Detail Drawer State
   const [selectedEntity, setSelectedEntity] = useState<{ type: string; id: string } | null>(null);
   const [entityDetails, setEntityDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
 
-  // Deletion Modal State
+  // Single Deletion Modal State
   const [recordToDelete, setRecordToDelete] = useState<{ type: string; id: string; name: string } | null>(null);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState<string>("");
   const [adminPinInput, setAdminPinInput] = useState<string>("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Bulk Delete Modal State
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState<boolean>(false);
+  const [bulkConfirmationText, setBulkConfirmationText] = useState<string>("");
+  const [bulkAdminPin, setBulkAdminPin] = useState<string>("");
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
 
   // Danger Zone Test Purge State
   const [testPurgeText, setTestPurgeText] = useState<string>("");
@@ -71,6 +83,7 @@ export default function AdminDataManagementPage() {
   const loadRecords = useCallback(async (tab: TabType) => {
     if (tab === "danger") return;
     setLoading(true);
+    setSelectedIds(new Set());
     try {
       const data = await getDataRecordsAction(tab);
       setRecords(data);
@@ -88,10 +101,57 @@ export default function AdminDataManagementPage() {
 
   useEffect(() => {
     setSearch("");
+    setSelectedIds(new Set());
     if (activeTab !== "danger") {
       loadRecords(activeTab);
     }
   }, [activeTab, loadRecords]);
+
+  // Filter Records
+  const filteredRecords = useMemo(() => {
+    return (records || []).filter((r) => {
+      if (!search.trim()) return true;
+      const term = search.toLowerCase();
+      return Object.values(r).some((v) => 
+        typeof v === "string" && v.toLowerCase().includes(term)
+      );
+    });
+  }, [records, search]);
+
+  // Helper to get record key for selection
+  const getRecordKey = useCallback((record: any): string => {
+    if (activeTab === "shipments") return record.trackingNumber || record.id;
+    if (activeTab === "batches") return record.batchNumber || record.id;
+    if (activeTab === "customers") return record.customerIdentifier || record.id;
+    return record.id;
+  }, [activeTab]);
+
+  // Checkbox Selection Logic
+  const handleToggleSelectRecord = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isAllSelected = useMemo(() => {
+    if (filteredRecords.length === 0) return false;
+    return filteredRecords.every((r) => selectedIds.has(getRecordKey(r)));
+  }, [filteredRecords, selectedIds, getRecordKey]);
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      const allKeys = new Set(filteredRecords.map((r) => getRecordKey(r)));
+      setSelectedIds(allKeys);
+    }
+  };
 
   // Load Single Entity Details for Drawer
   const handleOpenDetails = async (type: string, id: string) => {
@@ -108,7 +168,7 @@ export default function AdminDataManagementPage() {
     }
   };
 
-  // Execute Deletion
+  // Execute Single Deletion
   const handleConfirmDelete = async () => {
     if (!recordToDelete) return;
     setDeleteError(null);
@@ -144,6 +204,40 @@ export default function AdminDataManagementPage() {
     } catch (err: any) {
       setDeleteError(err?.message || "An unexpected error occurred during deletion.");
       setIsDeleting(false);
+    }
+  };
+
+  // Execute Bulk Reset / Delete Selected
+  const handleConfirmBulkDelete = async () => {
+    if (selectedIds.size === 0 || activeTab === "danger") return;
+    setBulkDeleteError(null);
+    setIsBulkDeleting(true);
+
+    try {
+      const recordIdsArray = Array.from(selectedIds);
+      const res = await deleteSelectedDataRecordsAction(
+        activeTab as "shipments" | "batches" | "customers" | "events" | "notifications",
+        recordIdsArray,
+        bulkConfirmationText,
+        bulkAdminPin || undefined
+      );
+
+      if (res?.error) {
+        setBulkDeleteError(res.error);
+        setIsBulkDeleting(false);
+      } else {
+        showToast(`✓ Safely reset/deleted ${res.deletedCount} selected ${activeTab} record(s).`);
+        setShowBulkDeleteModal(false);
+        setBulkConfirmationText("");
+        setBulkAdminPin("");
+        setSelectedIds(new Set());
+        setIsBulkDeleting(false);
+        loadOverview();
+        loadRecords(activeTab);
+      }
+    } catch (err: any) {
+      setBulkDeleteError(err?.message || "Bulk deletion execution failed.");
+      setIsBulkDeleting(false);
     }
   };
 
@@ -184,17 +278,17 @@ export default function AdminDataManagementPage() {
     }
   };
 
-  // Filter Records
-  const filteredRecords = (records || []).filter((r) => {
-    if (!search.trim()) return true;
-    const term = search.toLowerCase();
-    return Object.values(r).some((v) => 
-      typeof v === "string" && v.toLowerCase().includes(term)
-    );
-  });
+  const navTabs = [
+    { id: "shipments" as TabType, label: "Shipments", count: overview?.shipments, icon: <Truck size={15} /> },
+    { id: "batches" as TabType, label: "Batches", count: overview?.batches, icon: <Layers size={15} /> },
+    { id: "customers" as TabType, label: "Customers", count: overview?.customers, icon: <Users size={15} /> },
+    { id: "events" as TabType, label: "Tracking Events", count: overview?.trackingEvents, icon: <Clock size={15} /> },
+    { id: "notifications" as TabType, label: "Notifications", count: overview?.notifications, icon: <Bell size={15} /> },
+    { id: "danger" as TabType, label: "Danger Zone & Purge", count: null, icon: <ShieldAlert size={15} /> },
+  ];
 
   return (
-    <div className="space-y-7 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Toast Notification */}
       {successToast && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#141B47] text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3 animate-in slide-in-from-bottom-5">
@@ -204,7 +298,7 @@ export default function AdminDataManagementPage() {
       )}
 
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-[#E5E7EB]">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-800 border border-red-200">
@@ -212,9 +306,9 @@ export default function AdminDataManagementPage() {
             </span>
             <span className="text-xs text-[#667085]">Audit Logged</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-[#141B47]">Data Management &amp; Record Control</h1>
-          <p className="text-sm mt-1 text-[#667085]">
-            Inspect data dependencies, review relationships, and execute controlled administrative cleanup.
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#141B47]">Data Management &amp; Reset System</h1>
+          <p className="text-xs sm:text-sm mt-1 text-[#667085]">
+            Inspect data dependencies, search records, and execute administrator-controlled record reset.
           </p>
         </div>
 
@@ -223,62 +317,105 @@ export default function AdminDataManagementPage() {
             loadOverview();
             if (activeTab !== "danger") loadRecords(activeTab);
           }}
-          className="px-4 py-2 text-xs font-bold rounded-xl border border-[#E5E7EB] bg-white hover:bg-gray-50 text-[#141B47] flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer self-start md:self-auto"
+          className="px-4 h-10 text-xs font-bold rounded-xl border border-[#E5E7EB] bg-white hover:bg-gray-50 text-[#141B47] flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer shrink-0"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh Data
         </button>
       </div>
 
       {/* ── KPI STATISTIC CARDS ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: "Shipments", count: overview?.shipments ?? "—", tab: "shipments" as TabType, icon: <Truck size={16} />, color: "#355DAF" },
-          { label: "Batches", count: overview?.batches ?? "—", tab: "batches" as TabType, icon: <Layers size={16} />, color: "#F2901F" },
-          { label: "Customers", count: overview?.customers ?? "—", tab: "customers" as TabType, icon: <Users size={16} />, color: "#10B981" },
-          { label: "Tracking Events", count: overview?.trackingEvents ?? "—", tab: "events" as TabType, icon: <Clock size={16} />, color: "#8B5CF6" },
-          { label: "Notifications", count: overview?.notifications ?? "—", tab: "notifications" as TabType, icon: <Bell size={16} />, color: "#EC4899" },
-          { label: "Payments (Protected)", count: overview?.payments ?? "—", tab: null, icon: <Shield size={16} />, color: "#059669" },
+          { label: "Shipments", count: overview?.shipments ?? "—", tab: "shipments" as TabType, icon: <Truck size={15} />, color: "#355DAF" },
+          { label: "Batches", count: overview?.batches ?? "—", tab: "batches" as TabType, icon: <Layers size={15} />, color: "#F2901F" },
+          { label: "Customers", count: overview?.customers ?? "—", tab: "customers" as TabType, icon: <Users size={15} />, color: "#10B981" },
+          { label: "Events", count: overview?.trackingEvents ?? "—", tab: "events" as TabType, icon: <Clock size={15} />, color: "#8B5CF6" },
+          { label: "Notifs", count: overview?.notifications ?? "—", tab: "notifications" as TabType, icon: <Bell size={15} />, color: "#EC4899" },
+          { label: "Payments", count: overview?.payments ?? "—", tab: null, icon: <Shield size={15} />, color: "#059669" },
         ].map((kpi) => (
           <div
             key={kpi.label}
             onClick={() => kpi.tab && setActiveTab(kpi.tab)}
-            className={`p-4 rounded-2xl border transition-all ${
+            className={`p-3.5 rounded-2xl border transition-all ${
               kpi.tab
                 ? "bg-white hover:shadow-md cursor-pointer border-[#E5E7EB]"
                 : "bg-[#F7F9FC] border-gray-200 cursor-default"
-            } ${activeTab === kpi.tab ? "ring-2 ring-[#F2901F]" : ""}`}
+            } ${activeTab === kpi.tab ? "ring-2 ring-[#F2901F] bg-amber-50/20" : ""}`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#667085] truncate">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#667085] truncate">
                 {kpi.label}
               </span>
               <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
+                className="w-6 h-6 rounded-lg flex items-center justify-center text-white shrink-0"
                 style={{ backgroundColor: kpi.color }}
               >
                 {kpi.icon}
               </div>
             </div>
-            <p className="text-xl font-bold font-mono text-[#141B47] tabular-nums">{kpi.count}</p>
+            <p className="text-lg sm:text-xl font-bold font-mono text-[#141B47] tabular-nums">{kpi.count}</p>
           </div>
         ))}
       </div>
 
-      {/* ── TABS NAVIGATION ── */}
+      {/* ── RESPONSIVE DATA MANAGEMENT NAVIGATION (TASK 1) ── */}
       <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-xs overflow-hidden">
-        <div className="flex border-b border-[#F1F5F9] bg-[#F7F9FC] overflow-x-auto scrollbar-none">
-          {[
-            { id: "shipments" as TabType, label: "Shipments", icon: <Truck size={15} /> },
-            { id: "batches" as TabType, label: "Batches", icon: <Layers size={15} /> },
-            { id: "customers" as TabType, label: "Customers", icon: <Users size={15} /> },
-            { id: "events" as TabType, label: "Tracking Events", icon: <Clock size={15} /> },
-            { id: "notifications" as TabType, label: "Notifications", icon: <Bell size={15} /> },
-            { id: "danger" as TabType, label: "Danger Zone & Purge", icon: <ShieldAlert size={15} /> },
-          ].map((t) => (
+        {/* Mobile View (< md): Mobile Category Selector & 2-Col Button Grid */}
+        <div className="block md:hidden p-3 bg-[#F7F9FC] border-b border-[#E5E7EB] space-y-2.5">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-[#667085] block">
+            Category Navigator
+          </label>
+          <div className="relative">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as TabType)}
+              className="w-full h-11 pl-4 pr-10 rounded-xl border border-[#E5E7EB] bg-white text-xs font-bold text-[#141B47] appearance-none focus:outline-none focus:border-[#F2901F] shadow-xs cursor-pointer"
+            >
+              {navTabs.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label} {t.count !== null && t.count !== undefined ? `(${t.count})` : ""}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#667085] pointer-events-none" />
+          </div>
+
+          {/* Quick Category Buttons 2-Col Grid */}
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            {navTabs.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`h-10 px-3 rounded-xl text-xs font-bold flex items-center justify-between gap-1.5 border transition-all cursor-pointer ${
+                  activeTab === t.id
+                    ? t.id === "danger"
+                      ? "bg-red-600 text-white border-red-600"
+                      : "bg-[#141B47] text-white border-[#141B47]"
+                    : "bg-white text-[#475569] border-[#E5E7EB] hover:bg-gray-50"
+                }`}
+              >
+                <span className="flex items-center gap-1.5 truncate">
+                  {t.icon} <span className="truncate">{t.label}</span>
+                </span>
+                {t.count !== null && t.count !== undefined && (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full shrink-0 ${
+                    activeTab === t.id ? "bg-white/20 text-white" : "bg-gray-100 text-gray-700"
+                  }`}>
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Desktop/Tablet View (>= md): Segmented Tabs */}
+        <div className="hidden md:flex flex-wrap border-b border-[#F1F5F9] bg-[#F7F9FC]">
+          {navTabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all border-b-2 cursor-pointer ${
+              className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
                 activeTab === t.id
                   ? t.id === "danger"
                     ? "border-red-600 text-red-600 bg-red-50/50"
@@ -286,28 +423,81 @@ export default function AdminDataManagementPage() {
                   : "border-transparent text-[#667085] hover:text-[#141B47] hover:bg-gray-50"
               }`}
             >
-              {t.icon} {t.label}
+              {t.icon} <span>{t.label}</span>
+              {t.count !== null && t.count !== undefined && (
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                  activeTab === t.id ? "bg-[#141B47] text-white" : "bg-gray-200 text-gray-700"
+                }`}>
+                  {t.count}
+                </span>
+              )}
             </button>
           ))}
         </div>
 
-        {/* ── TAB CONTENT ── */}
-        <div className="p-5 sm:p-6">
+        {/* ── TOOLBAR & BULK RESET ACTION BAR (TASK 2) ── */}
+        <div className="p-4 sm:p-6">
           {activeTab !== "danger" && (
-            <div className="mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="relative w-full sm:max-w-md">
-                <input
-                  type="text"
-                  placeholder={`Search ${activeTab} records...`}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 h-11 rounded-xl text-xs border border-[#E5E7EB] bg-[#F7F9FC] focus:bg-white focus:outline-hidden focus:border-[#F2901F] text-[#172236] transition-colors"
-                />
-                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+            <div className="space-y-4 mb-6">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                {/* Search Bar */}
+                <div className="relative flex-1 max-w-md">
+                  <input
+                    type="text"
+                    placeholder={`Search ${activeTab} by ID, name, status...`}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 h-11 rounded-xl text-xs border border-[#E5E7EB] bg-[#F7F9FC] focus:bg-white focus:outline-none focus:border-[#F2901F] text-[#172236] transition-colors"
+                  />
+                  <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+                </div>
+
+                {/* Bulk Action Controls */}
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#F1F5F9]">
+                  <button
+                    onClick={handleToggleSelectAll}
+                    disabled={filteredRecords.length === 0}
+                    className="flex items-center gap-2 px-3 h-10 rounded-xl border border-[#E5E7EB] bg-white text-xs font-bold text-[#141B47] hover:bg-gray-50 cursor-pointer disabled:opacity-40"
+                  >
+                    {isAllSelected ? (
+                      <CheckSquare size={16} className="text-[#F2901F]" />
+                    ) : (
+                      <Square size={16} className="text-[#94A3B8]" />
+                    )}
+                    <span>Select All ({filteredRecords.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowBulkDeleteModal(true)}
+                    disabled={selectedIds.size === 0}
+                    className={`h-10 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer ${
+                      selectedIds.size > 0
+                        ? "bg-red-600 hover:bg-red-700 text-white animate-in fade-in"
+                        : "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                    }`}
+                  >
+                    <Trash2 size={14} />
+                    <span>
+                      {selectedIds.size > 0 ? `Delete Selected (${selectedIds.size})` : "Delete Selected"}
+                    </span>
+                  </button>
+                </div>
               </div>
-              <span className="text-xs text-[#667085] self-end sm:self-auto">
-                Showing <strong>{filteredRecords.length}</strong> record(s)
-              </span>
+
+              {/* Selection Summary Pill */}
+              {selectedIds.size > 0 && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-800 flex items-center justify-between gap-2">
+                  <span>
+                    Selected <strong>{selectedIds.size}</strong> of {filteredRecords.length} displayed record(s)
+                  </span>
+                  <button
+                    onClick={() => setSelectedIds(new Set())}
+                    className="text-[11px] underline font-bold hover:text-red-950 cursor-pointer"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -323,52 +513,82 @@ export default function AdminDataManagementPage() {
                 ) : filteredRecords.length === 0 ? (
                   <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No shipment records found.</div>
                 ) : (
-                  filteredRecords.map((s) => (
-                    <div key={s.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-3 shadow-xs">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-mono font-bold text-xs text-[#141B47]">{s.trackingNumber}</p>
-                          <p className="text-xs text-[#667085] mt-0.5">{s.description}</p>
+                  filteredRecords.map((s) => {
+                    const key = getRecordKey(s);
+                    const isSelected = selectedIds.has(key);
+                    return (
+                      <div
+                        key={s.id}
+                        className={`p-4 rounded-xl border bg-white space-y-3 shadow-xs transition-all ${
+                          isSelected ? "border-red-500 ring-1 ring-red-500 bg-red-50/10" : "border-[#E5E7EB]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5">
+                            <button
+                              onClick={() => handleToggleSelectRecord(key)}
+                              className="mt-0.5 text-[#141B47] cursor-pointer"
+                            >
+                              {isSelected ? (
+                                <CheckSquare size={18} className="text-red-600" />
+                              ) : (
+                                <Square size={18} className="text-gray-300 hover:text-gray-500" />
+                              )}
+                            </button>
+                            <div>
+                              <p className="font-mono font-bold text-xs text-[#141B47]">{s.trackingNumber}</p>
+                              <p className="text-xs text-[#667085] mt-0.5">{s.description}</p>
+                            </div>
+                          </div>
+                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200 shrink-0">
+                            {s.status}
+                          </span>
                         </div>
-                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200 shrink-0">
-                          {s.status}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-[#F1F5F9] text-[#667085]">
-                        <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Customer</span>{s.customer}</div>
-                        <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Batch</span>{s.batch}</div>
-                      </div>
-                      <div className="flex items-center justify-between pt-2 border-t border-[#F1F5F9]">
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#667085]">
-                          <span>{s.eventsCount} events</span> · <span>{s.photosCount} files</span>
+                        <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-[#F1F5F9] text-[#667085]">
+                          <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Customer</span>{s.customer}</div>
+                          <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Batch</span>{s.batch}</div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleOpenDetails("Shipment", s.trackingNumber)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <Eye size={13} /> Inspect
-                          </button>
-                          <button
-                            onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <Trash2 size={13} /> Delete
-                          </button>
+                        <div className="flex items-center justify-between pt-2 border-t border-[#F1F5F9]">
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#667085]">
+                            <span>{s.eventsCount} events</span> · <span>{s.photosCount} files</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleOpenDetails("Shipment", s.trackingNumber)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye size={13} /> Inspect
+                            </button>
+                            <button
+                              onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
               {/* Desktop Table */}
-              <div className="hidden md:block overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto border border-[#E5E7EB] rounded-2xl">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      <th className="px-4 py-3.5 w-10">
+                        <button onClick={handleToggleSelectAll} className="cursor-pointer">
+                          {isAllSelected ? (
+                            <CheckSquare size={16} className="text-red-600" />
+                          ) : (
+                            <Square size={16} className="text-gray-400" />
+                          )}
+                        </button>
+                      </th>
                       {["Tracking Number", "Customer", "Batch", "Status", "Dependencies", "Actions"].map((h) => (
-                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                        <th key={h} className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
                           {h}
                         </th>
                       ))}
@@ -377,64 +597,77 @@ export default function AdminDataManagementPage() {
                   <tbody className="divide-y divide-[#F1F5F9]">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
+                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">
                           <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading shipments...
                         </td>
                       </tr>
                     ) : filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No shipment records found.</td>
+                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">No shipment records found.</td>
                       </tr>
                     ) : (
-                      filteredRecords.map((s) => (
-                        <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
-                            {s.trackingNumber}
-                            <p className="text-[11px] font-sans font-normal text-[#667085] mt-0.5 truncate max-w-xs">
-                              {s.description}
-                            </p>
-                          </td>
-                          <td className="px-5 py-3.5 text-xs text-[#172236]">
-                            {s.customer}
-                          </td>
-                          <td className="px-5 py-3.5 text-xs text-[#667085]">
-                            {s.batch}
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200">
-                              {s.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-2 text-[11px] text-[#667085]">
-                              <span>{s.eventsCount} events</span>
-                              <span>·</span>
-                              <span>{s.photosCount} files</span>
-                              {s.hasPaidPayments && (
-                                <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 font-semibold">
-                                  Paid
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleOpenDetails("Shipment", s.trackingNumber)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye size={13} /> Inspect
+                      filteredRecords.map((s) => {
+                        const key = getRecordKey(s);
+                        const isSelected = selectedIds.has(key);
+                        return (
+                          <tr key={s.id} className={`transition-colors ${isSelected ? "bg-red-50/20" : "hover:bg-gray-50/50"}`}>
+                            <td className="px-4 py-3.5">
+                              <button onClick={() => handleToggleSelectRecord(key)} className="cursor-pointer">
+                                {isSelected ? (
+                                  <CheckSquare size={16} className="text-red-600" />
+                                ) : (
+                                  <Square size={16} className="text-gray-300 hover:text-gray-500" />
+                                )}
                               </button>
-                              <button
-                                onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Trash2 size={13} /> Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                            <td className="px-4 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                              {s.trackingNumber}
+                              <p className="text-[11px] font-sans font-normal text-[#667085] mt-0.5 truncate max-w-xs">
+                                {s.description}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-[#172236]">
+                              {s.customer}
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-[#667085]">
+                              {s.batch}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200">
+                                {s.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-[11px] text-[#667085]">
+                                <span>{s.eventsCount} events</span>
+                                <span>·</span>
+                                <span>{s.photosCount} files</span>
+                                {s.hasPaidPayments && (
+                                  <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 font-semibold">
+                                    Paid
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleOpenDetails("Shipment", s.trackingNumber)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye size={13} /> Inspect
+                                </button>
+                                <button
+                                  onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 size={13} /> Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -454,47 +687,74 @@ export default function AdminDataManagementPage() {
                 ) : filteredRecords.length === 0 ? (
                   <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No batch records found.</div>
                 ) : (
-                  filteredRecords.map((b) => (
-                    <div key={b.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-3 shadow-xs">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-mono font-bold text-xs text-[#141B47]">{b.batchNumber}</p>
-                          <p className="text-xs font-semibold text-[#172236] mt-0.5">{b.name}</p>
+                  filteredRecords.map((b) => {
+                    const key = getRecordKey(b);
+                    const isSelected = selectedIds.has(key);
+                    return (
+                      <div
+                        key={b.id}
+                        className={`p-4 rounded-xl border bg-white space-y-3 shadow-xs transition-all ${
+                          isSelected ? "border-red-500 ring-1 ring-red-500 bg-red-50/10" : "border-[#E5E7EB]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5">
+                            <button onClick={() => handleToggleSelectRecord(key)} className="mt-0.5 cursor-pointer">
+                              {isSelected ? (
+                                <CheckSquare size={18} className="text-red-600" />
+                              ) : (
+                                <Square size={18} className="text-gray-300 hover:text-gray-500" />
+                              )}
+                            </button>
+                            <div>
+                              <p className="font-mono font-bold text-xs text-[#141B47]">{b.batchNumber}</p>
+                              <p className="text-xs font-semibold text-[#172236] mt-0.5">{b.name}</p>
+                            </div>
+                          </div>
+                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                            {b.status}
+                          </span>
                         </div>
-                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
-                          {b.status}
-                        </span>
+                        <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-[#F1F5F9] text-[#667085]">
+                          <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Assigned Shipments</span>{b.shipmentsCount} shipment(s)</div>
+                          <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Schedule</span>{b.departure || "TBD"} → {b.arrival || "TBD"}</div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F1F5F9]">
+                          <button
+                            onClick={() => handleOpenDetails("Batch", b.batchNumber)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye size={13} /> Inspect
+                          </button>
+                          <button
+                            onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-[#F1F5F9] text-[#667085]">
-                        <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Assigned Shipments</span>{b.shipmentsCount} shipment(s)</div>
-                        <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Schedule</span>{b.departure || "TBD"} → {b.arrival || "TBD"}</div>
-                      </div>
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F1F5F9]">
-                        <button
-                          onClick={() => handleOpenDetails("Batch", b.batchNumber)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Eye size={13} /> Inspect
-                        </button>
-                        <button
-                          onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
               {/* Desktop Table */}
-              <div className="hidden md:block overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto border border-[#E5E7EB] rounded-2xl">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      <th className="px-4 py-3.5 w-10">
+                        <button onClick={handleToggleSelectAll} className="cursor-pointer">
+                          {isAllSelected ? (
+                            <CheckSquare size={16} className="text-red-600" />
+                          ) : (
+                            <Square size={16} className="text-gray-400" />
+                          )}
+                        </button>
+                      </th>
                       {["Batch Code", "Name", "Assigned Shipments", "Status", "Schedule", "Actions"].map((h) => (
-                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                        <th key={h} className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
                           {h}
                         </th>
                       ))}
@@ -503,54 +763,67 @@ export default function AdminDataManagementPage() {
                   <tbody className="divide-y divide-[#F1F5F9]">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
+                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">
                           <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading batches...
                         </td>
                       </tr>
                     ) : filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No batch records found.</td>
+                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">No batch records found.</td>
                       </tr>
                     ) : (
-                      filteredRecords.map((b) => (
-                        <tr key={b.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
-                            {b.batchNumber}
-                          </td>
-                          <td className="px-5 py-3.5 text-xs font-semibold text-[#172236]">
-                            {b.name}
-                          </td>
-                          <td className="px-5 py-3.5 text-xs text-[#667085]">
-                            <span className={`font-bold ${b.shipmentsCount > 0 ? "text-[#141B47]" : "text-gray-400"}`}>
-                              {b.shipmentsCount} shipment(s)
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200">
-                              {b.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                            {b.departure || "TBD"} → {b.arrival || "TBD"}
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleOpenDetails("Batch", b.batchNumber)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye size={13} /> Inspect
+                      filteredRecords.map((b) => {
+                        const key = getRecordKey(b);
+                        const isSelected = selectedIds.has(key);
+                        return (
+                          <tr key={b.id} className={`transition-colors ${isSelected ? "bg-red-50/20" : "hover:bg-gray-50/50"}`}>
+                            <td className="px-4 py-3.5">
+                              <button onClick={() => handleToggleSelectRecord(key)} className="cursor-pointer">
+                                {isSelected ? (
+                                  <CheckSquare size={16} className="text-red-600" />
+                                ) : (
+                                  <Square size={16} className="text-gray-300 hover:text-gray-500" />
+                                )}
                               </button>
-                              <button
-                                onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Trash2 size={13} /> Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                            <td className="px-4 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                              {b.batchNumber}
+                            </td>
+                            <td className="px-4 py-3.5 text-xs font-semibold text-[#172236]">
+                              {b.name}
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-[#667085]">
+                              <span className={`font-bold ${b.shipmentsCount > 0 ? "text-[#141B47]" : "text-gray-400"}`}>
+                                {b.shipmentsCount} shipment(s)
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200">
+                                {b.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-[11px] text-[#667085]">
+                              {b.departure || "TBD"} → {b.arrival || "TBD"}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleOpenDetails("Batch", b.batchNumber)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye size={13} /> Inspect
+                                </button>
+                                <button
+                                  onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 size={13} /> Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -570,63 +843,90 @@ export default function AdminDataManagementPage() {
                 ) : filteredRecords.length === 0 ? (
                   <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No customer records found.</div>
                 ) : (
-                  filteredRecords.map((c) => (
-                    <div key={c.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-3 shadow-xs">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-mono font-bold text-xs text-[#141B47]">{c.customerIdentifier}</p>
-                          <p className="text-xs font-bold text-[#172236] mt-0.5">{c.name}</p>
-                          <p className="text-[11px] text-[#667085]">{c.phone} {c.email !== "N/A" ? `· ${c.email}` : ""}</p>
+                  filteredRecords.map((c) => {
+                    const key = getRecordKey(c);
+                    const isSelected = selectedIds.has(key);
+                    return (
+                      <div
+                        key={c.id}
+                        className={`p-4 rounded-xl border bg-white space-y-3 shadow-xs transition-all ${
+                          isSelected ? "border-red-500 ring-1 ring-red-500 bg-red-50/10" : "border-[#E5E7EB]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5">
+                            <button onClick={() => handleToggleSelectRecord(key)} className="mt-0.5 cursor-pointer">
+                              {isSelected ? (
+                                <CheckSquare size={18} className="text-red-600" />
+                              ) : (
+                                <Square size={18} className="text-gray-300 hover:text-gray-500" />
+                              )}
+                            </button>
+                            <div>
+                              <p className="font-mono font-bold text-xs text-[#141B47]">{c.customerIdentifier}</p>
+                              <p className="text-xs font-bold text-[#172236] mt-0.5">{c.name}</p>
+                              <p className="text-[11px] text-[#667085]">{c.phone} {c.email !== "N/A" ? `· ${c.email}` : ""}</p>
+                            </div>
+                          </div>
+                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
+                            c.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
+                          }`}>
+                            {c.status}
+                          </span>
                         </div>
-                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
-                          c.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
-                        }`}>
-                          {c.status}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
-                        <span>{c.shipmentsCount} shipments</span> · <span>{c.paymentsCount} payments</span> · <span>{c.credits} credits</span>
-                      </div>
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F1F5F9] flex-wrap">
-                        <button
-                          onClick={() => handleOpenDetails("Customer", c.customerIdentifier)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Eye size={13} /> Inspect
-                        </button>
-                        <button
-                          onClick={() => handleToggleCustomerStatus(c.id)}
-                          disabled={isPending}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer ${
-                            c.status === "ACTIVE"
-                              ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
-                              : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                          }`}
-                        >
-                          {c.status === "ACTIVE" ? <UserX size={13} /> : <UserCheck size={13} />}
-                          {c.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                        </button>
-                        {c.shipmentsCount === 0 && c.paymentsCount === 0 && (
+                        <div className="text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
+                          <span>{c.shipmentsCount} shipments</span> · <span>{c.paymentsCount} payments</span> · <span>{c.credits} credits</span>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F1F5F9] flex-wrap">
                           <button
-                            onClick={() => setRecordToDelete({ type: "Customer", id: c.customerIdentifier, name: `${c.name} (${c.customerIdentifier})` })}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            onClick={() => handleOpenDetails("Customer", c.customerIdentifier)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
                           >
-                            <Trash2 size={13} /> Delete
+                            <Eye size={13} /> Inspect
                           </button>
-                        )}
+                          <button
+                            onClick={() => handleToggleCustomerStatus(c.id)}
+                            disabled={isPending}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                              c.status === "ACTIVE"
+                                ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            }`}
+                          >
+                            {c.status === "ACTIVE" ? <UserX size={13} /> : <UserCheck size={13} />}
+                            {c.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                          </button>
+                          {c.shipmentsCount === 0 && c.paymentsCount === 0 && (
+                            <button
+                              onClick={() => setRecordToDelete({ type: "Customer", id: c.customerIdentifier, name: `${c.name} (${c.customerIdentifier})` })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
               {/* Desktop Table */}
-              <div className="hidden md:block overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto border border-[#E5E7EB] rounded-2xl">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      <th className="px-4 py-3.5 w-10">
+                        <button onClick={handleToggleSelectAll} className="cursor-pointer">
+                          {isAllSelected ? (
+                            <CheckSquare size={16} className="text-red-600" />
+                          ) : (
+                            <Square size={16} className="text-gray-400" />
+                          )}
+                        </button>
+                      </th>
                       {["Customer ID", "Name", "Contact", "History Summary", "Status", "Actions"].map((h) => (
-                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                        <th key={h} className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
                           {h}
                         </th>
                       ))}
@@ -635,68 +935,81 @@ export default function AdminDataManagementPage() {
                   <tbody className="divide-y divide-[#F1F5F9]">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
+                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">
                           <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading customer records...
                         </td>
                       </tr>
                     ) : filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No customer records found.</td>
+                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">No customer records found.</td>
                       </tr>
                     ) : (
-                      filteredRecords.map((c) => (
-                        <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
-                            {c.customerIdentifier}
-                          </td>
-                          <td className="px-5 py-3.5 text-xs font-bold text-[#172236]">
-                            {c.name}
-                          </td>
-                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                            {c.phone} {c.email !== "N/A" ? `· ${c.email}` : ""}
-                          </td>
-                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                            <span>{c.shipmentsCount} shipments</span> · <span>{c.paymentsCount} payments</span> · <span>{c.credits} credits</span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              c.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
-                            }`}>
-                              {c.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleOpenDetails("Customer", c.customerIdentifier)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye size={13} /> Inspect
+                      filteredRecords.map((c) => {
+                        const key = getRecordKey(c);
+                        const isSelected = selectedIds.has(key);
+                        return (
+                          <tr key={c.id} className={`transition-colors ${isSelected ? "bg-red-50/20" : "hover:bg-gray-50/50"}`}>
+                            <td className="px-4 py-3.5">
+                              <button onClick={() => handleToggleSelectRecord(key)} className="cursor-pointer">
+                                {isSelected ? (
+                                  <CheckSquare size={16} className="text-red-600" />
+                                ) : (
+                                  <Square size={16} className="text-gray-300 hover:text-gray-500" />
+                                )}
                               </button>
-                              <button
-                                onClick={() => handleToggleCustomerStatus(c.id)}
-                                disabled={isPending}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer ${
-                                  c.status === "ACTIVE"
-                                    ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
-                                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                }`}
-                              >
-                                {c.status === "ACTIVE" ? <UserX size={13} /> : <UserCheck size={13} />}
-                                {c.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                              </button>
-                              {c.shipmentsCount === 0 && c.paymentsCount === 0 && (
+                            </td>
+                            <td className="px-4 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                              {c.customerIdentifier}
+                            </td>
+                            <td className="px-4 py-3.5 text-xs font-bold text-[#172236]">
+                              {c.name}
+                            </td>
+                            <td className="px-4 py-3.5 text-[11px] text-[#667085]">
+                              {c.phone} {c.email !== "N/A" ? `· ${c.email}` : ""}
+                            </td>
+                            <td className="px-4 py-3.5 text-[11px] text-[#667085]">
+                              <span>{c.shipmentsCount} shipments</span> · <span>{c.paymentsCount} payments</span> · <span>{c.credits} credits</span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                c.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
+                              }`}>
+                                {c.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => setRecordToDelete({ type: "Customer", id: c.customerIdentifier, name: `${c.name} (${c.customerIdentifier})` })}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                  onClick={() => handleOpenDetails("Customer", c.customerIdentifier)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
                                 >
-                                  <Trash2 size={13} /> Delete
+                                  <Eye size={13} /> Inspect
                                 </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                                <button
+                                  onClick={() => handleToggleCustomerStatus(c.id)}
+                                  disabled={isPending}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                                    c.status === "ACTIVE"
+                                      ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                  }`}
+                                >
+                                  {c.status === "ACTIVE" ? <UserX size={13} /> : <UserCheck size={13} />}
+                                  {c.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                                </button>
+                                {c.shipmentsCount === 0 && c.paymentsCount === 0 && (
+                                  <button
+                                    onClick={() => setRecordToDelete({ type: "Customer", id: c.customerIdentifier, name: `${c.name} (${c.customerIdentifier})` })}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash2 size={13} /> Delete
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -716,39 +1029,66 @@ export default function AdminDataManagementPage() {
                 ) : filteredRecords.length === 0 ? (
                   <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No tracking events found.</div>
                 ) : (
-                  filteredRecords.map((e) => (
-                    <div key={e.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-2.5 shadow-xs">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-mono font-bold text-xs text-[#141B47]">{e.shipmentTrackingNumber}</p>
-                          <p className="text-xs text-[#172236]">{e.location}</p>
+                  filteredRecords.map((e) => {
+                    const key = getRecordKey(e);
+                    const isSelected = selectedIds.has(key);
+                    return (
+                      <div
+                        key={e.id}
+                        className={`p-4 rounded-xl border bg-white space-y-2.5 shadow-xs transition-all ${
+                          isSelected ? "border-red-500 ring-1 ring-red-500 bg-red-50/10" : "border-[#E5E7EB]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5">
+                            <button onClick={() => handleToggleSelectRecord(key)} className="mt-0.5 cursor-pointer">
+                              {isSelected ? (
+                                <CheckSquare size={18} className="text-red-600" />
+                              ) : (
+                                <Square size={18} className="text-gray-300 hover:text-gray-500" />
+                              )}
+                            </button>
+                            <div>
+                              <p className="font-mono font-bold text-xs text-[#141B47]">{e.shipmentTrackingNumber}</p>
+                              <p className="text-xs text-[#172236]">{e.location}</p>
+                            </div>
+                          </div>
+                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-50 text-purple-800 border border-purple-200 shrink-0">
+                            {e.status}
+                          </span>
                         </div>
-                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-50 text-purple-800 border border-purple-200 shrink-0">
-                          {e.status}
-                        </span>
+                        {e.note && <p className="text-[11px] text-[#667085] bg-gray-50 p-2 rounded-lg">{e.note}</p>}
+                        <div className="flex items-center justify-between text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
+                          <span>{new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <button
+                            onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
                       </div>
-                      {e.note && <p className="text-[11px] text-[#667085] bg-gray-50 p-2 rounded-lg">{e.note}</p>}
-                      <div className="flex items-center justify-between text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
-                        <span>{new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        <button
-                          onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
               {/* Desktop Table */}
-              <div className="hidden md:block overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto border border-[#E5E7EB] rounded-2xl">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      <th className="px-4 py-3.5 w-10">
+                        <button onClick={handleToggleSelectAll} className="cursor-pointer">
+                          {isAllSelected ? (
+                            <CheckSquare size={16} className="text-red-600" />
+                          ) : (
+                            <Square size={16} className="text-gray-400" />
+                          )}
+                        </button>
+                      </th>
                       {["Shipment", "Checkpoint Status", "Location", "Remarks", "Timestamp", "Action"].map((h) => (
-                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                        <th key={h} className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
                           {h}
                         </th>
                       ))}
@@ -757,44 +1097,57 @@ export default function AdminDataManagementPage() {
                   <tbody className="divide-y divide-[#F1F5F9]">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
+                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">
                           <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading tracking events...
                         </td>
                       </tr>
                     ) : filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No tracking events found.</td>
+                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">No tracking events found.</td>
                       </tr>
                     ) : (
-                      filteredRecords.map((e) => (
-                        <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
-                            {e.shipmentTrackingNumber}
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-50 text-purple-800 border border-purple-200">
-                              {e.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-xs text-[#172236]">
-                            {e.location}
-                          </td>
-                          <td className="px-5 py-3.5 text-[11px] text-[#667085] max-w-xs truncate">
-                            {e.note}
-                          </td>
-                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                            {new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <button
-                              onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <Trash2 size={13} /> Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                      filteredRecords.map((e) => {
+                        const key = getRecordKey(e);
+                        const isSelected = selectedIds.has(key);
+                        return (
+                          <tr key={e.id} className={`transition-colors ${isSelected ? "bg-red-50/20" : "hover:bg-gray-50/50"}`}>
+                            <td className="px-4 py-3.5">
+                              <button onClick={() => handleToggleSelectRecord(key)} className="cursor-pointer">
+                                {isSelected ? (
+                                  <CheckSquare size={16} className="text-red-600" />
+                                ) : (
+                                  <Square size={16} className="text-gray-300 hover:text-gray-500" />
+                                )}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                              {e.shipmentTrackingNumber}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-50 text-purple-800 border border-purple-200">
+                                {e.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-[#172236]">
+                              {e.location}
+                            </td>
+                            <td className="px-4 py-3.5 text-[11px] text-[#667085] max-w-xs truncate">
+                              {e.note}
+                            </td>
+                            <td className="px-4 py-3.5 text-[11px] text-[#667085]">
+                              {new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <button
+                                onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 size={13} /> Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -814,39 +1167,66 @@ export default function AdminDataManagementPage() {
                 ) : filteredRecords.length === 0 ? (
                   <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No notifications found.</div>
                 ) : (
-                  filteredRecords.map((n) => (
-                    <div key={n.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-2.5 shadow-xs">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-bold text-xs text-[#141B47]">{n.customerName} ({n.customerIdentifier})</p>
-                          <p className="text-xs font-semibold text-[#172236] mt-0.5">{n.title}</p>
+                  filteredRecords.map((n) => {
+                    const key = getRecordKey(n);
+                    const isSelected = selectedIds.has(key);
+                    return (
+                      <div
+                        key={n.id}
+                        className={`p-4 rounded-xl border bg-white space-y-2.5 shadow-xs transition-all ${
+                          isSelected ? "border-red-500 ring-1 ring-red-500 bg-red-50/10" : "border-[#E5E7EB]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5">
+                            <button onClick={() => handleToggleSelectRecord(key)} className="mt-0.5 cursor-pointer">
+                              {isSelected ? (
+                                <CheckSquare size={18} className="text-red-600" />
+                              ) : (
+                                <Square size={18} className="text-gray-300 hover:text-gray-500" />
+                              )}
+                            </button>
+                            <div>
+                              <p className="font-bold text-xs text-[#141B47]">{n.customerName} ({n.customerIdentifier})</p>
+                              <p className="text-xs font-semibold text-[#172236] mt-0.5">{n.title}</p>
+                            </div>
+                          </div>
+                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-pink-50 text-pink-800 border border-pink-200 shrink-0">
+                            {n.type}
+                          </span>
                         </div>
-                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-pink-50 text-pink-800 border border-pink-200 shrink-0">
-                          {n.type}
-                        </span>
+                        <p className="text-[11px] text-[#667085] bg-gray-50 p-2 rounded-lg">{n.message}</p>
+                        <div className="flex items-center justify-between text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
+                          <span>{new Date(n.createdAt).toLocaleDateString()}</span>
+                          <button
+                            onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-[#667085] bg-gray-50 p-2 rounded-lg">{n.message}</p>
-                      <div className="flex items-center justify-between text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
-                        <span>{new Date(n.createdAt).toLocaleDateString()}</span>
-                        <button
-                          onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
               {/* Desktop Table */}
-              <div className="hidden md:block overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto border border-[#E5E7EB] rounded-2xl">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      <th className="px-4 py-3.5 w-10">
+                        <button onClick={handleToggleSelectAll} className="cursor-pointer">
+                          {isAllSelected ? (
+                            <CheckSquare size={16} className="text-red-600" />
+                          ) : (
+                            <Square size={16} className="text-gray-400" />
+                          )}
+                        </button>
+                      </th>
                       {["Customer", "Title & Content", "Type", "Created", "Action"].map((h) => (
-                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                        <th key={h} className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
                           {h}
                         </th>
                       ))}
@@ -855,42 +1235,55 @@ export default function AdminDataManagementPage() {
                   <tbody className="divide-y divide-[#F1F5F9]">
                     {loading ? (
                       <tr>
-                        <td colSpan={5} className="py-12 text-center text-xs text-[#667085]">
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
                           <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading notifications...
                         </td>
                       </tr>
                     ) : filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-12 text-center text-xs text-[#667085]">No notifications found.</td>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No notifications found.</td>
                       </tr>
                     ) : (
-                      filteredRecords.map((n) => (
-                        <tr key={n.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-5 py-3.5 font-bold text-xs text-[#141B47]">
-                            {n.customerName} ({n.customerIdentifier})
-                          </td>
-                          <td className="px-5 py-3.5 text-xs text-[#172236] max-w-sm">
-                            <p className="font-semibold">{n.title}</p>
-                            <p className="text-[11px] text-[#667085] truncate mt-0.5">{n.message}</p>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-pink-50 text-pink-800 border border-pink-200">
-                              {n.type}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                            {new Date(n.createdAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <button
-                              onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <Trash2 size={13} /> Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                      filteredRecords.map((n) => {
+                        const key = getRecordKey(n);
+                        const isSelected = selectedIds.has(key);
+                        return (
+                          <tr key={n.id} className={`transition-colors ${isSelected ? "bg-red-50/20" : "hover:bg-gray-50/50"}`}>
+                            <td className="px-4 py-3.5">
+                              <button onClick={() => handleToggleSelectRecord(key)} className="cursor-pointer">
+                                {isSelected ? (
+                                  <CheckSquare size={16} className="text-red-600" />
+                                ) : (
+                                  <Square size={16} className="text-gray-300 hover:text-gray-500" />
+                                )}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3.5 font-bold text-xs text-[#141B47]">
+                              {n.customerName} ({n.customerIdentifier})
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-[#172236] max-w-sm">
+                              <p className="font-semibold">{n.title}</p>
+                              <p className="text-[11px] text-[#667085] truncate mt-0.5">{n.message}</p>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-pink-50 text-pink-800 border border-pink-200">
+                                {n.type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-[11px] text-[#667085]">
+                              {new Date(n.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <button
+                                onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 size={13} /> Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -1097,7 +1490,7 @@ export default function AdminDataManagementPage() {
         )}
       </AdminDrawer>
 
-      {/* ── PRE-DELETION CONFIRMATION MODAL ── */}
+      {/* ── SINGLE DELETION CONFIRMATION MODAL ── */}
       {recordToDelete && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-[#E5E7EB] space-y-5 animate-in zoom-in-95">
@@ -1148,7 +1541,7 @@ export default function AdminDataManagementPage() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-[#172236] flex items-center gap-1.5">
-                  <Lock size={13} /> Admin PIN (Optional / Extra Safeguard)
+                  <Lock size={13} /> Admin PIN (Optional Safeguard)
                 </label>
                 <input
                   type="password"
@@ -1187,6 +1580,126 @@ export default function AdminDataManagementPage() {
                     <>
                       <Trash2 size={13} />
                       <span>Confirm Delete</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BULK RESET / DELETE SELECTED CONFIRMATION MODAL ── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl border border-[#E5E7EB] space-y-5 animate-in zoom-in-95">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 border border-red-200">
+                  <AlertTriangle size={22} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-[#141B47]">Delete Selected {activeTab} Records</h3>
+                  <p className="text-xs text-red-600 font-bold mt-0.5">
+                    {selectedIds.size} record(s) selected for deletion
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowBulkDeleteModal(false);
+                  setBulkDeleteError(null);
+                  setBulkConfirmationText("");
+                  setBulkAdminPin("");
+                }}
+                className="p-1.5 rounded-lg text-[#667085] hover:text-[#141B47] hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 leading-relaxed space-y-1.5">
+              <p className="font-bold">⚠️ Destructive Administrative Action</p>
+              <p className="text-[11px]">
+                You are about to permanently remove <strong>{selectedIds.size}</strong> selected {activeTab} record(s). Dependent items (events, photos) will be cleaned up. Financial accounting records will be preserved.
+              </p>
+            </div>
+
+            {/* List of Selected Record Identifiers */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-bold text-[#141B47] uppercase tracking-wider">Target Records ({selectedIds.size})</p>
+              <div className="max-h-32 overflow-y-auto p-3 bg-[#F7F9FC] rounded-xl border border-[#E5E7EB] space-y-1 text-xs font-mono text-[#172236]">
+                {Array.from(selectedIds).map((id) => (
+                  <div key={id} className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"></span>
+                    <span>{id}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {bulkDeleteError && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700">
+                {bulkDeleteError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#172236]">
+                  Type <strong>DELETE</strong> to confirm:
+                </label>
+                <input
+                  type="text"
+                  value={bulkConfirmationText}
+                  onChange={(e) => setBulkConfirmationText(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full px-4 h-11 rounded-xl text-xs font-mono font-bold border border-[#E5E7EB] bg-white focus:outline-hidden focus:border-red-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#172236] flex items-center gap-1.5">
+                  <Lock size={13} /> Admin PIN (Optional Safeguard)
+                </label>
+                <input
+                  type="password"
+                  maxLength={8}
+                  value={bulkAdminPin}
+                  onChange={(e) => setBulkAdminPin(e.target.value)}
+                  placeholder="Enter PIN if required"
+                  className="w-full px-4 h-11 rounded-xl text-xs font-mono tracking-widest border border-[#E5E7EB] bg-white focus:outline-hidden focus:border-red-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBulkDeleteModal(false);
+                    setBulkDeleteError(null);
+                    setBulkConfirmationText("");
+                    setBulkAdminPin("");
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold border border-[#E5E7EB] bg-white text-[#172236] hover:bg-gray-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBulkDelete}
+                  disabled={bulkConfirmationText.trim().toUpperCase() !== "DELETE" || isBulkDeleting}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer"
+                >
+                  {isBulkDeleting ? (
+                    <>
+                      <RefreshCw size={13} className="animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={13} />
+                      <span>Delete ({selectedIds.size})</span>
                     </>
                   )}
                 </button>
