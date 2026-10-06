@@ -23,7 +23,7 @@ export function BrandProvider({
   children: React.ReactNode;
   initialBranding?: ResolvedBrandSettings | null;
 }) {
-  const [branding, setBranding] = useState<ResolvedBrandSettings | null>(initialBranding || null);
+  const [branding, setBranding] = useState<ResolvedBrandSettings | null>(initialBranding || (DEFAULT_BRANDING as ResolvedBrandSettings));
 
   const refreshBranding = useCallback(async () => {
     try {

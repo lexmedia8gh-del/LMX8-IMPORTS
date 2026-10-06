@@ -31,22 +31,20 @@ export function BrandLogo({
 }: BrandLogoProps) {
   // Try getting branding from context
   const context = useBrandSettings();
-  const [localBranding, setLocalBranding] = useState<ResolvedBrandSettings | null>(null);
+  const [localBranding, setLocalBranding] = useState<ResolvedBrandSettings | null>(DEFAULT_BRANDING as ResolvedBrandSettings);
 
   // If used outside of BrandProvider, load branding locally and listen for updates
   useEffect(() => {
-    if (!context?.branding && !propBranding) {
+    getBrandSettingsAction().then(setLocalBranding).catch(() => {});
+
+    const handleUpdate = () => {
       getBrandSettingsAction().then(setLocalBranding).catch(() => {});
+    };
+    window.addEventListener("lmx8-branding-updated", handleUpdate);
+    return () => window.removeEventListener("lmx8-branding-updated", handleUpdate);
+  }, []);
 
-      const handleUpdate = () => {
-        getBrandSettingsAction().then(setLocalBranding).catch(() => {});
-      };
-      window.addEventListener("lmx8-branding-updated", handleUpdate);
-      return () => window.removeEventListener("lmx8-branding-updated", handleUpdate);
-    }
-  }, [context?.branding, propBranding]);
-
-  const activeBranding = propBranding || context?.branding || localBranding;
+  const activeBranding = propBranding || context?.branding || localBranding || DEFAULT_BRANDING;
   const businessName = activeBranding?.businessName || DEFAULT_BRANDING.businessName;
   const altText = alt || `${businessName} Logo`;
 
