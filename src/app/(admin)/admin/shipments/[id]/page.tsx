@@ -6,11 +6,13 @@ import {
   updateShipmentStatusAction,
   initiateShipmentPhotoUploadAction, confirmShipmentPhotoUploadAction,
   removeShipmentPhotoAction,
+  sendShippingFeeReminderAction,
+  getShipmentEmailLogsAction,
 } from "@/app/actions";
 import { setShippingFeeAction } from "@/app/actions/admin-payments";
 import { Shipment } from "@/lib/db";
 import { ShipmentStatusBadge, STATUS_ORDER, ShipmentStatus, ShipmentTimeline, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
-import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign, Plus } from "lucide-react";
+import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign, Plus, Mail, Send, CheckCircle2 } from "lucide-react";
 import { AddTrackingEventDrawer } from "@/components/drawers/add-tracking-event-drawer";
 import Link from "next/link";
 
@@ -39,20 +41,49 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
   const [updatingFee, setUpdatingFee] = useState(false);
   const [feeMessage, setFeeMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Email notifications state
+  const [emailLogs, setEmailLogs] = useState<any[]>([]);
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [reminderFeedback, setReminderFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const found = await getShipmentByIdAction(id);
+      const [found, logs] = await Promise.all([
+        getShipmentByIdAction(id),
+        getShipmentEmailLogsAction(id).catch(() => []),
+      ]);
       if (found) {
         setShipment(found);
         setNewStatus(found.status);
         setFeeInput(found.fee > 0 ? String(found.fee) : "");
       }
+      setEmailLogs(logs || []);
     } catch (e) {
       console.error(e);
     }
     setLoading(false);
   }, [id]);
+
+  const handleSendReminder = async () => {
+    if (!shipment) return;
+    setSendingReminder(true);
+    setReminderFeedback(null);
+    try {
+      const res = await sendShippingFeeReminderAction(id);
+      if (res?.error) {
+        setReminderFeedback({ type: "error", text: res.error });
+      } else {
+        setReminderFeedback({ type: "success", text: res?.message || "Reminder sent successfully." });
+        const freshLogs = await getShipmentEmailLogsAction(id).catch(() => []);
+        setEmailLogs(freshLogs);
+      }
+    } catch (err: any) {
+      setReminderFeedback({ type: "error", text: err?.message || "Failed to send reminder." });
+    } finally {
+      setSendingReminder(false);
+    }
+  };
 
   const handleUpdateFee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,9 +251,22 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
 
             {/* Shipping fee editor */}
             <form onSubmit={handleUpdateFee} className="mt-6 pt-5 border-t border-[#F1F5F9] space-y-3">
-              <h3 className="text-sm font-semibold text-[#172236] flex items-center gap-2">
-                <DollarSign size={15} className="text-[#667085]" /> Set / Update Shipping Fee
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-[#172236] flex items-center gap-2">
+                  <DollarSign size={15} className="text-[#667085]" /> Set / Update Shipping Fee
+                </h3>
+                {shipment.fee > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSendReminder}
+                    disabled={sendingReminder}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#141B47] text-white hover:bg-[#202B6D] transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <Mail size={13} />
+                    {sendingReminder ? "Sending..." : "Send Fee Statement Email"}
+                  </button>
+                )}
+              </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#667085]">GHS</span>
@@ -249,6 +293,11 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
               {feeMessage && (
                 <p className={`text-xs font-medium ${feeMessage.type === "success" ? "text-green-600" : "text-red-600"}`}>
                   {feeMessage.text}
+                </p>
+              )}
+              {reminderFeedback && (
+                <p className={`text-xs font-medium ${reminderFeedback.type === "success" ? "text-emerald-600" : "text-amber-600"}`}>
+                  {reminderFeedback.text}
                 </p>
               )}
             </form>
@@ -403,6 +452,50 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
             <div className="max-h-[400px] overflow-y-auto pr-2">
               <ShipmentTimeline currentStatus={shipment.status} events={shipment.trackingEvents} adminMode />
             </div>
+          </div>
+
+          {/* Email Notification History */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB]">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-[#172236] flex items-center gap-2">
+                <Mail size={15} className="text-[#141B47]" /> Brevo Email History
+              </h2>
+              <span className="text-[11px] font-semibold text-[#667085]">
+                {emailLogs.length} event(s)
+              </span>
+            </div>
+            
+            {emailLogs.length === 0 ? (
+              <p className="text-xs text-[#667085] py-2">No email notifications sent for this shipment yet.</p>
+            ) : (
+              <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                {emailLogs.map((log) => (
+                  <div key={log.id} className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-[#141B47] uppercase text-[10px] tracking-wider">
+                        {log.eventType.replace(/_/g, " ")}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        log.status === "SENT"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : log.status === "FAILED"
+                          ? "bg-red-50 text-red-700 border border-red-200"
+                          : "bg-amber-50 text-amber-700 border border-amber-200"
+                      }`}>
+                        {log.status}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#64748B] truncate">To: {log.recipient}</p>
+                    <p className="text-[10px] text-[#94A3B8]">
+                      {log.sentAt ? `Sent on ${new Date(log.sentAt).toLocaleString()}` : new Date(log.createdAt).toLocaleString()}
+                    </p>
+                    {log.errorMessage && (
+                      <p className="text-[10px] text-red-600 font-medium">{log.errorMessage}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

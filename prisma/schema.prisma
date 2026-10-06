@@ -69,6 +69,7 @@ model Customer {
   sourcingRequests   SourcingRequest[]
   payments           Payment[]
   notifications      Notification[]
+  emailLogs          EmailLog[]
 }
 
 model AdminUser {
@@ -103,6 +104,7 @@ model Batch {
   updatedAt      DateTime   @updatedAt
 
   shipments      Shipment[]
+  emailLogs      EmailLog[]
 }
 
 model Shipment {
@@ -129,6 +131,7 @@ model Shipment {
   trackingEvents   TrackingEvent[]
   photos           ShipmentPhoto[]
   payments         Payment[]
+  emailLogs        EmailLog[]
 
   @@index([customerId])
   @@index([batchId])
@@ -325,5 +328,40 @@ model BrandSettings {
   invoiceStamp       String?  // Storage path or data URL
   updatedAt          DateTime @updatedAt
   updatedBy          String?  // Admin User ID
+}
+
+enum EmailEventStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model EmailLog {
+  id                String           @id @default(uuid())
+  customerId        String
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  shipmentId        String?
+  shipment          Shipment?        @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  batchId           String?
+  batch             Batch?           @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  eventType         String           // SHIPMENT_CREATED, SHIPPED, ARRIVED_AT_DESTINATION, CUSTOMS_CLEARANCE, OUT_FOR_DELIVERY, DELIVERED, SHIPPING_FEE_REMINDER
+  status            EmailEventStatus @default(PENDING)
+  recipient         String
+  subject           String
+  providerMessageId String?
+  idempotencyKey    String           @unique
+  sentAt            DateTime?
+  failedAt          DateTime?
+  errorMessage      String?
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([customerId])
+  @@index([shipmentId])
+  @@index([eventType])
+  @@index([status])
+  @@index([createdAt])
 }
 

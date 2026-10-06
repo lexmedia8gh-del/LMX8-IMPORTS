@@ -12,6 +12,11 @@ import {
   deleteFileFromStorage,
   STORAGE_BUCKET,
 } from "@/lib/storage";
+import {
+  sendShipmentMilestoneEmail,
+  sendShippingFeeReminderEmail,
+  isBrevoEmailMilestone,
+} from "@/lib/email/brevo";
 
 // Helper to map Prisma Shipment to UI Shipment with temporary signed URLs
 async function mapPrismaShipment(s: any): Promise<UIShipment> {
@@ -269,6 +274,14 @@ export async function createShipmentAction(data: any): Promise<UIShipment> {
     },
   });
 
+  // Milestone 1 / Initial Milestone: Trigger Brevo email if status is an email milestone
+  if (isBrevoEmailMilestone(prismaStatus)) {
+    sendShipmentMilestoneEmail({
+      shipmentId: shipment.id,
+      milestone: prismaStatus,
+    }).catch((err) => console.error("[Brevo] Error sending initial milestone email:", err));
+  }
+
   return mapPrismaShipment(shipment);
 }
 
@@ -335,6 +348,19 @@ export async function updateShipmentStatusAction(
 ): Promise<UIShipment> {
   const admin = await requireAdminSession();
 
+  // 1. Fetch current status before updating to detect actual status transitions
+  const existing = await prisma.shipment.findUnique({
+    where: { trackingNumber: id },
+  });
+
+  if (!existing) {
+    throw new Error(`Shipment with tracking number ${id} not found.`);
+  }
+
+  const previousStatus = existing.status;
+  const isStatusChanged = previousStatus !== status;
+
+  // 2. Commit shipment update and tracking event to database
   const shipment = await prisma.shipment.update({
     where: { trackingNumber: id },
     data: {
@@ -351,7 +377,7 @@ export async function updateShipmentStatusAction(
     include: { trackingEvents: true, photos: true, customer: true, batch: true },
   });
 
-  // Fire-and-forget notification — don't break status update if this fails
+  // 3. Fire in-app customer notification on status change
   const statusMessages: Partial<Record<ShipmentStatus, { title: string; message: string }>> = {
     PREPARING_SHIPMENT:     { title: "Shipment Update",    message: `Your shipment ${id} is being prepared for international shipping.` },
     SHIPPED:                { title: "Shipment Departed",  message: `Your shipment ${id} has departed China and is on its way to Ghana.` },
@@ -364,7 +390,7 @@ export async function updateShipmentStatusAction(
   };
 
   const notifData = statusMessages[status];
-  if (notifData) {
+  if (notifData && isStatusChanged) {
     const { createNotificationInternal } = await import("@/app/actions/notifications");
     createNotificationInternal({
       customerId: shipment.customerId,
@@ -375,6 +401,17 @@ export async function updateShipmentStatusAction(
       idempotencyKey: `shipment-status-${id}-${status}`,
       shipmentId: shipment.id,
     }).catch(console.error);
+  }
+
+  // 4. Brevo Email Milestone Dispatch
+  // Only the 6 defined milestones trigger Brevo emails (PREPARING_SHIPMENT and IN_TRANSIT do NOT)
+  if (isStatusChanged && isBrevoEmailMilestone(status)) {
+    sendShipmentMilestoneEmail({
+      shipmentId: shipment.id,
+      milestone: status,
+    }).catch((err) => {
+      console.error(`[Brevo] Error dispatching milestone email for ${id} (${status}):`, err);
+    });
   }
 
   return mapPrismaShipment(shipment);
@@ -736,6 +773,17 @@ export async function updateBatchStatusAction(
         idempotencyKey: `batch-status-${batch.id}-${shipment.id}-${newStatus}`,
         shipmentId: shipment.id,
       }).catch(console.error);
+
+      // Brevo Email Milestone Dispatch for batch status transition
+      // Only 6 milestones trigger emails; PREPARING_SHIPMENT and IN_TRANSIT do NOT.
+      if (isBrevoEmailMilestone(normalizedStage)) {
+        sendShipmentMilestoneEmail({
+          shipmentId: shipment.id,
+          milestone: normalizedStage,
+        }).catch((err) => {
+          console.error(`[Brevo] Error sending batch milestone email for shipment ${shipment.trackingNumber}:`, err);
+        });
+      }
     }
   }
 
@@ -949,6 +997,79 @@ export async function getCustomersAction() {
     }));
   } catch (err) {
     console.warn("[Action] getCustomersAction fallback triggered:", err);
+    return [];
+  }
+}
+
+/**
+ * Admin action to send a shipping fee statement / payment reminder email via Brevo.
+ */
+export async function sendShippingFeeReminderAction(trackingNumber: string) {
+  const admin = await requireAdminSession();
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { trackingNumber },
+  });
+
+  if (!shipment) {
+    return { error: "Shipment not found." };
+  }
+
+  const result = await sendShippingFeeReminderEmail({
+    shipmentId: shipment.id,
+    force: true, // Admin manual action bypasses the 3-day frequency gate
+  });
+
+  if (!result.success) {
+    return { error: result.error || "Failed to send shipping fee reminder." };
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      action: "SHIPPING_FEE_REMINDER_SENT",
+      entityType: "Shipment",
+      entityId: shipment.id,
+      description: `Shipping fee statement email sent for ${trackingNumber} by ${admin.name || admin.email}`,
+      adminId: admin.id,
+    },
+  });
+
+  return {
+    success: true,
+    message: result.skipped ? `Reminder skipped: ${result.reason}` : "Shipping fee reminder email sent successfully.",
+  };
+}
+
+/**
+ * Admin action to fetch email logs for a shipment.
+ */
+export async function getShipmentEmailLogsAction(trackingNumber: string) {
+  await requireAdminSession();
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { trackingNumber },
+  });
+
+  if (!shipment) return [];
+
+  try {
+    const logs = await prisma.emailLog.findMany({
+      where: { shipmentId: shipment.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return logs.map((l) => ({
+      id: l.id,
+      eventType: l.eventType,
+      status: l.status,
+      recipient: l.recipient,
+      subject: l.subject,
+      sentAt: l.sentAt ? l.sentAt.toISOString() : null,
+      failedAt: l.failedAt ? l.failedAt.toISOString() : null,
+      errorMessage: l.errorMessage,
+      createdAt: l.createdAt.toISOString(),
+    }));
+  } catch {
     return [];
   }
 }

@@ -56,6 +56,8 @@ export async function createSourcingRequestAction(data: {
   const additionalInstructionsClean = data.additionalInstructions?.trim();
   const creditCost = 1;
 
+  await ensureCreditAccountSchema();
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       // 1. Idempotency check — look up the key first (inside the transaction)
@@ -224,6 +226,8 @@ export async function adjustCustomerCreditsAction(customerId: string, amount: nu
   if (!reason || reason.trim().length === 0) {
     return { error: "Adjustment reason is required." };
   }
+
+  await ensureCreditAccountSchema();
 
   try {
     const result = await prisma.$transaction(async (tx) => {
