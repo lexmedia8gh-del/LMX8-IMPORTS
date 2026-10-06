@@ -878,13 +878,16 @@ export async function closeBatchAction(batchNumber: string) {
 
 export async function getCurrentCustomerAction() {
   const customer = await requireCustomerSession();
+  const creditAccount = await prisma.creditAccount.findUnique({
+    where: { customerId: customer.id },
+  });
   return {
     id: customer.customerIdentifier,
     internalId: customer.id,
     name: customer.name,
     email: customer.email,
     phone: customer.phone,
-    credits: 0,
+    credits: creditAccount?.balance ?? 0,
   };
 }
 

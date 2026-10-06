@@ -70,20 +70,32 @@ export async function createSourcingRequestAction(data: {
       }
 
       // 2. Atomic credit deduction with DB-level concurrency lock:
-      //    UPDATE only if balance >= cost, return nothing if insufficient.
-      const updatedAccounts = await tx.$queryRaw<any[]>`
-        UPDATE "CreditAccount"
-        SET balance = balance - ${creditCost}, "updatedAt" = NOW()
-        WHERE "customerId" = ${customer.id} AND balance >= ${creditCost}
-        RETURNING id, balance;
+      //    We select and lock the CreditAccount row FOR UPDATE.
+      const accounts = await tx.$queryRaw<any[]>`
+        SELECT id, balance, "creditsUsed", "creditsRemaining" FROM "CreditAccount"
+        WHERE "customerId" = ${customer.id}
+        FOR UPDATE
       `;
 
-      if (!updatedAccounts || updatedAccounts.length === 0) {
+      if (accounts.length === 0 || accounts[0].balance < creditCost) {
         throw new Error("INSUFFICIENT_CREDITS");
       }
 
-      const balanceAfter = updatedAccounts[0].balance;
-      const balanceBefore = balanceAfter + creditCost;
+      const account = accounts[0];
+      const balanceBefore = account.balance;
+      const balanceAfter = balanceBefore - creditCost;
+      const newCreditsUsed = (account.creditsUsed || 0) + creditCost;
+      const newCreditsRemaining = balanceAfter;
+
+      await tx.creditAccount.update({
+        where: { id: account.id },
+        data: {
+          balance: balanceAfter,
+          creditsUsed: newCreditsUsed,
+          creditsRemaining: newCreditsRemaining,
+          lastActivityAt: new Date(),
+        },
+      });
 
       // 3. Generate request number
       const requestNumber = `SRC-${Math.floor(Math.random() * 900000) + 100000}`;
@@ -183,6 +195,13 @@ export async function getCustomerCreditAccountAction() {
 
   return {
     balance: account?.balance ?? 0,
+    selectedPackage: account?.selectedPackage ?? "None",
+    packagePrice: account?.packagePrice ?? 0.0,
+    creditsPurchased: account?.creditsPurchased ?? 0,
+    creditsUsed: account?.creditsUsed ?? 0,
+    creditsRemaining: account?.creditsRemaining ?? (account?.balance ?? 0),
+    lastActivityAt: account?.lastActivityAt ? account.lastActivityAt.toISOString() : null,
+    createdAt: account?.createdAt ? account.createdAt.toISOString() : null,
     transactions: transactions.map((t) => ({
       id: t.id,
       type: t.type,
@@ -218,31 +237,39 @@ export async function adjustCustomerCreditsAction(customerId: string, amount: nu
       }
 
       // 1. Atomic adjustment
-      let queryResult;
-      if (amount > 0) {
-        queryResult = await tx.$queryRaw<any[]>`
-          UPDATE "CreditAccount"
-          SET balance = balance + ${amount}, "updatedAt" = NOW()
-          WHERE id = ${creditAccount.id}
-          RETURNING id, balance;
-        `;
-      } else {
-        // Negative amount: ensure we don't drop below 0
-        const absAmount = Math.abs(amount);
-        queryResult = await tx.$queryRaw<any[]>`
-          UPDATE "CreditAccount"
-          SET balance = balance - ${absAmount}, "updatedAt" = NOW()
-          WHERE id = ${creditAccount.id} AND balance >= ${absAmount}
-          RETURNING id, balance;
-        `;
-        
-        if (!queryResult || queryResult.length === 0) {
-          throw new Error("INSUFFICIENT_CREDITS");
-        }
+      // Lock the row FOR UPDATE
+      const accounts = await tx.$queryRaw<any[]>`
+        SELECT id, balance, "creditsPurchased", "creditsUsed", "creditsRemaining" FROM "CreditAccount"
+        WHERE id = ${creditAccount.id}
+        FOR UPDATE
+      `;
+
+      if (accounts.length === 0) {
+        throw new Error("CREDIT_ACCOUNT_NOT_FOUND");
       }
 
-      const balanceAfter = queryResult[0].balance;
-      const balanceBefore = balanceAfter - amount;
+      const dbAccount = accounts[0];
+      const balanceBefore = dbAccount.balance;
+      const balanceAfter = balanceBefore + amount;
+
+      if (balanceAfter < 0) {
+        throw new Error("INSUFFICIENT_CREDITS");
+      }
+
+      const newCreditsPurchased = amount > 0 ? (dbAccount.creditsPurchased || 0) + amount : (dbAccount.creditsPurchased || 0);
+      const newCreditsUsed = amount < 0 ? (dbAccount.creditsUsed || 0) + Math.abs(amount) : (dbAccount.creditsUsed || 0);
+      const newCreditsRemaining = balanceAfter;
+
+      await tx.creditAccount.update({
+        where: { id: creditAccount.id },
+        data: {
+          balance: balanceAfter,
+          creditsPurchased: newCreditsPurchased,
+          creditsUsed: newCreditsUsed,
+          creditsRemaining: newCreditsRemaining,
+          lastActivityAt: new Date(),
+        },
+      });
 
       // 2. Create Ledger Transaction
       const transaction = await tx.creditTransaction.create({
@@ -285,4 +312,156 @@ export async function adjustCustomerCreditsAction(customerId: string, amount: nu
     console.error("[Admin Credit Adjustment Error]", err);
     return { error: "An unexpected error occurred while adjusting credits." };
   }
+}
+
+export async function getCustomerRecentActivitiesAction() {
+  const customer = await requireCustomerSession();
+
+  // 1. Fetch Credit Transactions
+  const creditTx = await prisma.creditTransaction.findMany({
+    where: { customerId: customer.id },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  // 2. Fetch Shipments and their tracking events
+  const shipments = await prisma.shipment.findMany({
+    where: { customerId: customer.id },
+    include: { trackingEvents: { orderBy: { timestamp: "desc" } } },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  // 3. Fetch Payments
+  const payments = await prisma.payment.findMany({
+    where: { customerId: customer.id },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  // 4. Fetch Customer record to get creation date
+  const customerRecord = await prisma.customer.findUnique({
+    where: { id: customer.id },
+  });
+
+  // Combine into unified activity feed
+  type ActivityItem = {
+    id: string;
+    type: "ACCOUNT_CREATED" | "PACKAGE_PURCHASED" | "CREDITS_ADDED" | "CREDITS_USED" | "SHIPMENT_CREATED" | "SHIPMENT_UPDATED" | "SHIPMENT_DELIVERED" | "PAYMENT_SUCCESSFUL" | "PAYMENT_FAILED";
+    title: string;
+    description: string;
+    timestamp: Date;
+    icon: string;
+  };
+
+  const activities: ActivityItem[] = [];
+
+  // Account Created
+  if (customerRecord) {
+    activities.push({
+      id: `acc-created-${customerRecord.id}`,
+      type: "ACCOUNT_CREATED",
+      title: "Account Created",
+      description: "Customer account created and activated.",
+      timestamp: customerRecord.createdAt,
+      icon: "👤",
+    });
+  }
+
+  // Credit Transactions
+  for (const tx of creditTx) {
+    if (tx.type === "PURCHASE") {
+      activities.push({
+        id: `credit-tx-${tx.id}`,
+        type: "PACKAGE_PURCHASED",
+        title: "Credits Added",
+        description: tx.description || `${tx.amount} credits added`,
+        timestamp: tx.createdAt,
+        icon: "💳",
+      });
+    } else if (tx.type === "SOURCING_REQUEST") {
+      activities.push({
+        id: `credit-tx-${tx.id}`,
+        type: "CREDITS_USED",
+        title: "Credits Used",
+        description: tx.description || `${Math.abs(tx.amount)} credits used for sourcing`,
+        timestamp: tx.createdAt,
+        icon: "📦",
+      });
+    } else {
+      // Admin adjustment or other
+      activities.push({
+        id: `credit-tx-${tx.id}`,
+        type: tx.amount > 0 ? "CREDITS_ADDED" : "CREDITS_USED",
+        title: tx.amount > 0 ? "Credits Added" : "Credits Used",
+        description: tx.description || `Adjusted credits by ${tx.amount}`,
+        timestamp: tx.createdAt,
+        icon: tx.amount > 0 ? "💳" : "📋",
+      });
+    }
+  }
+
+  // Shipment Created
+  for (const s of shipments) {
+    activities.push({
+      id: `shipment-created-${s.id}`,
+      type: "SHIPMENT_CREATED",
+      title: "Shipment Created",
+      description: `Shipment #${s.trackingNumber} — ${s.description}`,
+      timestamp: s.createdAt,
+      icon: "📦",
+    });
+
+    // Tracking Events as updates
+    for (const e of s.trackingEvents) {
+      if (e.status === "SHIPMENT_CREATED" && Math.abs(e.timestamp.getTime() - s.createdAt.getTime()) < 1000) {
+        continue;
+      }
+      
+      const isDelivered = e.status === "DELIVERED";
+      activities.push({
+        id: `tracking-event-${e.id}`,
+        type: isDelivered ? "SHIPMENT_DELIVERED" : "SHIPMENT_UPDATED",
+        title: isDelivered ? "Shipment Delivered" : "Shipment Updated",
+        description: `Shipment #${s.trackingNumber} — ${e.note || e.status.replace(/_/g, " ")}`,
+        timestamp: e.timestamp,
+        icon: isDelivered ? "✅" : "📦",
+      });
+    }
+  }
+
+  // Payments
+  for (const p of payments) {
+    if (p.status === "SUCCESS") {
+      activities.push({
+        id: `payment-success-${p.id}`,
+        type: "PAYMENT_SUCCESSFUL",
+        title: "Payment Successful",
+        description: `${p.type === "CREDIT_PURCHASE" ? "Credit Purchase" : "Shipping Fee"} — GH₵${p.amount} paid`,
+        timestamp: p.createdAt,
+        icon: "💰",
+      });
+    } else if (p.status === "FAILED") {
+      activities.push({
+        id: `payment-fail-${p.id}`,
+        type: "PAYMENT_FAILED",
+        title: "Payment Failed",
+        description: `Failed payment reference ${p.reference} of GH₵${p.amount}`,
+        timestamp: p.createdAt,
+        icon: "⚠️",
+      });
+    }
+  }
+
+  return activities
+    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+    .slice(0, 8)
+    .map(a => ({
+      id: a.id,
+      type: a.type,
+      title: a.title,
+      description: a.description,
+      timestamp: a.timestamp.toISOString(),
+      icon: a.icon,
+    }));
 }

@@ -178,13 +178,19 @@ model ShipmentPhoto {
 }
 
 model CreditAccount {
-  id         String   @id @default(uuid())
-  balance    Int      @default(0) // Balance in credits
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id               String    @id @default(uuid())
+  balance          Int       @default(0) // Balance in credits
+  selectedPackage  String?   // Starter, Standard, Premium
+  packagePrice     Float     @default(0.0) // Package price in GHS
+  creditsPurchased Int       @default(0)   // Total credits purchased
+  creditsUsed      Int       @default(0)   // Total credits used
+  creditsRemaining Int       @default(0)   // Credits remaining (matches balance)
+  lastActivityAt   DateTime? // Last credit activity date
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  customerId String   @unique
-  customer   Customer @relation(fields: [customerId], references: [id])
+  customerId       String    @unique
+  customer         Customer  @relation(fields: [customerId], references: [id])
 }
 
 model CreditTransaction {

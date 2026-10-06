@@ -2,10 +2,16 @@ import { formatCurrency } from "@/lib/mock-data";
 import { CheckCircle2, History, ArrowRightLeft } from "lucide-react";
 import { getCustomerCreditAccountAction } from "@/app/actions/sourcing-credits";
 import { CreditPurchaseButton } from "@/components/credit-purchase-button";
-import type { CreditPackageId } from "@/lib/credit-packages";
+import { CREDIT_PACKAGES, type CreditPackageId } from "@/lib/credit-packages";
 
 export default async function AdminCreditsPortalPage() {
   const { balance, transactions } = await getCustomerCreditAccountAction();
+
+  const packagesList = [
+    { id: "starter",  ...CREDIT_PACKAGES.starter,  popular: false },
+    { id: "standard", ...CREDIT_PACKAGES.standard, popular: true  },
+    { id: "premium",  ...CREDIT_PACKAGES.premium,  popular: false },
+  ] as const;
 
   return (
     <div className="space-y-7">
@@ -21,11 +27,7 @@ export default async function AdminCreditsPortalPage() {
       </div>
 
       <div className="grid md:grid-cols-3 gap-5">
-        {[
-          { id: "starter", name: "Starter",  credits: 1,  price: 50,  popular: false },
-          { id: "standard", name: "Standard", credits: 5,  price: 225, popular: true  },
-          { id: "premium", name: "Premium",  credits: 10, price: 400, popular: false },
-        ].map(pkg => (
+        {packagesList.map(pkg => (
           <div
             key={pkg.name}
             className={`bg-white rounded-2xl p-6 border transition-all ${pkg.popular ? "border-[#FFB800] shadow-lg ring-2 ring-[#FFB800]/20 scale-[1.02]" : "border-[#E5E7EB] hover:shadow-md"}`}

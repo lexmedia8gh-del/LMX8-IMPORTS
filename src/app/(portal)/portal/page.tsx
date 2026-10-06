@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCurrentCustomerAction, getShipmentsAction } from "@/app/actions";
-import { getNotificationsAction } from "@/app/actions/notifications";
 import { getOutstandingShipmentsAction } from "@/app/actions/customer-payments";
+import { getCustomerCreditAccountAction, getCustomerRecentActivitiesAction } from "@/app/actions/sourcing-credits";
 import { ShipmentStatusBadge } from "@/components/shipment-status";
 import {
-  Truck, CreditCard, Package, Wallet, Bell, Info, PackageX
+  Truck, CreditCard, Package, Wallet, Bell, Info, PackageX, Award, BarChart2, PlusCircle
 } from "lucide-react";
 import { Shipment } from "@/lib/db";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,16 +16,18 @@ function formatCurrencyLocal(amount: number) {
   return `GHS ${amount.toLocaleString("en-GH", { minimumFractionDigits: 2 })}`;
 }
 
-type NotifItem = { id: string; title: string; message: string; read: boolean; createdAt: string };
-
 function timeAgo(iso: string) {
+  if (!iso) return "Today";
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "yesterday";
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function getGreeting() {
@@ -38,11 +40,30 @@ function getGreeting() {
 type OutstandingShipment = { id: string; fee: number; paid: number; outstanding: number; isPaid: boolean };
 type CustomerType = { id: string; name: string; email: string; phone: string; credits: number; internalId: string };
 
+type ActivityItem = {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  icon: string;
+};
+
+type CreditAccountDetails = {
+  balance: number;
+  selectedPackage: string;
+  packagePrice: number;
+  creditsPurchased: number;
+  creditsUsed: number;
+  creditsRemaining: number;
+};
+
 export default function CustomerDashboard() {
   const [customer, setCustomer] = useState<CustomerType | null>(null);
   const [myShipments, setMyShipments] = useState<Shipment[]>([]);
   const [outstanding, setOutstanding] = useState<OutstandingShipment[]>([]);
-  const [notifications, setNotifications] = useState<NotifItem[]>([]);
+  const [creditAccount, setCreditAccount] = useState<CreditAccountDetails | null>(null);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -50,12 +71,14 @@ export default function CustomerDashboard() {
       getCurrentCustomerAction(),
       getShipmentsAction(),
       getOutstandingShipmentsAction().catch(() => []),
-      getNotificationsAction().catch(() => []),
-    ]).then(([cust, shipments, outst, notifs]) => {
+      getCustomerCreditAccountAction().catch(() => null),
+      getCustomerRecentActivitiesAction().catch(() => []),
+    ]).then(([cust, shipments, outst, credits, acts]) => {
       setCustomer(cust as CustomerType);
       setMyShipments(shipments);
       setOutstanding((outst as OutstandingShipment[]).filter((s: OutstandingShipment) => !s.isPaid));
-      setNotifications(notifs);
+      setCreditAccount(credits as any);
+      setActivities(acts as ActivityItem[]);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -90,7 +113,7 @@ export default function CustomerDashboard() {
           {getGreeting()}, {customer?.name?.split(" ")[0] || "Customer"}
         </h1>
         <p className="text-sm" style={{ color: "#667085" }}>
-          Here is what is happening with your orders.
+          Here is what is happening with your account and shipments.
         </p>
       </div>
 
@@ -144,66 +167,120 @@ export default function CustomerDashboard() {
         </section>
       )}
 
+      {/* Main Grid: Left Side Credits & Balance, Right Side Recent Activity */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Payment Summary */}
-        <section className="space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider" style={{ color: "#94A3B8" }}>Payment Summary</h2>
-          <div className="bg-white rounded-2xl p-6 shadow-sm h-full flex flex-col justify-center" style={{ border: "1px solid #E5E7EB" }}>
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: pendingTotal > 0 ? "#FEF2F2" : "#F0FDF4" }}>
-                <Wallet size={20} style={{ color: pendingTotal > 0 ? "#EF4444" : "#10B981" }} />
+        
+        {/* Left Column: Sourcing Credits Card + Payment Card */}
+        <div className="space-y-6">
+          {/* Sourcing Credits Card */}
+          <section className="space-y-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider" style={{ color: "#94A3B8" }}>Sourcing Credits</h2>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB] space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#F0FDF4]">
+                  <Wallet size={20} className="text-[#10B981]" />
+                </div>
+                <Link
+                  href="/portal/credits"
+                  className="px-3 py-1.5 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-xs font-bold rounded-lg text-[#0B1F44] transition-colors flex items-center gap-1.5"
+                >
+                  <PlusCircle size={14} /> Buy Credits
+                </Link>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-[#667085]">Current Credit Balance</p>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-3xl font-black text-[#0B1F44]">{creditAccount?.balance ?? 0}</span>
+                  <span className="text-xs font-bold text-[#10B981] bg-[#H0FDF4] px-2 py-0.5 rounded">Credits</span>
+                </div>
+              </div>
+
+              {/* Package stats grid */}
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-[#F1F5F9]">
+                <div>
+                  <p className="text-[10px] font-bold text-[#94A3B8] uppercase">Active Package</p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <Award size={14} className="text-[#F2901F]" />
+                    <span className="text-sm font-bold text-[#172236]">{creditAccount?.selectedPackage || "None"}</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-[#94A3B8] uppercase">Credits Remaining</p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <BarChart2 size={14} className="text-[#10B981]" />
+                    <span className="text-sm font-bold text-[#172236]">{(creditAccount?.creditsRemaining ?? creditAccount?.balance) ?? 0} remaining</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-[#94A3B8] uppercase">Purchased Credits</p>
+                  <span className="text-sm font-semibold text-[#475569]">{creditAccount?.creditsPurchased ?? 0} total</span>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-[#94A3B8] uppercase">Used Credits</p>
+                  <span className="text-sm font-semibold text-[#475569]">{creditAccount?.creditsUsed ?? 0} used</span>
+                </div>
               </div>
             </div>
-            <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#667085" }}>Outstanding Balance</p>
-            <p className="text-2xl md:text-3xl font-black mt-1 mb-4" style={{ color: "#0B1F44" }}>
-              {formatCurrencyLocal(pendingTotal)}
-            </p>
-            {pendingTotal > 0 ? (
-               <Link href="/portal/payments" className="w-full text-center px-4 py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 shadow-sm" style={{ background: "#EF4444", color: "white" }}>
-                 Make Payment
-               </Link>
-            ) : (
-               <p className="text-sm font-medium flex items-center gap-2" style={{ color: "#10B981" }}>All fees are fully paid.</p>
-            )}
-          </div>
-        </section>
+          </section>
 
-        {/* Recent Activity */}
-        <section className="space-y-3">
+          {/* Payment Summary */}
+          <section className="space-y-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider" style={{ color: "#94A3B8" }}>Payment Summary</h2>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB]">
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: pendingTotal > 0 ? "#FEF2F2" : "#F0FDF4" }}>
+                  <CreditCard size={20} style={{ color: pendingTotal > 0 ? "#EF4444" : "#10B981" }} />
+                </div>
+              </div>
+              <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#667085" }}>Outstanding Balance</p>
+              <p className="text-2xl md:text-3xl font-black mt-1 mb-4" style={{ color: "#0B1F44" }}>
+                {formatCurrencyLocal(pendingTotal)}
+              </p>
+              {pendingTotal > 0 ? (
+                 <Link href="/portal/payments" className="w-full text-center block px-4 py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 shadow-sm" style={{ background: "#EF4444", color: "white" }}>
+                   Make Payment
+                 </Link>
+              ) : (
+                 <p className="text-sm font-medium flex items-center gap-2" style={{ color: "#10B981" }}>All fees are fully paid.</p>
+              )}
+            </div>
+          </section>
+        </div>
+
+        {/* Right Column: Unified Recent Activity */}
+        <section className="space-y-3 flex flex-col h-full">
           <h2 className="text-xs font-bold uppercase tracking-wider text-[#94A3B8]">Recent Activity</h2>
-          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E7EB] overflow-hidden flex flex-col h-full">
+          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E7EB] overflow-hidden flex flex-col flex-1">
             <div className="flex-1 divide-y divide-[#F1F5F9]">
-              {notifications.length === 0 ? (
-                <div className="p-6 text-center text-sm text-[#667085]">
-                  <Bell size={24} className="mx-auto mb-2 text-gray-200" />
-                  No recent activity.
+              {activities.length === 0 ? (
+                <div className="p-8 text-center text-sm text-[#667085] flex flex-col items-center justify-center h-full min-h-[220px]">
+                  <Bell size={24} className="mb-2 text-gray-200" />
+                  <p>No recent activity found.</p>
                 </div>
               ) : (
-                notifications.slice(0, 3).map((n) => (
-                  <div key={n.id} className="p-4 sm:p-5 flex gap-3 items-start">
-                    <div
-                      className="w-2.5 h-2.5 rounded-full mt-1 shrink-0"
-                      style={{ background: n.read ? "#CBD5E1" : "#F2901F" }}
-                    />
+                activities.map((item) => (
+                  <div key={item.id} className="p-4 flex items-start gap-3 transition-colors hover:bg-gray-50/50">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-base bg-[#F1F5F9]">
+                      {item.icon}
+                    </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                        <p className={`text-sm leading-snug break-words ${!n.read ? "font-bold text-[#0B1F44]" : "font-medium text-[#475569]"}`}>
-                          {n.title}
-                        </p>
-                        <span className="text-[10px] font-medium text-[#94A3B8] shrink-0 font-mono">
-                          {timeAgo(n.createdAt)}
+                      <div className="flex justify-between items-start gap-2">
+                        <p className="text-sm font-bold text-[#0B1F44] truncate">{item.title}</p>
+                        <span className="text-[10px] font-medium text-[#94A3B8] shrink-0 whitespace-nowrap font-sans mt-0.5">
+                          {timeAgo(item.timestamp)}
                         </span>
                       </div>
-                      <p className="text-xs text-[#667085] mt-1 leading-relaxed break-words">{n.message}</p>
+                      <p className="text-xs text-[#667085] mt-1 break-words leading-relaxed">{item.description}</p>
                     </div>
                   </div>
                 ))
               )}
             </div>
-            {notifications.length > 0 && (
-              <div className="p-3 border-t border-[#F1F5F9] bg-[#F7F9FC]">
+            {activities.length > 0 && (
+              <div className="p-3.5 border-t border-[#F1F5F9] bg-[#F7F9FC]">
                 <Link href="/portal/notifications" className="block text-center text-xs font-bold text-[#0B1F44] hover:text-[#F2901F] transition-colors">
-                  View All Notifications
+                  View Notification Center
                 </Link>
               </div>
             )}
@@ -218,7 +295,7 @@ export default function CustomerDashboard() {
           {[
             { label: "View Shipments", icon: <Truck size={18} />, href: "/portal/shipments" },
             { label: "Payments",       icon: <CreditCard size={18} />, href: "/portal/payments" },
-            { label: "Delivery",       icon: <Package size={18} />, href: "/portal/shipments" },
+            { label: "Sourcing",       icon: <Package size={18} />, href: "/portal/sourcing" },
             { label: "Profile",        icon: <Info size={18} />, href: "/portal/profile" },
           ].map((a) => (
             <Link

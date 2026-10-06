@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { verifyPayment } from "@/lib/paystack";
 import { Prisma } from "@prisma/client";
+import { CREDIT_PACKAGES } from "@/lib/credit-packages";
 
 export async function processPaymentSuccess(reference: string) {
   // 1. Verify with Paystack API
@@ -67,7 +68,12 @@ export async function processPaymentSuccess(reference: string) {
       // Process based on type
       if (payment.type === "CREDIT_PURCHASE") {
         const metadata = payment.metadata as any;
-        const creditsToAdd = metadata?.credits || 0;
+        const packageId = metadata?.packageId as keyof typeof CREDIT_PACKAGES;
+        const pkg = CREDIT_PACKAGES[packageId];
+
+        const creditsToAdd = pkg ? pkg.credits : (metadata?.credits || 0);
+        const packagePrice = pkg ? pkg.price : payment.amount;
+        const packageName = pkg ? pkg.name : "Custom";
 
         if (creditsToAdd > 0) {
           // Find or create credit account
@@ -84,11 +90,20 @@ export async function processPaymentSuccess(reference: string) {
           const balanceBefore = creditAccount.balance;
           const balanceAfter = balanceBefore + creditsToAdd;
 
-          await tx.$queryRaw`
-            UPDATE "CreditAccount"
-            SET balance = balance + ${creditsToAdd}, "updatedAt" = NOW()
-            WHERE id = ${creditAccount.id}
-          `;
+          const newCreditsPurchased = (creditAccount.creditsPurchased || 0) + creditsToAdd;
+          const newCreditsRemaining = balanceAfter;
+
+          await tx.creditAccount.update({
+            where: { id: creditAccount.id },
+            data: {
+              balance: balanceAfter,
+              selectedPackage: packageName,
+              packagePrice: parseFloat(String(packagePrice)),
+              creditsPurchased: newCreditsPurchased,
+              creditsRemaining: newCreditsRemaining,
+              lastActivityAt: new Date(),
+            },
+          });
 
           await tx.creditTransaction.create({
             data: {
@@ -96,7 +111,7 @@ export async function processPaymentSuccess(reference: string) {
               amount: creditsToAdd,
               balanceBefore,
               balanceAfter,
-              description: `Purchased ${creditsToAdd} credits via Paystack`,
+              description: `Purchased ${packageName} Package (${creditsToAdd} credits) for GH₵${packagePrice}`,
               reference: payment.reference,
               customerId: payment.customerId,
               paymentId: payment.id,

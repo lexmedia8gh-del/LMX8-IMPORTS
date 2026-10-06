@@ -75,11 +75,19 @@ export async function createCustomerAction(formData: FormData) {
       },
     });
 
-    // Create a credit account automatically
-    await prisma.creditAccount.create({
-      data: {
+    // Create a credit account automatically (idempotent upsert prevents duplicates)
+    await prisma.creditAccount.upsert({
+      where: { customerId: newCustomer.id },
+      update: {},
+      create: {
         customerId: newCustomer.id,
         balance: 0,
+        selectedPackage: "None",
+        packagePrice: 0.0,
+        creditsPurchased: 0,
+        creditsUsed: 0,
+        creditsRemaining: 0,
+        lastActivityAt: new Date(),
       },
     });
 
