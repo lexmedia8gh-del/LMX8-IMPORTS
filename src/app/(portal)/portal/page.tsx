@@ -218,7 +218,7 @@ export default function CustomerDashboard() {
                 <p className="text-xs font-bold uppercase tracking-wider text-[#667085]">Current Credit Balance</p>
                 <div className="flex items-baseline gap-2 mt-0.5">
                   <span className="text-3xl font-black text-[#0B1F44]">{creditAccount?.balance ?? 0}</span>
-                  <span className="text-xs font-bold text-[#10B981] bg-[#H0FDF4] px-2 py-0.5 rounded">Credits</span>
+                  <span className="text-xs font-bold text-[#10B981] bg-[#F0FDF4] px-2 py-0.5 rounded">Credits</span>
                 </div>
               </div>
 
