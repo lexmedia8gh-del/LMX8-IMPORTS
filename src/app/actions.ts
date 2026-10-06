@@ -73,24 +73,29 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
 }
 
 export async function getShipmentsAction(): Promise<UIShipment[]> {
-  const session = await getSession();
-  if (!session) throw new Error("Unauthorized");
+  try {
+    const session = await getSession();
+    if (!session) return [];
 
-  let shipments;
-  if (session.type === "admin") {
-    shipments = await prisma.shipment.findMany({
-      include: { trackingEvents: true, photos: true, customer: true, batch: true },
-      orderBy: { updatedAt: "desc" },
-    });
-  } else {
-    shipments = await prisma.shipment.findMany({
-      where: { customerId: session.id },
-      include: { trackingEvents: true, photos: true, customer: true, batch: true },
-      orderBy: { updatedAt: "desc" },
-    });
+    let shipments;
+    if (session.type === "admin") {
+      shipments = await prisma.shipment.findMany({
+        include: { trackingEvents: true, photos: true, customer: true, batch: true },
+        orderBy: { updatedAt: "desc" },
+      });
+    } else {
+      shipments = await prisma.shipment.findMany({
+        where: { customerId: session.id },
+        include: { trackingEvents: true, photos: true, customer: true, batch: true },
+        orderBy: { updatedAt: "desc" },
+      });
+    }
+
+    return Promise.all(shipments.map(mapPrismaShipment));
+  } catch (err) {
+    console.warn("[Action] getShipmentsAction fallback triggered:", err);
+    return [];
   }
-
-  return Promise.all(shipments.map(mapPrismaShipment));
 }
 
 export async function getShipmentByIdAction(trackingNumber: string): Promise<UIShipment | null> {
@@ -568,25 +573,30 @@ export async function removeShipmentPhotoAction(trackingNumber: string, photoId:
 // â”€â”€ BATCH LIFECYCLE ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function getBatchesAction(): Promise<UIBatch[]> {
-  await requireAdminSession();
-  const batches = await prisma.batch.findMany({
-    include: { shipments: true },
-    orderBy: { createdAt: "desc" },
-  });
+  try {
+    await requireAdminSession();
+    const batches = await prisma.batch.findMany({
+      include: { shipments: true },
+      orderBy: { createdAt: "desc" },
+    });
 
-  return batches.map((b) => ({
-    id: b.batchNumber,
-    dbId: b.id,
-    name: b.name,
-    description: b.description || "",
-    shipmentCount: b.shipments.length,
-    departure: b.departure ? b.departure.toISOString().split("T")[0] : "",
-    arrival: b.arrival ? b.arrival.toISOString().split("T")[0] : "",
-    status: b.status,
-    closedAt: b.closedAt ? b.closedAt.toISOString() : null,
-    fileDeletionAt: b.fileDeletionAt ? b.fileDeletionAt.toISOString() : null,
-    createdAt: b.createdAt.toISOString().split("T")[0],
-  }));
+    return batches.map((b) => ({
+      id: b.batchNumber,
+      dbId: b.id,
+      name: b.name,
+      description: b.description || "",
+      shipmentCount: b.shipments.length,
+      departure: b.departure ? b.departure.toISOString().split("T")[0] : "",
+      arrival: b.arrival ? b.arrival.toISOString().split("T")[0] : "",
+      status: b.status,
+      closedAt: b.closedAt ? b.closedAt.toISOString() : null,
+      fileDeletionAt: b.fileDeletionAt ? b.fileDeletionAt.toISOString() : null,
+      createdAt: b.createdAt.toISOString().split("T")[0],
+    }));
+  } catch (err) {
+    console.warn("[Action] getBatchesAction fallback triggered:", err);
+    return [];
+  }
 }
 
 export async function createBatchAction(data: any): Promise<UIBatch> {
@@ -878,7 +888,12 @@ export async function getCurrentAdminAction() {
 }
 
 export async function getCustomersAction() {
-  await requireAdminSession();
-  const custs = await prisma.customer.findMany();
-  return custs.map((c) => ({ id: c.customerIdentifier, name: c.name }));
+  try {
+    await requireAdminSession();
+    const custs = await prisma.customer.findMany();
+    return custs.map((c) => ({ id: c.customerIdentifier, name: c.name }));
+  } catch (err) {
+    console.warn("[Action] getCustomersAction fallback triggered:", err);
+    return [];
+  }
 }
