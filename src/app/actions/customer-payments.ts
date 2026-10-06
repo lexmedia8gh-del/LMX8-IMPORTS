@@ -68,3 +68,40 @@ export async function getOutstandingShipmentsAction() {
     };
   });
 }
+
+export async function getShipmentForCheckoutAction(id: string) {
+  const customer = await requireCustomerSession();
+
+  const shipment = await prisma.shipment.findFirst({
+    where: {
+      OR: [
+        { id },
+        { trackingNumber: id },
+        { trackingNumber: id.toUpperCase() },
+      ],
+    },
+    include: {
+      payments: {
+        where: { type: "SHIPPING_FEE", status: "SUCCESS" },
+      },
+    },
+  });
+
+  if (!shipment || shipment.customerId !== customer.id) {
+    return null;
+  }
+
+  const paidAmount = shipment.payments.reduce((sum, p) => sum + p.amount, 0);
+  const outstanding = Math.max(0, shipment.fee - paidAmount);
+  const isPaid = outstanding === 0;
+
+  return {
+    id: shipment.id,
+    trackingNumber: shipment.trackingNumber,
+    description: shipment.description,
+    fee: shipment.fee,
+    paidAmount,
+    outstanding,
+    isPaid,
+  };
+}

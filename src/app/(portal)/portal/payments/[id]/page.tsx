@@ -2,11 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Lock, CheckCircle2 } from "lucide-react";
 import { formatCurrency } from "@/lib/mock-data";
-import { prisma } from "@/lib/prisma";
-import { requireCustomerSession } from "@/lib/auth";
+import { getShipmentForCheckoutAction } from "@/app/actions/customer-payments";
 import { ShippingPayNowButton } from "@/components/shipping-pay-now-button";
 import { BrandLogo } from "@/components/brand-logo";
-import { getBrandSettings } from "@/lib/branding";
 
 export default async function PaymentCheckoutPage({
   params,
@@ -14,33 +12,13 @@ export default async function PaymentCheckoutPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const customer = await requireCustomerSession();
-  const branding = await getBrandSettings();
-
-  // id here can be Prisma UUID or tracking number
-  const shipment = await prisma.shipment.findFirst({
-    where: {
-      OR: [
-        { id },
-        { trackingNumber: id },
-        { trackingNumber: id.toUpperCase() },
-      ],
-    },
-    include: {
-      payments: {
-        where: { type: "SHIPPING_FEE", status: "SUCCESS" },
-      },
-    },
-  });
+  const shipment = await getShipmentForCheckoutAction(id);
 
   if (!shipment) return notFound();
 
-  // IDOR: customer can only pay their own shipment fee
-  if (shipment.customerId !== customer.id) return notFound();
-
-  const paidAmount = shipment.payments.reduce((sum, p) => sum + p.amount, 0);
-  const outstanding = Math.max(0, shipment.fee - paidAmount);
-  const isPaid = outstanding === 0;
+  const paidAmount = shipment.paidAmount;
+  const outstanding = shipment.outstanding;
+  const isPaid = shipment.isPaid;
 
   return (
     <div className="max-w-xl mx-auto space-y-6">

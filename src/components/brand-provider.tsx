@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { ResolvedBrandSettings, DEFAULT_BRANDING, LogoVariant, selectBrandLogoUrl } from "@/lib/branding";
+import { ResolvedBrandSettings, DEFAULT_BRANDING, LogoVariant, selectBrandLogoUrl } from "@/lib/branding-utils";
 import { getBrandSettingsAction } from "@/app/actions/branding";
 
 interface BrandContextType {

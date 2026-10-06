@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { LogoVariant, ResolvedBrandSettings, selectBrandLogoUrl, DEFAULT_BRANDING } from "@/lib/branding";
+import { LogoVariant, ResolvedBrandSettings, selectBrandLogoUrl, DEFAULT_BRANDING } from "@/lib/branding-utils";
 import { useBrandSettings } from "@/components/brand-provider";
 import { getBrandSettingsAction } from "@/app/actions/branding";
 
