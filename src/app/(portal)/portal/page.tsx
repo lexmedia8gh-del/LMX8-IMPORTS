@@ -59,7 +59,17 @@ function getGreetingClient() {
 }
 
 type OutstandingShipment = { id: string; fee: number; paid: number; outstanding: number; isPaid: boolean };
-type CustomerType = { id: string; name: string; email: string; phone: string; credits: number; internalId: string };
+type CustomerFetchStatus = "loading" | "loaded" | "no_name" | "not_found" | "auth_expired" | "error";
+type CustomerType = {
+  id: string;
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  phone: string;
+  credits: number;
+  internalId: string;
+};
 
 type ActivityItem = {
   id: string;
@@ -82,6 +92,7 @@ type CreditAccountDetails = {
 export default function CustomerDashboard() {
   const [mounted, setMounted] = useState(false);
   const [customer, setCustomer] = useState<CustomerType | null>(null);
+  const [customerStatus, setCustomerStatus] = useState<CustomerFetchStatus>("loading");
   const [myShipments, setMyShipments] = useState<Shipment[]>([]);
   const [outstanding, setOutstanding] = useState<OutstandingShipment[]>([]);
   const [creditAccount, setCreditAccount] = useState<CreditAccountDetails | null>(null);
@@ -90,14 +101,37 @@ export default function CustomerDashboard() {
 
   useEffect(() => {
     setMounted(true);
+    setCustomerStatus("loading");
+
+    // 1. Fetch customer with detailed state handling
+    getCurrentCustomerAction()
+      .then((cust) => {
+        if (!cust) {
+          setCustomer(null);
+          setCustomerStatus("not_found");
+        } else {
+          setCustomer(cust as CustomerType);
+          const rawName = (cust.name || "").trim();
+          if (!rawName || rawName === "undefined" || rawName === "null") {
+            setCustomerStatus("no_name");
+          } else {
+            setCustomerStatus("loaded");
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("[Dashboard] Error fetching customer:", err);
+        setCustomer(null);
+        setCustomerStatus("error");
+      });
+
+    // 2. Fetch shipments, payments, credits, activities safely
     Promise.all([
-      getCurrentCustomerAction(),
-      getShipmentsAction(),
+      getShipmentsAction().catch(() => []),
       getOutstandingShipmentsAction().catch(() => []),
       getCustomerCreditAccountAction().catch(() => null),
       getCustomerRecentActivitiesAction().catch(() => []),
-    ]).then(([cust, shipments, outst, credits, acts]) => {
-      setCustomer(cust as CustomerType);
+    ]).then(([shipments, outst, credits, acts]) => {
       setMyShipments(shipments);
       setOutstanding((outst as OutstandingShipment[]).filter((s: OutstandingShipment) => !s.isPaid));
       setCreditAccount(credits as any);
@@ -131,12 +165,50 @@ export default function CustomerDashboard() {
   // Stable rendering wrapper that only evaluates browser dynamic properties post-hydration
   const greeting = mounted ? getGreetingClient() : "Welcome";
 
+  // Construct headline safely to never render "Welcome, undefined" or "Welcome, null"
+  const welcomeHeadline = (() => {
+    if (customerStatus === "loaded" && customer?.name) {
+      const rawName = customer.name.trim();
+      if (rawName && rawName !== "undefined" && rawName !== "null") {
+        const firstName = customer.firstName || rawName.split(/\s+/)[0];
+        if (firstName && firstName !== "undefined" && firstName !== "null") {
+          return `${greeting}, ${firstName}`;
+        }
+      }
+    }
+    return greeting;
+  })();
+
   return (
     <div className="space-y-8 page-fade max-w-4xl">
+      {/* Informational banners for customer state */}
+      {customerStatus === "error" && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm flex items-center justify-between">
+          <span>Unable to verify complete customer profile details at this moment.</span>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-3 py-1 bg-amber-200 hover:bg-amber-300 rounded text-xs font-bold text-amber-900"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {customerStatus === "not_found" && (
+        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-sm flex items-center justify-between">
+          <span>Your customer profile could not be loaded. Please sign in again.</span>
+          <Link
+            href="/login"
+            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold"
+          >
+            Sign In
+          </Link>
+        </div>
+      )}
+
       {/* Welcome Section */}
       <div className="space-y-1">
         <h1 className="text-2xl md:text-3xl font-bold" style={{ color: "#0B1F44" }}>
-          {greeting}, {customer?.name?.split(" ")[0] || "Customer"}
+          {welcomeHeadline}
         </h1>
         <p className="text-sm" style={{ color: "#667085" }}>
           Here is what is happening with your account and shipments.

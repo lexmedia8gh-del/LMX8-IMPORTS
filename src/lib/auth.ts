@@ -59,11 +59,52 @@ export async function getCurrentCustomer() {
   if (!session || session.type !== "customer") return null;
 
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { id: session.id },
-    });
+    let customer = null;
+
+    // 1. Primary lookup by ID (UUID)
+    if (session.id) {
+      try {
+        customer = await prisma.customer.findUnique({
+          where: { id: session.id },
+        });
+      } catch {
+        // If session.id is not a valid UUID format, proceed to fallback lookup
+      }
+    }
+
+    // 2. Secondary lookup by customerIdentifier (e.g. LMX8-00125)
+    if (!customer) {
+      const identifier = session.identifier || session.id;
+      if (identifier) {
+        try {
+          customer = await prisma.customer.findUnique({
+            where: { customerIdentifier: identifier },
+          });
+        } catch {
+          // Fall through
+        }
+      }
+    }
+
+    // 3. Tertiary fallback by email or phone
+    if (!customer && session.identifier) {
+      try {
+        customer = await prisma.customer.findFirst({
+          where: {
+            OR: [
+              { email: session.identifier },
+              { phone: session.identifier },
+            ],
+          },
+        });
+      } catch {
+        // Fall through
+      }
+    }
+
     return customer;
-  } catch {
+  } catch (error) {
+    console.error("[auth] Error in getCurrentCustomer:", error);
     return null;
   }
 }

@@ -2,9 +2,10 @@
 
 import { prisma } from "@/lib/prisma";
 import { ShipmentStatus } from "@/components/shipment-status";
-import { getSession, requireAdminSession, requireCustomerSession } from "@/lib/auth";
+import { getSession, requireAdminSession, requireCustomerSession, getCurrentCustomer } from "@/lib/auth";
 import { Shipment as UIShipment, Batch as UIBatch } from "@/lib/db";
 import { normalizeBatchStatus, getBatchCustomerLabel } from "@/lib/batch-status";
+import { extractCustomerNameFields } from "@/lib/customer";
 import {
   generateSignedUrl,
   uploadFileToPrivateStorage,
@@ -84,8 +85,16 @@ export async function getShipmentsAction(): Promise<UIShipment[]> {
         orderBy: { updatedAt: "desc" },
       });
     } else {
+      const customer = await getCurrentCustomer();
+      if (!customer) return [];
       shipments = await prisma.shipment.findMany({
-        where: { customerId: session.id },
+        where: {
+          OR: [
+            { customerId: customer.id },
+            { customer: { customerIdentifier: customer.customerIdentifier } },
+            { customerId: session.id },
+          ],
+        },
         include: { trackingEvents: true, photos: true, customer: true, batch: true },
         orderBy: { updatedAt: "desc" },
       });
@@ -874,21 +883,44 @@ export async function closeBatchAction(batchNumber: string) {
 
 
 
-// â”€â”€ USER / ADMIN SESSION ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── USER / ADMIN SESSION ACTIONS ────────────────────────────────────────────
 
 export async function getCurrentCustomerAction() {
-  const customer = await requireCustomerSession();
-  const creditAccount = await prisma.creditAccount.findUnique({
-    where: { customerId: customer.id },
-  });
-  return {
-    id: customer.customerIdentifier,
-    internalId: customer.id,
-    name: customer.name,
-    email: customer.email,
-    phone: customer.phone,
-    credits: creditAccount?.balance ?? 0,
-  };
+  try {
+    const customer = await getCurrentCustomer();
+    if (!customer) {
+      return null;
+    }
+
+    let creditAccount = null;
+    try {
+      creditAccount = await prisma.creditAccount.findUnique({
+        where: { customerId: customer.id },
+      });
+    } catch {
+      // Gracefully continue even if credit account query fails
+    }
+
+    const { displayName, firstName, lastName } = extractCustomerNameFields(customer);
+
+    return {
+      id: customer.customerIdentifier,
+      customerIdentifier: customer.customerIdentifier,
+      internalId: customer.id,
+      name: displayName,
+      fullName: displayName,
+      firstName,
+      lastName,
+      email: customer.email || "",
+      phone: customer.phone || "",
+      status: customer.status || "ACTIVE",
+      credits: creditAccount?.balance ?? 0,
+      createdAt: customer.createdAt ? customer.createdAt.toISOString() : null,
+    };
+  } catch (err) {
+    console.error("[Action] getCurrentCustomerAction error:", err);
+    return null;
+  }
 }
 
 export async function getCurrentAdminAction() {

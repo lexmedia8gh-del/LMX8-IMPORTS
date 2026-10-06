@@ -1,12 +1,29 @@
 import { getCurrentCustomerAction } from "@/app/actions";
-import { User, Mail, Phone, MapPin, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { User, Mail, Phone, MapPin, ShieldCheck, CheckCircle2, Wallet } from "lucide-react";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const customer = await getCurrentCustomerAction();
-  if (!customer) redirect("/login");
+  let customer = null;
+  try {
+    customer = await getCurrentCustomerAction();
+  } catch (error) {
+    console.error("[ProfilePage] Failed to fetch customer:", error);
+  }
+
+  if (!customer) {
+    redirect("/login");
+  }
+
+  const initial = (customer.name || customer.id || "C").trim().charAt(0).toUpperCase() || "C";
+  const displayName = customer.name && customer.name !== "undefined" && customer.name !== "null"
+    ? customer.name.trim()
+    : "Valued Customer";
+  const customerId = customer.id || customer.customerIdentifier || "LMX8-CUSTOMER";
+  const displayEmail = customer.email?.trim() || "Not provided";
+  const displayPhone = customer.phone?.trim() || "Not provided";
+  const credits = customer.credits ?? 0;
 
   return (
     <div className="space-y-7 max-w-3xl">
@@ -19,17 +36,20 @@ export default async function ProfilePage() {
         {/* Profile Header */}
         <div className="px-6 py-8 flex flex-col md:flex-row items-center gap-6" style={{ borderBottom: "1px solid #F1F5F9" }}>
           <div className="w-24 h-24 rounded-full flex items-center justify-center text-4xl font-black shadow-inner" style={{ background: "#F7F9FC", color: "#122B4F", border: "4px solid #F1F5F9" }}>
-            {customer.name.charAt(0)}
+            {initial}
           </div>
           <div className="text-center md:text-left">
-            <h2 className="text-xl font-bold" style={{ color: "#172236" }}>{customer.name}</h2>
-            <p className="text-sm font-medium mt-1" style={{ color: "#667085" }}>Customer ID: <span className="font-bold text-gray-800">{customer.id}</span></p>
-            <div className="flex items-center justify-center md:justify-start gap-2 mt-3">
+            <h2 className="text-xl font-bold" style={{ color: "#172236" }}>{displayName}</h2>
+            <p className="text-sm font-medium mt-1" style={{ color: "#667085" }}>Customer ID: <span className="font-bold text-gray-800">{customerId}</span></p>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mt-3">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: "#D1FAE5", color: "#065F46" }}>
                 <CheckCircle2 size={14} /> Active Account
               </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: "#FEF9C3", color: "#854D0E" }}>
                 <ShieldCheck size={14} /> Verified
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#F0FDF4] text-[#10B981]">
+                <Wallet size={14} /> {credits} Credits
               </span>
             </div>
           </div>
@@ -43,7 +63,7 @@ export default async function ProfilePage() {
                 <User size={12} /> Full Name
               </label>
               <div className="px-4 h-12 rounded-xl text-sm flex items-center bg-gray-50/50" style={{ border: "1px solid #E5E7EB", color: "#172236" }}>
-                {customer.name}
+                {displayName}
               </div>
             </div>
             
@@ -52,7 +72,7 @@ export default async function ProfilePage() {
                 <Mail size={12} /> Email Address
               </label>
               <div className="px-4 h-12 rounded-xl text-sm flex items-center bg-gray-50/50" style={{ border: "1px solid #E5E7EB", color: "#172236" }}>
-                {customer.email}
+                {displayEmail}
               </div>
             </div>
             
@@ -61,7 +81,7 @@ export default async function ProfilePage() {
                 <Phone size={12} /> Phone Number
               </label>
               <div className="px-4 h-12 rounded-xl text-sm flex items-center bg-gray-50/50" style={{ border: "1px solid #E5E7EB", color: "#172236" }}>
-                {customer.phone}
+                {displayPhone}
               </div>
             </div>
 

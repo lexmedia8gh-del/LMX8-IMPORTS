@@ -310,15 +310,15 @@ function ProfileDropdown({
         className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shadow hover:ring-2 ring-yellow-400/50 transition-all"
         style={{ background: "#122B4F", border: "2px solid rgba(255,184,0,0.3)" }}
       >
-        {customerInfo?.name?.charAt(0).toUpperCase() ?? "C"}
+        {(customerInfo?.name || customerInfo?.id || "C").trim().charAt(0).toUpperCase() || "C"}
       </button>
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-[#E2E8F0] z-50 overflow-hidden"
              style={{ maxWidth: "calc(100vw - 16px)" }}>
           <div className="p-4 border-b border-[#E2E8F0] bg-gray-50/50">
-            <p className="text-sm font-bold text-[#0F172A] truncate">{customerInfo?.name ?? "Customer"}</p>
-            <p className="text-xs font-semibold text-[#64748B] mt-0.5 truncate">ID: {customerInfo?.id ?? "..."}</p>
+            <p className="text-sm font-bold text-[#0F172A] truncate">{customerInfo?.name || "Customer"}</p>
+            <p className="text-xs font-semibold text-[#64748B] mt-0.5 truncate">ID: {customerInfo?.id || "..."}</p>
           </div>
           <div className="p-1.5">
             <Link
@@ -367,7 +367,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     getCurrentCustomerAction()
-      .then((c) => setCustomerInfo({ id: c.id, name: c.name }))
+      .then((c) => {
+        if (c && c.id) {
+          setCustomerInfo({ id: c.id, name: c.name || "Customer" });
+        } else {
+          setCustomerInfo(null);
+        }
+      })
       .catch(() => setCustomerInfo(null));
     // Initial unread count
     getUnreadCountAction().then(setUnreadCount).catch(() => {});
