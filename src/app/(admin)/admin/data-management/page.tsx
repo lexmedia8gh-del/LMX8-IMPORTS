@@ -185,7 +185,7 @@ export default function AdminDataManagementPage() {
   };
 
   // Filter Records
-  const filteredRecords = records.filter((r) => {
+  const filteredRecords = (records || []).filter((r) => {
     if (!search.trim()) return true;
     const term = search.toLowerCase();
     return Object.values(r).some((v) => 
