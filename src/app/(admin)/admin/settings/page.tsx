@@ -1,19 +1,20 @@
 "use client";
 
 import React, { useState } from "react";
-import { Settings, Globe, Bell, Database, ShieldCheck, Paintbrush } from "lucide-react";
+import { Settings, Globe, Bell, Database, ShieldCheck, Paintbrush, Users } from "lucide-react";
 import AdminSecuritySettings from "@/components/admin-security-settings";
 import AdminBrandingSettings from "@/components/admin-branding-settings";
+import AdminCustomerSettings from "@/components/admin-customer-settings";
 
 export default function AdminSettingsPage() {
-  const [activeTab, setActiveTab] = useState<"system" | "branding" | "security">("system");
+  const [activeTab, setActiveTab] = useState<"system" | "branding" | "customers" | "security">("system");
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab");
-      if (tab === "branding" || tab === "security" || tab === "system") {
-        setActiveTab(tab);
+      if (tab === "branding" || tab === "security" || tab === "system" || tab === "customers") {
+        setActiveTab(tab as any);
       }
     }
   }, []);
@@ -81,6 +82,16 @@ export default function AdminSettingsPage() {
           <Paintbrush size={16} /> Branding & Logos
         </button>
         <button
+          onClick={() => setActiveTab("customers")}
+          className={`px-5 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
+            activeTab === "customers"
+              ? "border-[#F2901F] text-[#141B47]"
+              : "border-transparent text-[#667085] hover:text-[#141B47]"
+          }`}
+        >
+          <Users size={16} /> Customers
+        </button>
+        <button
           onClick={() => setActiveTab("security")}
           className={`px-5 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
             activeTab === "security"
@@ -129,6 +140,12 @@ export default function AdminSettingsPage() {
         {activeTab === "branding" && (
           <div className="space-y-5">
             <AdminBrandingSettings />
+          </div>
+        )}
+
+        {activeTab === "customers" && (
+          <div className="space-y-5">
+            <AdminCustomerSettings />
           </div>
         )}
 
