@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 
 const secretString = process.env.SESSION_SECRET;
 if (process.env.NODE_ENV === "production" && !secretString) {
@@ -83,7 +84,9 @@ export async function getCurrentAdmin() {
 
 export async function requireCustomerSession() {
   const customer = await getCurrentCustomer();
-  if (!customer) throw new Error("Unauthorized");
+  if (!customer) {
+    redirect("/login");
+  }
   return customer;
 }
 

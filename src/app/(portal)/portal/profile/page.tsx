@@ -2,6 +2,8 @@ import { getCurrentCustomerAction } from "@/app/actions";
 import { User, Mail, Phone, MapPin, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { redirect } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProfilePage() {
   const customer = await getCurrentCustomerAction();
   if (!customer) redirect("/login");

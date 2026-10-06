@@ -3,6 +3,8 @@ import Link from "next/link";
 import { CheckCircle2, XCircle, Loader2, ArrowRight, ShieldAlert, LogIn, Receipt } from "lucide-react";
 import { formatCurrency } from "@/lib/mock-data";
 
+export const dynamic = "force-dynamic";
+
 export default async function PaymentVerificationPage(props: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }> | { [key: string]: string | string[] | undefined };
 }) {

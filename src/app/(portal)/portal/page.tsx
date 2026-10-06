@@ -12,11 +12,31 @@ import {
 import { Shipment } from "@/lib/db";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function formatCurrencyLocal(amount: number) {
-  return `GHS ${amount.toLocaleString("en-GH", { minimumFractionDigits: 2 })}`;
+// 100% deterministic currency formatter to prevent locale hydration issues
+function formatCurrencyDeterministic(amount: number) {
+  const numericVal = typeof amount === "number" ? amount : parseFloat(String(amount)) || 0;
+  return `GHS ${numericVal.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,')}`;
 }
 
-function timeAgo(iso: string) {
+// Timezone and locale-safe UTC date formatter for identical SSR and client renders
+function formatDateUTC(dateInput: string | Date | null | undefined, includeYear: boolean = false): string {
+  if (!dateInput) return "Pending";
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return "Pending";
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const day = d.getUTCDate();
+  const month = months[d.getUTCMonth()];
+  const year = d.getUTCFullYear();
+
+  if (includeYear) {
+    return `${day} ${month} ${year}`;
+  }
+  return `${month} ${day}`;
+}
+
+// Client-only dynamic relative time formatting to prevent hydration mismatches
+function timeAgoClient(iso: string): string {
   if (!iso) return "Today";
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
@@ -27,10 +47,11 @@ function timeAgo(iso: string) {
   const d = Math.floor(h / 24);
   if (d === 1) return "yesterday";
   if (d < 7) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return formatDateUTC(iso);
 }
 
-function getGreeting() {
+// Client-only timezone-sensitive greeting
+function getGreetingClient() {
   const hr = new Date().getHours();
   if (hr < 12) return "Good morning";
   if (hr < 18) return "Good afternoon";
@@ -59,6 +80,7 @@ type CreditAccountDetails = {
 };
 
 export default function CustomerDashboard() {
+  const [mounted, setMounted] = useState(false);
   const [customer, setCustomer] = useState<CustomerType | null>(null);
   const [myShipments, setMyShipments] = useState<Shipment[]>([]);
   const [outstanding, setOutstanding] = useState<OutstandingShipment[]>([]);
@@ -67,6 +89,7 @@ export default function CustomerDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setMounted(true);
     Promise.all([
       getCurrentCustomerAction(),
       getShipmentsAction(),
@@ -105,12 +128,15 @@ export default function CustomerDashboard() {
     );
   }
 
+  // Stable rendering wrapper that only evaluates browser dynamic properties post-hydration
+  const greeting = mounted ? getGreetingClient() : "Welcome";
+
   return (
     <div className="space-y-8 page-fade max-w-4xl">
       {/* Welcome Section */}
       <div className="space-y-1">
         <h1 className="text-2xl md:text-3xl font-bold" style={{ color: "#0B1F44" }}>
-          {getGreeting()}, {customer?.name?.split(" ")[0] || "Customer"}
+          {greeting}, {customer?.name?.split(" ")[0] || "Customer"}
         </h1>
         <p className="text-sm" style={{ color: "#667085" }}>
           Here is what is happening with your account and shipments.
@@ -140,7 +166,7 @@ export default function CustomerDashboard() {
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "#667085" }}>Estimated Arrival</p>
                 <p className="font-semibold" style={{ color: "#0B1F44" }}>
-                  {primaryShipment.estimatedArrival ? new Date(primaryShipment.estimatedArrival).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : "Pending"}
+                  {formatDateUTC(primaryShipment.estimatedArrival, true)}
                 </p>
               </div>
               <Link
@@ -235,7 +261,7 @@ export default function CustomerDashboard() {
               </div>
               <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#667085" }}>Outstanding Balance</p>
               <p className="text-2xl md:text-3xl font-black mt-1 mb-4" style={{ color: "#0B1F44" }}>
-                {formatCurrencyLocal(pendingTotal)}
+                {formatCurrencyDeterministic(pendingTotal)}
               </p>
               {pendingTotal > 0 ? (
                  <Link href="/portal/payments" className="w-full text-center block px-4 py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 shadow-sm" style={{ background: "#EF4444", color: "white" }}>
@@ -259,22 +285,25 @@ export default function CustomerDashboard() {
                   <p>No recent activity found.</p>
                 </div>
               ) : (
-                activities.map((item) => (
-                  <div key={item.id} className="p-4 flex items-start gap-3 transition-colors hover:bg-gray-50/50">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-base bg-[#F1F5F9]">
-                      {item.icon}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex justify-between items-start gap-2">
-                        <p className="text-sm font-bold text-[#0B1F44] truncate">{item.title}</p>
-                        <span className="text-[10px] font-medium text-[#94A3B8] shrink-0 whitespace-nowrap font-sans mt-0.5">
-                          {timeAgo(item.timestamp)}
-                        </span>
+                activities.map((item) => {
+                  const dateStr = mounted ? timeAgoClient(item.timestamp) : formatDateUTC(item.timestamp);
+                  return (
+                    <div key={item.id} className="p-4 flex items-start gap-3 transition-colors hover:bg-gray-50/50">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-base bg-[#F1F5F9]">
+                        {item.icon}
                       </div>
-                      <p className="text-xs text-[#667085] mt-1 break-words leading-relaxed">{item.description}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex justify-between items-start gap-2">
+                          <p className="text-sm font-bold text-[#0B1F44] truncate">{item.title}</p>
+                          <span className="text-[10px] font-medium text-[#94A3B8] shrink-0 whitespace-nowrap font-sans mt-0.5">
+                            {dateStr}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#667085] mt-1 break-words leading-relaxed">{item.description}</p>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
             {activities.length > 0 && (

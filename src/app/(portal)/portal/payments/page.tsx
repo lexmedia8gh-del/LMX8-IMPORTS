@@ -3,6 +3,8 @@ import { getOutstandingShipmentsAction, getCustomerPaymentsAction } from "@/app/
 import { CheckCircle2, AlertCircle, ArrowRight, Receipt } from "lucide-react";
 import { formatCurrency } from "@/lib/mock-data";
 
+export const dynamic = "force-dynamic";
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string; label: string }> = {
     SUCCESS:   { bg: "#D1FAE5", color: "#065F46", label: "Paid" },

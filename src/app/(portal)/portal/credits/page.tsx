@@ -4,6 +4,8 @@ import { getCustomerCreditAccountAction } from "@/app/actions/sourcing-credits";
 import { CreditPurchaseButton } from "@/components/credit-purchase-button";
 import { CREDIT_PACKAGES, type CreditPackageId } from "@/lib/credit-packages";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminCreditsPortalPage() {
   const { balance, transactions } = await getCustomerCreditAccountAction();
 

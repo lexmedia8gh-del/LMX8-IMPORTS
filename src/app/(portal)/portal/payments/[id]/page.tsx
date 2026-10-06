@@ -6,6 +6,8 @@ import { getShipmentForCheckoutAction } from "@/app/actions/customer-payments";
 import { ShippingPayNowButton } from "@/components/shipping-pay-now-button";
 import { BrandLogo } from "@/components/brand-logo";
 
+export const dynamic = "force-dynamic";
+
 export default async function PaymentCheckoutPage({
   params,
 }: {
