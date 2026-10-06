@@ -4,19 +4,22 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { requireAdminSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { normalizePhoneNumber, getPhoneLookupVariants } from "@/lib/phone";
+import { parsePrismaError } from "@/lib/database-errors";
+import { ensureCreditAccountSchema } from "@/lib/credit-account";
 
 export async function createCustomerAction(formData: FormData) {
   try {
     const admin = await requireAdminSession();
 
     const name = (formData.get("name") as string || "").trim();
-    const phone = (formData.get("phone") as string || "").trim();
-    const email = (formData.get("email") as string || "").trim();
+    const rawPhone = (formData.get("phone") as string || "").trim();
+    const email = (formData.get("email") as string || "").trim().toLowerCase();
     const pin = (formData.get("pin") as string || "").trim();
     const confirmPin = (formData.get("confirmPin") as string || "").trim();
     const status = (formData.get("status") as string || "ACTIVE").trim();
 
-    if (!name || !phone || !pin || !confirmPin) {
+    if (!name || !rawPhone || !pin || !confirmPin) {
       return { error: "Full Name, Phone Number, and Customer PIN are required." };
     }
 
@@ -28,17 +31,27 @@ export async function createCustomerAction(formData: FormData) {
       return { error: "PIN must be between 6 and 8 digits." };
     }
 
-    // Check duplicate phone if provided
-    if (phone) {
-      const existingPhone = await prisma.customer.findFirst({
-        where: { phone },
-      });
-      if (existingPhone) {
-        return { error: "This phone number is already assigned to another customer." };
-      }
+    // 1. Normalize phone to canonical format (+233XXXXXXXXX for Ghana)
+    const phoneVal = normalizePhoneNumber(rawPhone);
+    if (!phoneVal.isValid) {
+      return { error: phoneVal.error || "Please enter a valid phone number." };
+    }
+    const phone = phoneVal.normalized;
+
+    // 2. Check duplicate phone using all search/database variants
+    const phoneVariants = getPhoneLookupVariants(rawPhone);
+    const existingPhone = await prisma.customer.findFirst({
+      where: {
+        phone: {
+          in: phoneVariants,
+        },
+      },
+    });
+    if (existingPhone) {
+      return { error: "This phone number is already assigned to another customer." };
     }
 
-    // Check duplicate email if provided
+    // 3. Check duplicate email if provided
     if (email) {
       const existingEmail = await prisma.customer.findFirst({
         where: { email },
@@ -48,7 +61,10 @@ export async function createCustomerAction(formData: FormData) {
       }
     }
 
-    // Auto-generate customer ID: Find highest number and increment
+    // 4. Ensure CreditAccount schema is synchronized with all columns before upsert
+    await ensureCreditAccountSchema();
+
+    // 5. Auto-generate customer ID: Find highest number and increment
     const lastCustomer = await prisma.customer.findFirst({
       orderBy: { createdAt: "desc" },
     });
@@ -64,49 +80,72 @@ export async function createCustomerAction(formData: FormData) {
 
     const pinHash = await bcrypt.hash(pin, 10);
 
-    const newCustomer = await prisma.customer.create({
-      data: {
-        customerIdentifier,
-        name,
-        phone: phone || undefined,
-        email: email || undefined,
-        pinHash,
-        status: status || "ACTIVE",
-      },
-    });
+    // 6. Execute atomic creation of Customer + CreditAccount + AuditLog in transaction
+    const createdCustomerId = await prisma.$transaction(async (tx) => {
+      const newCustomer = await tx.customer.create({
+        data: {
+          customerIdentifier,
+          name,
+          phone,
+          email: email || undefined,
+          pinHash,
+          status: status || "ACTIVE",
+        },
+      });
 
-    // Create a credit account automatically (idempotent upsert prevents duplicates)
-    await prisma.creditAccount.upsert({
-      where: { customerId: newCustomer.id },
-      update: {},
-      create: {
-        customerId: newCustomer.id,
-        balance: 0,
-        selectedPackage: "None",
-        packagePrice: 0.0,
-        creditsPurchased: 0,
-        creditsUsed: 0,
-        creditsRemaining: 0,
-        lastActivityAt: new Date(),
-      },
-    });
+      // Create a credit account automatically (idempotent upsert prevents duplicates)
+      try {
+        await tx.creditAccount.upsert({
+          where: { customerId: newCustomer.id },
+          update: {},
+          create: {
+            customerId: newCustomer.id,
+            balance: 0,
+            selectedPackage: "None",
+            packagePrice: 0.0,
+            creditsPurchased: 0,
+            creditsUsed: 0,
+            creditsRemaining: 0,
+            lastActivityAt: new Date(),
+          },
+        });
+      } catch (upsertError: any) {
+        // Fallback: If selectedPackage column is somehow missing in older legacy DB, create with base schema
+        if (upsertError?.message?.includes("selectedPackage") || upsertError?.code === "P2021") {
+          console.warn("[createCustomer] Fallback CreditAccount creation without selectedPackage");
+          await tx.creditAccount.upsert({
+            where: { customerId: newCustomer.id },
+            update: {},
+            create: {
+              customerId: newCustomer.id,
+              balance: 0,
+            },
+          });
+        } else {
+          throw upsertError;
+        }
+      }
 
-    await prisma.auditLog.create({
-      data: {
-        action: "CUSTOMER_CREATED",
-        entityType: "Customer",
-        entityId: newCustomer.id,
-        description: `Customer ${customerIdentifier} (${name}) created by ${admin.name || admin.email}`,
-        adminId: admin.id,
-      },
+      await tx.auditLog.create({
+        data: {
+          action: "CUSTOMER_CREATED",
+          entityType: "Customer",
+          entityId: newCustomer.id,
+          description: `Customer ${customerIdentifier} (${name}) created by ${admin.name || admin.email}`,
+          adminId: admin.id,
+        },
+      });
+
+      return newCustomer.id;
     });
 
     revalidatePath("/admin/customers");
     revalidatePath("/admin/settings");
-    return { success: true, customerIdentifier };
+    return { success: true, customerIdentifier, customerId: createdCustomerId };
   } catch (error: any) {
-    console.error("Error creating customer:", error);
-    return { error: error?.message || "Unable to create customer account." };
+    console.error("[createCustomerAction] Error creating customer:", error);
+    const friendlyError = parsePrismaError(error, "Unable to create customer account. Please try again.");
+    return { error: friendlyError };
   }
 }
 
@@ -217,10 +256,24 @@ export async function updateCustomerAction(data: {
     return { error: "Customer not found." };
   }
 
+  // Normalize phone if provided
+  let normalizedPhone: string | null = null;
+  if (phone) {
+    const phoneVal = normalizePhoneNumber(phone);
+    if (!phoneVal.isValid) {
+      return { error: phoneVal.error || "Please enter a valid phone number." };
+    }
+    normalizedPhone = phoneVal.normalized;
+  }
+
   // Check duplicate phone if changed and not empty
-  if (phone && phone !== customer.phone) {
+  if (normalizedPhone && normalizedPhone !== customer.phone) {
+    const phoneVariants = getPhoneLookupVariants(phone);
     const existingPhone = await prisma.customer.findFirst({
-      where: { phone, NOT: { id: customer.id } },
+      where: {
+        phone: { in: phoneVariants },
+        NOT: { id: customer.id },
+      },
     });
     if (existingPhone) {
       return { error: "This phone number is already assigned to another customer." };
@@ -239,7 +292,7 @@ export async function updateCustomerAction(data: {
 
   const changedFields: string[] = [];
   if (name !== customer.name) changedFields.push("name");
-  if (phone !== (customer.phone || "")) changedFields.push("phone");
+  if (normalizedPhone !== (customer.phone || null)) changedFields.push("phone");
   if (email !== (customer.email || "")) changedFields.push("email");
   if (status !== customer.status) changedFields.push("status");
 
@@ -251,7 +304,7 @@ export async function updateCustomerAction(data: {
     where: { id: customer.id },
     data: {
       name,
-      phone: phone || null,
+      phone: normalizedPhone || null,
       email: email || null,
       status: status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
     },

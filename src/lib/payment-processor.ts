@@ -2,8 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { verifyPayment } from "@/lib/paystack";
 import { Prisma } from "@prisma/client";
 import { CREDIT_PACKAGES } from "@/lib/credit-packages";
+import { ensureCreditAccountSchema } from "@/lib/credit-account";
 
 export async function processPaymentSuccess(reference: string) {
+  await ensureCreditAccountSchema();
   // 1. Verify with Paystack API
   let paystackData;
   try {

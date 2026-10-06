@@ -4,52 +4,53 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { createSession, clearSession, getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { normalizePhoneNumber, getPhoneLookupVariants } from "@/lib/phone";
 
 export async function loginCustomerAction(identifier: string, pin: string, redirectUrl?: string) {
   if (!identifier || !pin) {
     return { error: "Customer ID or Phone Number and PIN are required." };
   }
 
-  if (pin.length !== 6 || !/^\d{6}$/.test(pin)) {
-    return { error: "PIN must be exactly 6 digits." };
+  if (pin.length < 6 || pin.length > 8 || !/^\d+$/.test(pin)) {
+    return { error: "PIN must be between 6 and 8 digits." };
   }
 
   try {
+    const rawId = identifier.trim();
     // Determine if identifier is ID or phone
-    const isIdFormat = identifier.toUpperCase().startsWith("LMX8-");
-    
-    // Normalize phone number (strip spaces, +, leading zeros for comparison)
-    // E.g., +233241234567, 0241234567, 233241234567 -> 241234567
-    let normalizedPhone = identifier.replace(/[\s\-\+]/g, '');
-    if (normalizedPhone.startsWith('233')) {
-      normalizedPhone = normalizedPhone.substring(3);
-    } else if (normalizedPhone.startsWith('0')) {
-      normalizedPhone = normalizedPhone.substring(1);
-    }
+    const isIdFormat = rawId.toUpperCase().startsWith("LMX8-");
 
     let customer = null;
 
     if (isIdFormat) {
       customer = await prisma.customer.findUnique({
-        where: { customerIdentifier: identifier.toUpperCase() },
+        where: { customerIdentifier: rawId.toUpperCase() },
       });
     } else {
-      // Find all customers and filter by normalized phone
-      // Since phone is not unique in DB, we do this carefully.
-      // A better approach is to query where phone contains the normalized suffix
-      const customers = await prisma.customer.findMany({
+      // Find customer by canonical phone or any lookup variant
+      const phoneVariants = getPhoneLookupVariants(rawId);
+      customer = await prisma.customer.findFirst({
         where: {
-          phone: { contains: normalizedPhone }
-        }
+          phone: { in: phoneVariants },
+        },
       });
-      // Exact match on normalized phone
-      customer = customers.find(c => {
-        if (!c.phone) return false;
-        let cPhone = c.phone.replace(/[\s\-\+]/g, '');
-        if (cPhone.startsWith('233')) cPhone = cPhone.substring(3);
-        else if (cPhone.startsWith('0')) cPhone = cPhone.substring(1);
-        return cPhone === normalizedPhone;
-      }) || null;
+
+      // Fallback: If not found yet, query by normalized suffix match
+      if (!customer) {
+        let clean = rawId.replace(/[\s\-\+\(\)\.]/g, '');
+        if (clean.startsWith('233')) clean = clean.substring(3);
+        else if (clean.startsWith('0')) clean = clean.substring(1);
+        if (clean.length >= 7) {
+          const matchingCustomers = await prisma.customer.findMany({
+            where: {
+              phone: { contains: clean }
+            }
+          });
+          if (matchingCustomers.length === 1) {
+            customer = matchingCustomers[0];
+          }
+        }
+      }
     }
 
     if (!customer) {

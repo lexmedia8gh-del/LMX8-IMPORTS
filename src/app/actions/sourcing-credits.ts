@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession, requireAdminSession } from "@/lib/auth";
+import { ensureCreditAccountSchema } from "@/lib/credit-account";
 
 // ── SOURCING ─────────────────────────────────────────────────────────────────
 
@@ -182,6 +183,7 @@ export async function getAllSourcingRequestsAction() {
 
 export async function getCustomerCreditAccountAction() {
   const customer = await requireCustomerSession();
+  await ensureCreditAccountSchema();
 
   const account = await prisma.creditAccount.findUnique({
     where: { customerId: customer.id },
