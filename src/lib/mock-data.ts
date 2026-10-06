@@ -23,9 +23,9 @@ export const MOCK_SOURCING_REQUESTS = [
 ];
 
 export const MOCK_CREDIT_PACKAGES = [
-  { id: "PKG-1", name: "Starter Sourcing", credits: 5, price: 100.00 },
-  { id: "PKG-2", name: "Pro Sourcing", credits: 20, price: 350.00 },
-  { id: "PKG-3", name: "Enterprise Sourcing", credits: 50, price: 750.00 },
+  { id: "PKG-1", name: "Starter", credits: 5, price: 30.00 },
+  { id: "PKG-2", name: "Standard", credits: 12, price: 90.00 },
+  { id: "PKG-3", name: "Premium", credits: 20, price: 185.00 },
 ];
 
 export const MOCK_NOTIFICATIONS = [

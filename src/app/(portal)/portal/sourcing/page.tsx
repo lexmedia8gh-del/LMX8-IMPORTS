@@ -5,6 +5,7 @@ import { UploadCloud, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/mock-data";
 import { createSourcingRequestAction, getCustomerCreditAccountAction } from "@/app/actions/sourcing-credits";
+import { CREDIT_PACKAGES } from "@/lib/credit-packages";
 
 // Generate a new UUID using the Web Crypto API (available in all modern browsers)
 function newUUID(): string {
@@ -149,14 +150,27 @@ export default function SourcingPage() {
           
           {/* Packages */}
           <div className="bg-white rounded-2xl p-6" style={{ border: "1px solid #E5E7EB" }}>
-            <h3 className="font-bold text-base mb-4" style={{ color: "#172236" }}>Sourcing Credit Packages</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-base" style={{ color: "#172236" }}>Sourcing Credit Packages</h3>
+              <Link href="/portal/credits" className="text-xs font-bold text-[#F2901F] hover:underline">
+                View All →
+              </Link>
+            </div>
             <div className="space-y-3">
               {[
-                { name: "Starter", credits: 1, price: 50 },
-                { name: "Standard", credits: 5, price: 225, highlight: true },
-                { name: "Premium", credits: 10, price: 400 },
+                { ...CREDIT_PACKAGES.starter, id: "starter", highlight: false },
+                { ...CREDIT_PACKAGES.standard, id: "standard", highlight: true },
+                { ...CREDIT_PACKAGES.premium, id: "premium", highlight: false },
               ].map(pkg => (
-                <div key={pkg.name} className={`flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer ${pkg.highlight ? "shadow-md scale-[1.02]" : "hover:bg-gray-50"}`} style={{ border: pkg.highlight ? "2px solid #FFB800" : "1px solid #E5E7EB", background: pkg.highlight ? "#FFFCF2" : "#FFFFFF" }}>
+                <Link
+                  key={pkg.name}
+                  href="/portal/credits"
+                  className={`flex items-center justify-between p-4 rounded-xl transition-all block ${pkg.highlight ? "shadow-md scale-[1.02]" : "hover:bg-gray-50"}`}
+                  style={{
+                    border: pkg.highlight ? "2px solid #FFB800" : "1px solid #E5E7EB",
+                    background: pkg.highlight ? "#FFFCF2" : "#FFFFFF"
+                  }}
+                >
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-bold text-sm" style={{ color: "#172236" }}>{pkg.name}</p>
@@ -165,9 +179,16 @@ export default function SourcingPage() {
                     <p className="text-xs font-medium mt-0.5" style={{ color: "#10B981" }}>{pkg.credits} Credit{pkg.credits > 1 ? 's' : ''}</p>
                   </div>
                   <p className="font-bold text-base" style={{ color: "#172236" }}>{formatCurrency(pkg.price)}</p>
-                </div>
+                </Link>
               ))}
             </div>
+            <Link
+              href="/portal/credits"
+              className="mt-4 block w-full py-2.5 rounded-xl text-center text-xs font-bold transition-all hover:opacity-90"
+              style={{ background: "#FFB800", color: "#07182F" }}
+            >
+              Buy Sourcing Credits
+            </Link>
           </div>
 
           {/* How it works */}
