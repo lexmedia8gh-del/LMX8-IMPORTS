@@ -21,12 +21,13 @@ const poppins = Poppins({
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
-    const { getBrandSettings } = await import("@/lib/branding");
-    const settings = await getBrandSettings();
+    const { getBrandSettingsAction } = await import("@/app/actions/branding");
+    const settings = await getBrandSettingsAction();
     const businessName = settings?.businessName || "LMX8 IMPORTS";
     const tagline = settings?.tagline || "Your Goods. Our Priority.";
     const title = `${businessName} | ${tagline}`;
     const description = `${tagline} Premium product sourcing, importation, and logistics management from China to Ghana.`;
+    const favicon = settings?.faviconUrl || settings?.brandMarkUrl || settings?.mainLogoUrl;
     return {
       title,
       description,
@@ -35,7 +36,7 @@ export async function generateMetadata(): Promise<Metadata> {
         description,
         siteName: businessName,
       },
-      ...(settings?.favicon ? { icons: { icon: settings.favicon } } : {}),
+      ...(favicon ? { icons: { icon: favicon } } : {}),
     };
   } catch {
     return {
@@ -48,8 +49,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   let initialBranding = null;
   try {
-    const { getBrandSettings } = await import("@/lib/branding");
-    initialBranding = await getBrandSettings();
+    const { getBrandSettingsAction } = await import("@/app/actions/branding");
+    initialBranding = await getBrandSettingsAction();
   } catch {
     // Ignore server-side branding fetch errors, fallback to default
   }
