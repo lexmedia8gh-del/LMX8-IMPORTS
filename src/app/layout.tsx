@@ -3,6 +3,8 @@ import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 import { BrandProvider } from "@/components/brand-provider";
 
+export const dynamic = "force-dynamic";
+
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
@@ -21,22 +23,19 @@ export async function generateMetadata(): Promise<Metadata> {
   try {
     const { getBrandSettings } = await import("@/lib/branding");
     const settings = await getBrandSettings();
-    const title = `${settings.businessName} | ${settings.tagline}`;
-    const description = `${settings.tagline} Premium product sourcing, importation, and logistics management from China to Ghana.`;
+    const businessName = settings?.businessName || "LMX8 IMPORTS";
+    const tagline = settings?.tagline || "Your Goods. Our Priority.";
+    const title = `${businessName} | ${tagline}`;
+    const description = `${tagline} Premium product sourcing, importation, and logistics management from China to Ghana.`;
     return {
       title,
       description,
       openGraph: {
         title,
         description,
-        siteName: settings.businessName,
+        siteName: businessName,
       },
-      icons: settings.favicon
-        ? {
-            icon: settings.favicon,
-            apple: settings.favicon,
-          }
-        : undefined,
+      ...(settings?.favicon ? { icons: { icon: settings.favicon } } : {}),
     };
   } catch {
     return {

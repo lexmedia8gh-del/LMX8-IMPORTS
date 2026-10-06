@@ -81,6 +81,10 @@ export function BrandProvider({
 }
 
 export function useBrandSettings() {
-  const context = useContext(BrandContext);
-  return context;
+  try {
+    const context = useContext(BrandContext);
+    return context || null;
+  } catch {
+    return null;
+  }
 }

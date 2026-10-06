@@ -185,9 +185,13 @@ export async function getBrandSettings(): Promise<BrandSettingsType> {
       cachedBranding = DEFAULT_BRANDING;
     }
   } catch (error: any) {
-    // Fail-safe: if the table isn't migrated yet, attempt auto-creation and return default LMX8 values
-    if (error?.code === "P2021" || error?.message?.includes("does not exist") || error?.message?.includes("BrandSettings")) {
-      ensureBrandSettingsTable().catch(() => {});
+    // Fail-safe: if the table doesn't exist (P2021), attempt auto-creation safely
+    if (error?.code === "P2021") {
+      try {
+        await ensureBrandSettingsTable();
+      } catch {
+        // Ignore table creation error if DB is unreachable
+      }
     }
     console.warn("[Branding Service] Database settings unavailable, using official default LMX8 brand values.");
     cachedBranding = DEFAULT_BRANDING;

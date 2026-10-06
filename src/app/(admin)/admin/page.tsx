@@ -9,6 +9,8 @@ import { getAllPaymentsAction } from "@/app/actions/admin-payments";
 import { getAllSourcingRequestsAction } from "@/app/actions/sourcing-credits";
 import { formatCurrency } from "@/lib/mock-data";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboard() {
   const [shipments, customers, payments, sourcingRequests] = await Promise.all([
     getShipmentsAction(),
