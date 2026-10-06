@@ -1,23 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
 import { ArrowRight, Search, Truck, PackageSearch, ShieldCheck, Box, Globe, Clock, CheckCircle, Plane, Ship } from "lucide-react";
+import { useBrandSettings } from "@/components/brand-provider";
 
 export default function Home() {
-  const [branding, setBranding] = useState<any>(null);
-
-  const loadBranding = () => {
-    import("@/app/actions/branding").then((m) => {
-      m.getBrandSettingsAction().then(setBranding).catch(console.error);
-    });
-  };
-
-  useEffect(() => {
-    loadBranding();
-    window.addEventListener("lmx8-branding-updated", loadBranding);
-    return () => window.removeEventListener("lmx8-branding-updated", loadBranding);
-  }, []);
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
 
   const primaryColor = branding?.primaryColor || "#141B47";
   const secondaryColor = branding?.secondaryColor || "#355DAF";

@@ -1,23 +1,12 @@
 "use client";
 import Link from "next/link";
 import { Globe } from "lucide-react";
-import { useState, useEffect } from "react";
 import { BrandLogo } from "@/components/brand-logo";
+import { useBrandSettings } from "@/components/brand-provider";
 
 export function Footer() {
-  const [branding, setBranding] = useState<any>(null);
-
-  const loadBranding = () => {
-    import("@/app/actions/branding").then((m) => {
-      m.getBrandSettingsAction().then(setBranding).catch(console.error);
-    });
-  };
-
-  useEffect(() => {
-    loadBranding();
-    window.addEventListener("lmx8-branding-updated", loadBranding);
-    return () => window.removeEventListener("lmx8-branding-updated", loadBranding);
-  }, []);
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
 
   const primaryBg = branding?.primaryColor || "#141B47";
   const secondaryColor = branding?.secondaryColor || "#355DAF";

@@ -11,27 +11,20 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { Button } from "@/components/ui/button";
 import { getCurrentAdminAction } from "@/app/actions";
 import { BrandLogo } from "@/components/brand-logo";
+import { useBrandSettings } from "@/components/brand-provider";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [adminInfo, setAdminInfo] = useState<{ name: string; role: string } | null>(null);
-  const [branding, setBranding] = useState<any>(null);
-
-  const loadBranding = () => {
-    import("@/app/actions/branding").then((m) => {
-      m.getBrandSettingsAction().then(setBranding).catch(console.error);
-    });
-  };
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
 
   useEffect(() => {
     getCurrentAdminAction()
       .then(a => setAdminInfo({ name: a.name, role: a.role }))
       .catch(() => {});
-    loadBranding();
-    window.addEventListener("lmx8-branding-updated", loadBranding);
-    return () => window.removeEventListener("lmx8-branding-updated", loadBranding);
   }, []);
   
   const navItems = [

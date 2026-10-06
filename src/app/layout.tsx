@@ -45,11 +45,19 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  let initialBranding = null;
+  try {
+    const { getBrandSettings } = await import("@/lib/branding");
+    initialBranding = await getBrandSettings();
+  } catch {
+    // Ignore server-side branding fetch errors, fallback to default
+  }
+
   return (
     <html lang="en" className={`${inter.variable} ${poppins.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <BrandProvider>{children}</BrandProvider>
+        <BrandProvider initialBranding={initialBranding}>{children}</BrandProvider>
       </body>
     </html>
   );

@@ -35,14 +35,16 @@ export function BrandLogo({
 
   // If used outside of BrandProvider, load branding locally and listen for updates
   useEffect(() => {
-    getBrandSettingsAction().then(setLocalBranding).catch(() => {});
+    if (!context?.branding && !propBranding) {
+      getBrandSettingsAction().then(setLocalBranding).catch(() => {});
+    }
 
     const handleUpdate = () => {
       getBrandSettingsAction().then(setLocalBranding).catch(() => {});
     };
     window.addEventListener("lmx8-branding-updated", handleUpdate);
     return () => window.removeEventListener("lmx8-branding-updated", handleUpdate);
-  }, []);
+  }, [context?.branding, propBranding]);
 
   const activeBranding = propBranding || context?.branding || localBranding || DEFAULT_BRANDING;
   const businessName = activeBranding?.businessName || DEFAULT_BRANDING.businessName;
