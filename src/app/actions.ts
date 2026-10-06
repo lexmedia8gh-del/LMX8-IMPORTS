@@ -936,8 +936,17 @@ export async function getCurrentAdminAction() {
 export async function getCustomersAction() {
   try {
     await requireAdminSession();
-    const custs = await prisma.customer.findMany();
-    return custs.map((c) => ({ id: c.customerIdentifier, name: c.name }));
+    const { ensureDatabaseSeeded } = await import("@/lib/db-seed");
+    await ensureDatabaseSeeded();
+    const custs = await prisma.customer.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    return custs.map((c) => ({
+      id: c.customerIdentifier,
+      name: c.name,
+      phone: c.phone || undefined,
+      email: c.email || undefined,
+    }));
   } catch (err) {
     console.warn("[Action] getCustomersAction fallback triggered:", err);
     return [];

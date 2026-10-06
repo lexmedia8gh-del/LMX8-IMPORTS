@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { normalizePhoneNumber, getPhoneLookupVariants } from "@/lib/phone";
 import { parsePrismaError } from "@/lib/database-errors";
 import { ensureCreditAccountSchema } from "@/lib/credit-account";
+import { ensureDatabaseSeeded } from "@/lib/db-seed";
 
 export async function createCustomerAction(formData: FormData) {
   try {
@@ -151,41 +152,73 @@ export async function createCustomerAction(formData: FormData) {
 
 export async function getAdminCustomersAction(searchQuery?: string) {
   await requireAdminSession();
+  await ensureDatabaseSeeded();
 
   const term = (searchQuery || "").trim().toLowerCase();
 
-  const customers = await prisma.customer.findMany({
-    include: {
-      creditAccount: true,
-      shipments: { select: { id: true } },
-      payments: { select: { id: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  try {
+    const customers = await prisma.customer.findMany({
+      include: {
+        creditAccount: true,
+        shipments: { select: { id: true } },
+        payments: { select: { id: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-  const mapped = customers.map((c) => ({
-    id: c.id,
-    customerIdentifier: c.customerIdentifier,
-    name: c.name,
-    email: c.email || "N/A",
-    phone: c.phone || "N/A",
-    status: c.status,
-    credits: c.creditAccount?.balance || 0,
-    shipmentsCount: c.shipments.length,
-    paymentsCount: c.payments.length,
-    createdAt: c.createdAt.toISOString(),
-    updatedAt: c.updatedAt.toISOString(),
-  }));
+    const mapped = customers.map((c) => ({
+      id: c.id,
+      customerIdentifier: c.customerIdentifier,
+      name: c.name,
+      email: c.email || "N/A",
+      phone: c.phone || "N/A",
+      status: c.status,
+      credits: c.creditAccount?.balance || 0,
+      shipmentsCount: c.shipments?.length || 0,
+      paymentsCount: c.payments?.length || 0,
+      createdAt: c.createdAt ? c.createdAt.toISOString() : new Date().toISOString(),
+      updatedAt: c.updatedAt ? c.updatedAt.toISOString() : new Date().toISOString(),
+    }));
 
-  if (!term) return mapped;
+    if (!term) return mapped;
 
-  return mapped.filter(
-    (c) =>
-      c.name.toLowerCase().includes(term) ||
-      c.customerIdentifier.toLowerCase().includes(term) ||
-      c.phone.toLowerCase().includes(term) ||
-      c.email.toLowerCase().includes(term)
-  );
+    return mapped.filter(
+      (c) =>
+        c.name.toLowerCase().includes(term) ||
+        c.customerIdentifier.toLowerCase().includes(term) ||
+        c.phone.toLowerCase().includes(term) ||
+        c.email.toLowerCase().includes(term)
+    );
+  } catch (error) {
+    console.error("[getAdminCustomersAction] Error fetching customers:", error);
+    // Fallback simple query without relations if relation query fails
+    const fallbackCustomers = await prisma.customer.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    const mappedFallback = fallbackCustomers.map((c) => ({
+      id: c.id,
+      customerIdentifier: c.customerIdentifier,
+      name: c.name,
+      email: c.email || "N/A",
+      phone: c.phone || "N/A",
+      status: c.status,
+      credits: 0,
+      shipmentsCount: 0,
+      paymentsCount: 0,
+      createdAt: c.createdAt ? c.createdAt.toISOString() : new Date().toISOString(),
+      updatedAt: c.updatedAt ? c.updatedAt.toISOString() : new Date().toISOString(),
+    }));
+
+    if (!term) return mappedFallback;
+
+    return mappedFallback.filter(
+      (c) =>
+        c.name.toLowerCase().includes(term) ||
+        c.customerIdentifier.toLowerCase().includes(term) ||
+        c.phone.toLowerCase().includes(term) ||
+        c.email.toLowerCase().includes(term)
+    );
+  }
 }
 
 export async function getCustomerDetailsAction(customerIdOrIdentifier: string) {
