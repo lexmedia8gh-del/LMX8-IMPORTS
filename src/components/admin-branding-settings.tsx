@@ -207,25 +207,55 @@ export default function AdminBrandingSettings() {
 
   return (
     <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden shadow-sm">
-      {/* Subtab Header */}
-      <div className="flex border-b border-[#F1F5F9] bg-[#F7F9FC] overflow-x-auto scrollbar-none">
-        {subTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              setActiveSubTab(tab.id);
-              setSuccessMsg(null);
-              setErrorMsg(null);
-            }}
-            className={`flex items-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all border-b-2 focus:outline-none ${
-              activeSubTab === tab.id
-                ? "border-[#F2901F] text-[#141B47] bg-white"
-                : "border-transparent text-[#667085] hover:text-[#141B47] hover:bg-gray-50"
-            }`}
-          >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
+      {/* Responsive Navigation Header (No Horizontal Scroll) */}
+      <div className="p-3 bg-[#F7F9FC] border-b border-[#E5E7EB] space-y-2">
+        {/* Mobile Dropdown Navigator (< sm) */}
+        <div className="block sm:hidden">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-[#667085] block mb-1">
+            Branding Section
+          </label>
+          <div className="relative">
+            <select
+              value={activeSubTab}
+              onChange={(e) => {
+                setActiveSubTab(e.target.value as any);
+                setSuccessMsg(null);
+                setErrorMsg(null);
+              }}
+              className="w-full h-11 pl-4 pr-10 rounded-xl border border-[#E5E7EB] bg-white text-xs font-bold text-[#141B47] appearance-none focus:outline-none focus:border-[#F2901F] cursor-pointer"
+            >
+              {subTabs.map((tab) => (
+                <option key={tab.id} value={tab.id}>
+                  {tab.label}
+                </option>
+              ))}
+            </select>
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#667085]">
+              ▼
+            </div>
+          </div>
+        </div>
+
+        {/* Responsive Grid Switcher (sm and above & mobile quick grid) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {subTabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveSubTab(tab.id);
+                setSuccessMsg(null);
+                setErrorMsg(null);
+              }}
+              className={`h-11 px-3 sm:px-4 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                activeSubTab === tab.id
+                  ? "bg-[#141B47] text-white border-[#141B47] shadow-xs"
+                  : "bg-white text-[#475569] border-[#E5E7EB] hover:bg-gray-100 hover:text-[#141B47]"
+              }`}
+            >
+              {tab.icon} <span className="truncate">{tab.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="p-6 md:p-8">

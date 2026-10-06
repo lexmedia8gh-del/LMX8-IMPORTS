@@ -18,12 +18,13 @@ import {
   deactivateCustomerSafeAction,
   deleteTrackingEventSafeAction,
   deleteNotificationSafeAction,
+  deletePaymentSafeAction,
   cleanupTestDataAction,
   deleteSelectedDataRecordsAction,
 } from "@/app/actions/data-management";
 import Link from "next/link";
 
-type TabType = "shipments" | "batches" | "customers" | "events" | "notifications" | "danger";
+type TabType = "shipments" | "batches" | "customers" | "events" | "payments" | "notifications" | "danger";
 
 export default function AdminDataManagementPage() {
   const [activeTab, setActiveTab] = useState<TabType>("shipments");
@@ -123,6 +124,7 @@ export default function AdminDataManagementPage() {
     if (activeTab === "shipments") return record.trackingNumber || record.id;
     if (activeTab === "batches") return record.batchNumber || record.id;
     if (activeTab === "customers") return record.customerIdentifier || record.id;
+    if (activeTab === "payments") return record.reference || record.id;
     return record.id;
   }, [activeTab]);
 
@@ -186,6 +188,8 @@ export default function AdminDataManagementPage() {
         res = await deleteTrackingEventSafeAction(recordToDelete.id);
       } else if (recordToDelete.type === "Notification") {
         res = await deleteNotificationSafeAction(recordToDelete.id);
+      } else if (recordToDelete.type === "Payment") {
+        res = await deletePaymentSafeAction(recordToDelete.id, deleteConfirmationText, adminPinInput || undefined);
       }
 
       if (res?.error) {
@@ -216,7 +220,7 @@ export default function AdminDataManagementPage() {
     try {
       const recordIdsArray = Array.from(selectedIds);
       const res = await deleteSelectedDataRecordsAction(
-        activeTab as "shipments" | "batches" | "customers" | "events" | "notifications",
+        activeTab as "shipments" | "batches" | "customers" | "events" | "notifications" | "payments",
         recordIdsArray,
         bulkConfirmationText,
         bulkAdminPin || undefined
@@ -283,6 +287,7 @@ export default function AdminDataManagementPage() {
     { id: "batches" as TabType, label: "Batches", count: overview?.batches, icon: <Layers size={15} /> },
     { id: "customers" as TabType, label: "Customers", count: overview?.customers, icon: <Users size={15} /> },
     { id: "events" as TabType, label: "Tracking Events", count: overview?.trackingEvents, icon: <Clock size={15} /> },
+    { id: "payments" as TabType, label: "Payments", count: overview?.payments, icon: <Shield size={15} /> },
     { id: "notifications" as TabType, label: "Notifications", count: overview?.notifications, icon: <Bell size={15} /> },
     { id: "danger" as TabType, label: "Danger Zone & Purge", count: null, icon: <ShieldAlert size={15} /> },
   ];
@@ -331,7 +336,7 @@ export default function AdminDataManagementPage() {
           { label: "Customers", count: overview?.customers ?? "—", tab: "customers" as TabType, icon: <Users size={15} />, color: "#10B981" },
           { label: "Events", count: overview?.trackingEvents ?? "—", tab: "events" as TabType, icon: <Clock size={15} />, color: "#8B5CF6" },
           { label: "Notifs", count: overview?.notifications ?? "—", tab: "notifications" as TabType, icon: <Bell size={15} />, color: "#EC4899" },
-          { label: "Payments", count: overview?.payments ?? "—", tab: null, icon: <Shield size={15} />, color: "#059669" },
+          { label: "Payments", count: overview?.payments ?? "—", tab: "payments" as TabType, icon: <Shield size={15} />, color: "#059669" },
         ].map((kpi) => (
           <div
             key={kpi.label}
@@ -1280,6 +1285,172 @@ export default function AdminDataManagementPage() {
                               >
                                 <Trash2 size={13} /> Delete
                               </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════ TAB: PAYMENTS ════════════ */}
+          {activeTab === "payments" && (
+            <div>
+              {/* Mobile Cards */}
+              <div className="block md:hidden space-y-3">
+                {loading ? (
+                  <div className="py-12 text-center text-xs text-[#667085]">
+                    <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading payments...
+                  </div>
+                ) : filteredRecords.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No payment records found.</div>
+                ) : (
+                  filteredRecords.map((p) => {
+                    const key = getRecordKey(p);
+                    const isSelected = selectedIds.has(key);
+                    return (
+                      <div
+                        key={p.id}
+                        className={`p-4 rounded-xl border bg-white space-y-3 shadow-xs transition-all ${
+                          isSelected ? "border-red-500 ring-1 ring-red-500 bg-red-50/10" : "border-[#E5E7EB]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5">
+                            <button onClick={() => handleToggleSelectRecord(key)} className="mt-0.5 text-[#141B47] cursor-pointer">
+                              {isSelected ? (
+                                <CheckSquare size={18} className="text-red-600" />
+                              ) : (
+                                <Square size={18} className="text-gray-300 hover:text-gray-500" />
+                              )}
+                            </button>
+                            <div>
+                              <p className="font-mono font-bold text-xs text-[#141B47]">{p.reference}</p>
+                              <p className="text-xs font-bold text-[#172236] mt-0.5">{p.customerName} ({p.customerIdentifier})</p>
+                            </div>
+                          </div>
+                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
+                            p.status === "SUCCESS" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-800 border border-amber-200"
+                          }`}>
+                            {p.status}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-[#F1F5F9] text-[#667085]">
+                          <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Amount</span>{p.currency} {p.amount}</div>
+                          <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Provider / Type</span>{p.provider} · {p.type}</div>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t border-[#F1F5F9]">
+                          <div className="text-[11px] text-[#667085]">
+                            {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ""}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleOpenDetails("Payment", p.reference)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye size={13} /> Inspect
+                            </button>
+                            <button
+                              onClick={() => setRecordToDelete({ type: "Payment", id: p.reference, name: `${p.reference} (${p.currency} ${p.amount})` })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto border border-[#E5E7EB] rounded-2xl">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      <th className="px-4 py-3.5 w-10">
+                        <button onClick={handleToggleSelectAll} className="cursor-pointer">
+                          {isAllSelected ? (
+                            <CheckSquare size={16} className="text-red-600" />
+                          ) : (
+                            <Square size={16} className="text-gray-400" />
+                          )}
+                        </button>
+                      </th>
+                      {["Payment Reference", "Customer", "Amount", "Status", "Provider / Type", "Date", "Actions"].map((h) => (
+                        <th key={h} className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9]">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-xs text-[#667085]">
+                          <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading payments...
+                        </td>
+                      </tr>
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-xs text-[#667085]">No payment records found.</td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((p) => {
+                        const key = getRecordKey(p);
+                        const isSelected = selectedIds.has(key);
+                        return (
+                          <tr key={p.id} className={`transition-colors ${isSelected ? "bg-red-50/20" : "hover:bg-gray-50/50"}`}>
+                            <td className="px-4 py-3.5">
+                              <button onClick={() => handleToggleSelectRecord(key)} className="cursor-pointer">
+                                {isSelected ? (
+                                  <CheckSquare size={16} className="text-red-600" />
+                                ) : (
+                                  <Square size={16} className="text-gray-300 hover:text-gray-500" />
+                                )}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                              {p.reference}
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-[#172236]">
+                              {p.customerName} ({p.customerIdentifier})
+                            </td>
+                            <td className="px-4 py-3.5 text-xs font-mono font-bold text-[#141B47]">
+                              {p.currency} {p.amount}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                p.status === "SUCCESS" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-800 border border-amber-200"
+                              }`}>
+                                {p.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-[#667085]">
+                              {p.provider} · {p.type}
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-[#667085]">
+                              {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "N/A"}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleOpenDetails("Payment", p.reference)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye size={13} /> Inspect
+                                </button>
+                                <button
+                                  onClick={() => setRecordToDelete({ type: "Payment", id: p.reference, name: `${p.reference} (${p.currency} ${p.amount})` })}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 size={13} /> Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

@@ -170,24 +170,31 @@ export default function CustomerDashboard() {
 
         {/* Recent Activity */}
         <section className="space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider" style={{ color: "#94A3B8" }}>Recent Activity</h2>
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden h-full flex flex-col" style={{ border: "1px solid #E5E7EB" }}>
-            <div className="flex-1 p-0 divide-y divide-[#F1F5F9]">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[#94A3B8]">Recent Activity</h2>
+          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E7EB] overflow-hidden flex flex-col h-full">
+            <div className="flex-1 divide-y divide-[#F1F5F9]">
               {notifications.length === 0 ? (
-                <div className="p-6 text-center text-sm" style={{ color: "#667085" }}>
+                <div className="p-6 text-center text-sm text-[#667085]">
                   <Bell size={24} className="mx-auto mb-2 text-gray-200" />
                   No recent activity.
                 </div>
               ) : (
                 notifications.slice(0, 3).map((n) => (
-                  <div key={n.id} className="p-4 flex gap-3 items-start">
-                    <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: n.read ? "#E5E7EB" : "#FFB800" }} />
-                    <div>
-                      <p className={`text-sm leading-tight ${!n.read ? "font-semibold text-[#0B1F44]" : "text-[#475569]"}`}>
-                        {n.title}
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: "#667085" }}>{n.message}</p>
-                      <p className="text-[10px] mt-1.5 font-medium" style={{ color: "#94A3B8" }}>{timeAgo(n.createdAt)}</p>
+                  <div key={n.id} className="p-4 sm:p-5 flex gap-3 items-start">
+                    <div
+                      className="w-2.5 h-2.5 rounded-full mt-1 shrink-0"
+                      style={{ background: n.read ? "#CBD5E1" : "#F2901F" }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <p className={`text-sm leading-snug break-words ${!n.read ? "font-bold text-[#0B1F44]" : "font-medium text-[#475569]"}`}>
+                          {n.title}
+                        </p>
+                        <span className="text-[10px] font-medium text-[#94A3B8] shrink-0 font-mono">
+                          {timeAgo(n.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#667085] mt-1 leading-relaxed break-words">{n.message}</p>
                     </div>
                   </div>
                 ))
@@ -195,7 +202,7 @@ export default function CustomerDashboard() {
             </div>
             {notifications.length > 0 && (
               <div className="p-3 border-t border-[#F1F5F9] bg-[#F7F9FC]">
-                <Link href="/portal/notifications" className="block text-center text-xs font-bold hover:underline" style={{ color: "#0B1F44" }}>
+                <Link href="/portal/notifications" className="block text-center text-xs font-bold text-[#0B1F44] hover:text-[#F2901F] transition-colors">
                   View All Notifications
                 </Link>
               </div>

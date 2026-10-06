@@ -49,7 +49,7 @@ export async function getDatabaseOverviewAction() {
 /**
  * Fetch records for Data Management tabular explorer
  */
-export async function getDataRecordsAction(entityType: "shipments" | "batches" | "customers" | "events" | "notifications") {
+export async function getDataRecordsAction(entityType: "shipments" | "batches" | "customers" | "events" | "notifications" | "payments") {
   await requireAdminSession();
 
   switch (entityType) {
@@ -177,6 +177,31 @@ export async function getDataRecordsAction(entityType: "shipments" | "batches" |
         customerName: n.customer?.name || "N/A",
         customerIdentifier: n.customer?.customerIdentifier || "N/A",
         createdAt: n.createdAt.toISOString(),
+      }));
+    }
+
+    case "payments": {
+      const records = await prisma.payment.findMany({
+        include: {
+          customer: { select: { id: true, customerIdentifier: true, name: true } },
+          shipment: { select: { id: true, trackingNumber: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      });
+
+      return records.map((p) => ({
+        id: p.id,
+        reference: p.reference,
+        amount: p.amount,
+        currency: p.currency || "GHS",
+        status: p.status,
+        type: p.type,
+        provider: p.provider || "PAYSTACK",
+        createdAt: p.createdAt.toISOString(),
+        customerName: p.customer?.name || "N/A",
+        customerIdentifier: p.customer?.customerIdentifier || "N/A",
+        shipmentTrackingNumber: p.shipment?.trackingNumber || "N/A",
       }));
     }
 
@@ -321,6 +346,45 @@ export async function getRecordRelationshipsAction(entityType: string, recordId:
             ]
           : [],
         canDelete: !hasHistory,
+      };
+    }
+
+    case "Payment": {
+      const payment = await prisma.payment.findFirst({
+        where: {
+          OR: [{ id: recordId }, { reference: recordId }],
+        },
+        include: {
+          customer: true,
+          shipment: true,
+          creditTransactions: true,
+        },
+      });
+
+      if (!payment) return null;
+
+      const notifsCount = await prisma.notification.count({
+        where: { paymentId: payment.id },
+      });
+
+      return {
+        id: payment.id,
+        reference: payment.reference,
+        amount: payment.amount,
+        currency: payment.currency || "GHS",
+        status: payment.status,
+        customer: payment.customer
+          ? { id: payment.customer.id, name: payment.customer.name, identifier: payment.customer.customerIdentifier }
+          : null,
+        shipment: payment.shipment ? { id: payment.shipment.id, trackingNumber: payment.shipment.trackingNumber } : null,
+        relationships: {
+          creditTransactionsCount: payment.creditTransactions.length,
+          notificationsCount: notifsCount,
+        },
+        warnings: payment.status === "SUCCESS"
+          ? ["This payment was successfully completed. Deleting this record will remove it from local payment history while keeping audit logs intact."]
+          : [],
+        canDelete: true,
       };
     }
 
@@ -697,6 +761,77 @@ export async function deleteNotificationSafeAction(notificationId: string) {
 }
 
 /**
+ * Safe Payment Deletion
+ */
+export async function deletePaymentSafeAction(
+  paymentIdentifier: string,
+  confirmationText: string,
+  adminPin?: string
+) {
+  const admin = await requireAdminSession();
+
+  if (confirmationText.trim().toUpperCase() !== "DELETE") {
+    return { error: "Confirmation text must be 'DELETE'." };
+  }
+
+  if (adminPin) {
+    const isPinValid = await verifyAdminPinInternal(admin.id, adminPin);
+    if (!isPinValid) {
+      return { error: "Invalid Admin PIN." };
+    }
+  }
+
+  const payment = await prisma.payment.findFirst({
+    where: {
+      OR: [{ id: paymentIdentifier }, { reference: paymentIdentifier }],
+    },
+    include: {
+      customer: true,
+      shipment: true,
+      creditTransactions: true,
+    },
+  });
+
+  if (!payment) {
+    return { error: "Payment record not found." };
+  }
+
+  // Unlink foreign keys safely in atomic transaction without breaking relationships or Paystack
+  await prisma.$transaction([
+    prisma.creditTransaction.updateMany({
+      where: { paymentId: payment.id },
+      data: { paymentId: null },
+    }),
+    prisma.notification.updateMany({
+      where: { paymentId: payment.id },
+      data: { paymentId: null },
+    }),
+    prisma.payment.delete({
+      where: { id: payment.id },
+    }),
+    prisma.auditLog.create({
+      data: {
+        action: "PAYMENT_DELETED",
+        entityType: "Payment",
+        entityId: payment.id,
+        description: `Payment ${payment.reference} (${payment.currency || "GHS"} ${payment.amount}) deleted by ${admin.name}`,
+        adminId: admin.id,
+        metadata: {
+          reference: payment.reference,
+          amount: payment.amount,
+          currency: payment.currency || "GHS",
+          status: payment.status,
+          customerIdentifier: payment.customer?.customerIdentifier || null,
+          shipmentTrackingNumber: payment.shipment?.trackingNumber || null,
+        },
+      },
+    }),
+  ]);
+
+  return { success: true, reference: payment.reference };
+}
+
+/**
  * Controlled Danger Zone: Test Data Cleanup
  * Only removes explicitly marked test records (e.g. prefix TEST-)
  * Requires Admin PIN verification.
@@ -800,7 +935,7 @@ export async function cleanupTestDataAction(confirmationText: string, adminPin: 
  * Safe Bulk Reset / Delete Selected Records Action
  */
 export async function deleteSelectedDataRecordsAction(
-  entityType: "shipments" | "batches" | "customers" | "events" | "notifications",
+  entityType: "shipments" | "batches" | "customers" | "events" | "notifications" | "payments",
   recordIds: string[],
   confirmationText: string,
   adminPin?: string
@@ -1079,6 +1214,58 @@ export async function deleteSelectedDataRecordsAction(
         success: true,
         deletedCount: notifications.length,
         identifiers: notifIds,
+      };
+    }
+
+    case "payments": {
+      const payments = await prisma.payment.findMany({
+        where: {
+          OR: [{ id: { in: recordIds } }, { reference: { in: recordIds } }],
+        },
+        include: {
+          customer: true,
+          shipment: true,
+        },
+      });
+
+      if (payments.length === 0) {
+        return { error: "No matching payment records found." };
+      }
+
+      const paymentIds = payments.map((p) => p.id);
+      const references = payments.map((p) => p.reference);
+
+      await prisma.$transaction([
+        prisma.creditTransaction.updateMany({
+          where: { paymentId: { in: paymentIds } },
+          data: { paymentId: null },
+        }),
+        prisma.notification.updateMany({
+          where: { paymentId: { in: paymentIds } },
+          data: { paymentId: null },
+        }),
+        prisma.payment.deleteMany({
+          where: { id: { in: paymentIds } },
+        }),
+        prisma.auditLog.create({
+          data: {
+            action: "PAYMENT_BULK_DELETED",
+            entityType: "Payment",
+            entityId: paymentIds.join(","),
+            description: `Bulk deleted ${payments.length} payment record(s) (${references.join(", ")}) by ${admin.name}`,
+            adminId: admin.id,
+            metadata: {
+              count: payments.length,
+              references,
+            },
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        deletedCount: payments.length,
+        identifiers: references,
       };
     }
 
