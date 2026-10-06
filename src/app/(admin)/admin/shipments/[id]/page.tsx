@@ -164,8 +164,8 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
     await loadData();
   };
 
-  if (loading) return <div className="p-10 text-center">Loading shipment details...</div>;
-  if (!shipment) return <div className="p-10 text-center">Shipment not found.</div>;
+  if (loading) return <div className="p-6 sm:p-10 text-center text-sm font-semibold text-[#667085]">Loading shipment details...</div>;
+  if (!shipment) return <div className="p-6 sm:p-10 text-center text-sm font-semibold text-[#667085]">Shipment not found.</div>;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -173,12 +173,12 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
         <ArrowLeft size={16} /> Back to Shipments
       </Link>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-[#E5E7EB]">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-[#E5E7EB]">
         <div>
-          <h1 className="text-2xl font-bold text-[#172236]">{shipment.id}</h1>
-          <p className="text-sm text-[#667085] mt-1">{shipment.description} · Customer: <span className="font-semibold text-[#172236]">{shipment.customerId}</span></p>
+          <h1 className="text-xl sm:text-2xl font-bold text-[#172236]">{shipment.id}</h1>
+          <p className="text-xs sm:text-sm text-[#667085] mt-1">{shipment.description} · Customer: <span className="font-semibold text-[#172236]">{shipment.customerId}</span></p>
         </div>
-        <div className="flex items-center gap-3 bg-[#F7F9FC] px-4 py-2 rounded-lg border border-[#E5E7EB]">
+        <div className="flex items-center gap-3 bg-[#F7F9FC] px-3 sm:px-4 py-2 rounded-xl border border-[#E5E7EB]">
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085]">Current Status</span>
           <ShipmentStatusBadge status={shipment.status} adminMode />
         </div>
@@ -189,9 +189,9 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
         {/* LEFT COLUMN: Details & Photos */}
         <div className="lg:col-span-2 space-y-6">
           
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB]">
-            <h2 className="text-lg font-bold text-[#172236] mb-5">Shipment Details</h2>
-            <div className="grid grid-cols-2 gap-y-6 gap-x-4">
+          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-[#E5E7EB]">
+            <h2 className="text-base sm:text-lg font-bold text-[#172236] mb-5">Shipment Details</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-5 gap-x-4">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-[#667085] mb-1">Origin</p>
                 <p className="font-semibold text-sm text-[#172236] flex items-center gap-1.5"><MapPin size={14} className="text-[#94A3B8]"/> {shipment.origin}</p>
@@ -223,7 +223,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
               <h3 className="text-sm font-semibold text-[#172236] flex items-center gap-2">
                 <DollarSign size={15} className="text-[#667085]" /> Set / Update Shipping Fee
               </h3>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#667085]">GHS</span>
                   <input
@@ -240,7 +240,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
                 <button
                   type="submit"
                   disabled={updatingFee}
-                  className="px-5 h-10 rounded-xl text-sm font-bold flex items-center gap-2 transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-5 h-10 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ background: "#0B1F44", color: "white" }}
                 >
                   {updatingFee ? "Saving..." : <><Save size={14} /> Save Fee</>}
@@ -254,8 +254,8 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
             </form>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB]">
-            <h2 className="text-lg font-bold text-[#172236] mb-2 flex items-center gap-2"><Camera size={18} /> Cargo Photos</h2>
+          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-[#E5E7EB]">
+            <h2 className="text-base sm:text-lg font-bold text-[#172236] mb-2 flex items-center gap-2"><Camera size={18} /> Cargo Photos</h2>
             <p className="text-xs text-[#667085] mb-5">Upload warehouse, packing, and condition photos.</p>
             
             {/* Batch Closure / 7-Day Retention Notice */}
@@ -263,7 +263,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
                 <Clock size={18} className="text-amber-600 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs font-bold text-amber-900">Batch Closed ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â 7-Day Retention Active</p>
+                  <p className="text-xs font-bold text-amber-900">Batch Closed · 7-Day Retention Active</p>
                   <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
                     This batch has been marked closed. Shipment files are temporarily preserved and will be permanently deleted after the 7-day retention period expires. File uploads are frozen.
                   </p>
@@ -309,7 +309,7 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
             )}
 
             {shipment.photos.length === 0 ? (
-              <div className="p-8 border-2 border-dashed border-[#E5E7EB] rounded-xl text-center">
+              <div className="p-6 sm:p-8 border-2 border-dashed border-[#E5E7EB] rounded-xl text-center">
                 <p className="text-sm text-[#667085] font-medium">No photos uploaded yet.</p>
               </div>
             ) : (

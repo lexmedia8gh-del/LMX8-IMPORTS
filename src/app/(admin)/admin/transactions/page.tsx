@@ -12,7 +12,34 @@ export default function AdminTransactionsPage() {
       </div>
 
       <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-[#E5E7EB]">
-        <div className="overflow-x-auto">
+        {/* Mobile Cards View */}
+        <div className="block md:hidden divide-y divide-[#F1F5F9]">
+          {MOCK_INVOICES.map(inv => (
+            <div key={inv.id} className="p-4 space-y-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${inv.status === 'Paid' ? 'bg-[#D1FAE5]' : 'bg-[#FEF9C3]'}`}>
+                    {inv.status === 'Paid' ? <ArrowDownLeft size={16} className="text-[#065F46]" /> : <ArrowUpRight size={16} className="text-[#854D0E]" />}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-[#172236]">{inv.id}</p>
+                    <p className="text-[11px] text-[#667085]">{inv.shipmentId}</p>
+                  </div>
+                </div>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${inv.status === 'Paid' ? 'bg-[#D1FAE5] text-[#065F46]' : 'bg-[#FEF9C3] text-[#854D0E]'}`}>
+                  {inv.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-100">
+                <span className="text-[#667085]">{getCustomerName(inv.customerId)} · {inv.date}</span>
+                <span className="font-bold text-sm text-[#172236]">{formatCurrency(inv.amount)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">

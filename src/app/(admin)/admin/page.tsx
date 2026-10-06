@@ -57,7 +57,7 @@ export default async function AdminDashboard() {
           <CardContent className="p-0">
             <div className="divide-y divide-[#E2E8F0]">
               {shipments.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-12 text-center" style={{ color: "#667085" }}>
+                <div className="flex flex-col items-center justify-center p-6 sm:p-10 text-center" style={{ color: "#667085" }}>
                   <PackageX className="w-10 h-10 mb-3 opacity-20" />
                   <p className="font-medium" style={{ color: "#0B1F44" }}>No shipments found</p>
                 </div>
@@ -105,7 +105,7 @@ export default async function AdminDashboard() {
                 </div>
               ))}
               {pendingSourcing === 0 && (
-                <div className="flex flex-col items-center justify-center p-12 text-center" style={{ color: "#667085" }}>
+                <div className="flex flex-col items-center justify-center p-6 sm:p-10 text-center" style={{ color: "#667085" }}>
                   <Search className="w-10 h-10 mb-3 opacity-20" />
                   <p className="font-medium" style={{ color: "#0B1F44" }}>All caught up!</p>
                   <p className="text-sm mt-1">No pending sourcing requests.</p>

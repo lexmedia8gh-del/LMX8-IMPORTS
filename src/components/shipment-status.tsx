@@ -110,11 +110,11 @@ export function ShipmentStatusBadge({
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold max-w-full leading-tight"
       style={{ background: s.bg, color: s.text }}
     >
       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: s.dot }} />
-      {label}
+      <span className="truncate">{label}</span>
     </span>
   );
 }

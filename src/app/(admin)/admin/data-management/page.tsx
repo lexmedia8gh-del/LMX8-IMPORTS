@@ -313,353 +313,588 @@ export default function AdminDataManagementPage() {
 
           {/* ════════════ TAB 1: SHIPMENTS ════════════ */}
           {activeTab === "shipments" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
-                    {["Tracking Number", "Customer", "Batch", "Status", "Dependencies", "Actions"].map((h) => (
-                      <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F1F5F9]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
-                        <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading shipments...
-                      </td>
+            <div>
+              {/* Mobile Cards */}
+              <div className="block md:hidden space-y-3">
+                {loading ? (
+                  <div className="py-12 text-center text-xs text-[#667085]">
+                    <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading shipments...
+                  </div>
+                ) : filteredRecords.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No shipment records found.</div>
+                ) : (
+                  filteredRecords.map((s) => (
+                    <div key={s.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-3 shadow-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-mono font-bold text-xs text-[#141B47]">{s.trackingNumber}</p>
+                          <p className="text-xs text-[#667085] mt-0.5">{s.description}</p>
+                        </div>
+                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200 shrink-0">
+                          {s.status}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-[#F1F5F9] text-[#667085]">
+                        <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Customer</span>{s.customer}</div>
+                        <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Batch</span>{s.batch}</div>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-[#F1F5F9]">
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#667085]">
+                          <span>{s.eventsCount} events</span> · <span>{s.photosCount} files</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleOpenDetails("Shipment", s.trackingNumber)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye size={13} /> Inspect
+                          </button>
+                          <button
+                            onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      {["Tracking Number", "Customer", "Batch", "Status", "Dependencies", "Actions"].map((h) => (
+                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ) : filteredRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No shipment records found.</td>
-                    </tr>
-                  ) : (
-                    filteredRecords.map((s) => (
-                      <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
-                          {s.trackingNumber}
-                          <p className="text-[11px] font-sans font-normal text-[#667085] mt-0.5 truncate max-w-xs">
-                            {s.description}
-                          </p>
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-[#172236]">
-                          {s.customer}
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-[#667085]">
-                          {s.batch}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200">
-                            {s.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2 text-[11px] text-[#667085]">
-                            <span>{s.eventsCount} events</span>
-                            <span>·</span>
-                            <span>{s.photosCount} files</span>
-                            {s.hasPaidPayments && (
-                              <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 font-semibold">
-                                Paid
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleOpenDetails("Shipment", s.trackingNumber)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <Eye size={13} /> Inspect
-                            </button>
-                            <button
-                              onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <Trash2 size={13} /> Delete
-                            </button>
-                          </div>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9]">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
+                          <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading shipments...
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No shipment records found.</td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((s) => (
+                        <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                            {s.trackingNumber}
+                            <p className="text-[11px] font-sans font-normal text-[#667085] mt-0.5 truncate max-w-xs">
+                              {s.description}
+                            </p>
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-[#172236]">
+                            {s.customer}
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-[#667085]">
+                            {s.batch}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-800 border border-blue-200">
+                              {s.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2 text-[11px] text-[#667085]">
+                              <span>{s.eventsCount} events</span>
+                              <span>·</span>
+                              <span>{s.photosCount} files</span>
+                              {s.hasPaidPayments && (
+                                <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 font-semibold">
+                                  Paid
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleOpenDetails("Shipment", s.trackingNumber)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye size={13} /> Inspect
+                              </button>
+                              <button
+                                onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 size={13} /> Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {/* ════════════ TAB 2: BATCHES ════════════ */}
           {activeTab === "batches" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
-                    {["Batch Code", "Name", "Assigned Shipments", "Status", "Schedule", "Actions"].map((h) => (
-                      <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F1F5F9]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
-                        <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading batches...
-                      </td>
+            <div>
+              {/* Mobile Cards */}
+              <div className="block md:hidden space-y-3">
+                {loading ? (
+                  <div className="py-12 text-center text-xs text-[#667085]">
+                    <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading batches...
+                  </div>
+                ) : filteredRecords.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No batch records found.</div>
+                ) : (
+                  filteredRecords.map((b) => (
+                    <div key={b.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-3 shadow-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-mono font-bold text-xs text-[#141B47]">{b.batchNumber}</p>
+                          <p className="text-xs font-semibold text-[#172236] mt-0.5">{b.name}</p>
+                        </div>
+                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                          {b.status}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-[#F1F5F9] text-[#667085]">
+                        <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Assigned Shipments</span>{b.shipmentsCount} shipment(s)</div>
+                        <div><span className="text-[10px] uppercase font-bold text-gray-400 block">Schedule</span>{b.departure || "TBD"} → {b.arrival || "TBD"}</div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F1F5F9]">
+                        <button
+                          onClick={() => handleOpenDetails("Batch", b.batchNumber)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Eye size={13} /> Inspect
+                        </button>
+                        <button
+                          onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      {["Batch Code", "Name", "Assigned Shipments", "Status", "Schedule", "Actions"].map((h) => (
+                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ) : filteredRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No batch records found.</td>
-                    </tr>
-                  ) : (
-                    filteredRecords.map((b) => (
-                      <tr key={b.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
-                          {b.batchNumber}
-                        </td>
-                        <td className="px-5 py-3.5 text-xs font-semibold text-[#172236]">
-                          {b.name}
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-[#667085]">
-                          <span className={`font-bold ${b.shipmentsCount > 0 ? "text-[#141B47]" : "text-gray-400"}`}>
-                            {b.shipmentsCount} shipment(s)
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200">
-                            {b.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                          {b.departure || "TBD"} → {b.arrival || "TBD"}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleOpenDetails("Batch", b.batchNumber)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <Eye size={13} /> Inspect
-                            </button>
-                            <button
-                              onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <Trash2 size={13} /> Delete
-                            </button>
-                          </div>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9]">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
+                          <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading batches...
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No batch records found.</td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((b) => (
+                        <tr key={b.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                            {b.batchNumber}
+                          </td>
+                          <td className="px-5 py-3.5 text-xs font-semibold text-[#172236]">
+                            {b.name}
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-[#667085]">
+                            <span className={`font-bold ${b.shipmentsCount > 0 ? "text-[#141B47]" : "text-gray-400"}`}>
+                              {b.shipmentsCount} shipment(s)
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200">
+                              {b.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
+                            {b.departure || "TBD"} → {b.arrival || "TBD"}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleOpenDetails("Batch", b.batchNumber)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye size={13} /> Inspect
+                              </button>
+                              <button
+                                onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 size={13} /> Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {/* ════════════ TAB 3: CUSTOMERS ════════════ */}
           {activeTab === "customers" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
-                    {["Customer ID", "Name", "Contact", "History Summary", "Status", "Actions"].map((h) => (
-                      <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F1F5F9]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
-                        <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading customer records...
-                      </td>
+            <div>
+              {/* Mobile Cards */}
+              <div className="block md:hidden space-y-3">
+                {loading ? (
+                  <div className="py-12 text-center text-xs text-[#667085]">
+                    <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading customer records...
+                  </div>
+                ) : filteredRecords.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No customer records found.</div>
+                ) : (
+                  filteredRecords.map((c) => (
+                    <div key={c.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-3 shadow-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-mono font-bold text-xs text-[#141B47]">{c.customerIdentifier}</p>
+                          <p className="text-xs font-bold text-[#172236] mt-0.5">{c.name}</p>
+                          <p className="text-[11px] text-[#667085]">{c.phone} {c.email !== "N/A" ? `· ${c.email}` : ""}</p>
+                        </div>
+                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
+                          c.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
+                        }`}>
+                          {c.status}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
+                        <span>{c.shipmentsCount} shipments</span> · <span>{c.paymentsCount} payments</span> · <span>{c.credits} credits</span>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F1F5F9] flex-wrap">
+                        <button
+                          onClick={() => handleOpenDetails("Customer", c.customerIdentifier)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Eye size={13} /> Inspect
+                        </button>
+                        <button
+                          onClick={() => handleToggleCustomerStatus(c.id)}
+                          disabled={isPending}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                            c.status === "ACTIVE"
+                              ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                              : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          }`}
+                        >
+                          {c.status === "ACTIVE" ? <UserX size={13} /> : <UserCheck size={13} />}
+                          {c.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                        </button>
+                        {c.shipmentsCount === 0 && c.paymentsCount === 0 && (
+                          <button
+                            onClick={() => setRecordToDelete({ type: "Customer", id: c.customerIdentifier, name: `${c.name} (${c.customerIdentifier})` })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      {["Customer ID", "Name", "Contact", "History Summary", "Status", "Actions"].map((h) => (
+                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ) : filteredRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No customer records found.</td>
-                    </tr>
-                  ) : (
-                    filteredRecords.map((c) => (
-                      <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
-                          {c.customerIdentifier}
-                        </td>
-                        <td className="px-5 py-3.5 text-xs font-bold text-[#172236]">
-                          {c.name}
-                        </td>
-                        <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                          {c.phone} {c.email !== "N/A" ? `· ${c.email}` : ""}
-                        </td>
-                        <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                          <span>{c.shipmentsCount} shipments</span> · <span>{c.paymentsCount} payments</span> · <span>{c.credits} credits</span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            c.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
-                          }`}>
-                            {c.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleOpenDetails("Customer", c.customerIdentifier)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <Eye size={13} /> Inspect
-                            </button>
-                            <button
-                              onClick={() => handleToggleCustomerStatus(c.id)}
-                              disabled={isPending}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer ${
-                                c.status === "ACTIVE"
-                                  ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
-                                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                              }`}
-                            >
-                              {c.status === "ACTIVE" ? <UserX size={13} /> : <UserCheck size={13} />}
-                              {c.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                            </button>
-                            {c.shipmentsCount === 0 && c.paymentsCount === 0 && (
-                              <button
-                                onClick={() => setRecordToDelete({ type: "Customer", id: c.customerIdentifier, name: `${c.name} (${c.customerIdentifier})` })}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Trash2 size={13} /> Delete
-                              </button>
-                            )}
-                          </div>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9]">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
+                          <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading customer records...
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No customer records found.</td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((c) => (
+                        <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                            {c.customerIdentifier}
+                          </td>
+                          <td className="px-5 py-3.5 text-xs font-bold text-[#172236]">
+                            {c.name}
+                          </td>
+                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
+                            {c.phone} {c.email !== "N/A" ? `· ${c.email}` : ""}
+                          </td>
+                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
+                            <span>{c.shipmentsCount} shipments</span> · <span>{c.paymentsCount} payments</span> · <span>{c.credits} credits</span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              c.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
+                            }`}>
+                              {c.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleOpenDetails("Customer", c.customerIdentifier)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye size={13} /> Inspect
+                              </button>
+                              <button
+                                onClick={() => handleToggleCustomerStatus(c.id)}
+                                disabled={isPending}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                                  c.status === "ACTIVE"
+                                    ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                }`}
+                              >
+                                {c.status === "ACTIVE" ? <UserX size={13} /> : <UserCheck size={13} />}
+                                {c.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                              </button>
+                              {c.shipmentsCount === 0 && c.paymentsCount === 0 && (
+                                <button
+                                  onClick={() => setRecordToDelete({ type: "Customer", id: c.customerIdentifier, name: `${c.name} (${c.customerIdentifier})` })}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 size={13} /> Delete
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {/* ════════════ TAB 4: TRACKING EVENTS ════════════ */}
           {activeTab === "events" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
-                    {["Shipment", "Checkpoint Status", "Location", "Remarks", "Timestamp", "Action"].map((h) => (
-                      <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F1F5F9]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
-                        <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading tracking events...
-                      </td>
+            <div>
+              {/* Mobile Cards */}
+              <div className="block md:hidden space-y-3">
+                {loading ? (
+                  <div className="py-12 text-center text-xs text-[#667085]">
+                    <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading tracking events...
+                  </div>
+                ) : filteredRecords.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No tracking events found.</div>
+                ) : (
+                  filteredRecords.map((e) => (
+                    <div key={e.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-2.5 shadow-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-mono font-bold text-xs text-[#141B47]">{e.shipmentTrackingNumber}</p>
+                          <p className="text-xs text-[#172236]">{e.location}</p>
+                        </div>
+                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-50 text-purple-800 border border-purple-200 shrink-0">
+                          {e.status}
+                        </span>
+                      </div>
+                      {e.note && <p className="text-[11px] text-[#667085] bg-gray-50 p-2 rounded-lg">{e.note}</p>}
+                      <div className="flex items-center justify-between text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
+                        <span>{new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <button
+                          onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      {["Shipment", "Checkpoint Status", "Location", "Remarks", "Timestamp", "Action"].map((h) => (
+                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ) : filteredRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No tracking events found.</td>
-                    </tr>
-                  ) : (
-                    filteredRecords.map((e) => (
-                      <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
-                          {e.shipmentTrackingNumber}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-50 text-purple-800 border border-purple-200">
-                            {e.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-[#172236]">
-                          {e.location}
-                        </td>
-                        <td className="px-5 py-3.5 text-[11px] text-[#667085] max-w-xs truncate">
-                          {e.note}
-                        </td>
-                        <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                          {new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <button
-                            onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <Trash2 size={13} /> Delete
-                          </button>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9]">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
+                          <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading tracking events...
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">No tracking events found.</td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((e) => (
+                        <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-5 py-3.5 font-mono font-bold text-xs text-[#141B47]">
+                            {e.shipmentTrackingNumber}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-50 text-purple-800 border border-purple-200">
+                              {e.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-[#172236]">
+                            {e.location}
+                          </td>
+                          <td className="px-5 py-3.5 text-[11px] text-[#667085] max-w-xs truncate">
+                            {e.note}
+                          </td>
+                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
+                            {new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <button
+                              onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {/* ════════════ TAB 5: NOTIFICATIONS ════════════ */}
           {activeTab === "notifications" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
-                    {["Customer", "Title & Content", "Type", "Created", "Action"].map((h) => (
-                      <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F1F5F9]">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-xs text-[#667085]">
-                        <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading notifications...
-                      </td>
+            <div>
+              {/* Mobile Cards */}
+              <div className="block md:hidden space-y-3">
+                {loading ? (
+                  <div className="py-12 text-center text-xs text-[#667085]">
+                    <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading notifications...
+                  </div>
+                ) : filteredRecords.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No notifications found.</div>
+                ) : (
+                  filteredRecords.map((n) => (
+                    <div key={n.id} className="p-4 rounded-xl border border-[#E5E7EB] bg-white space-y-2.5 shadow-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-bold text-xs text-[#141B47]">{n.customerName} ({n.customerIdentifier})</p>
+                          <p className="text-xs font-semibold text-[#172236] mt-0.5">{n.title}</p>
+                        </div>
+                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-pink-50 text-pink-800 border border-pink-200 shrink-0">
+                          {n.type}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#667085] bg-gray-50 p-2 rounded-lg">{n.message}</p>
+                      <div className="flex items-center justify-between text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
+                        <span>{new Date(n.createdAt).toLocaleDateString()}</span>
+                        <button
+                          onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
+                      {["Customer", "Title & Content", "Type", "Created", "Action"].map((h) => (
+                        <th key={h} className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ) : filteredRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-xs text-[#667085]">No notifications found.</td>
-                    </tr>
-                  ) : (
-                    filteredRecords.map((n) => (
-                      <tr key={n.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-3.5 font-bold text-xs text-[#141B47]">
-                          {n.customerName} ({n.customerIdentifier})
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-[#172236] max-w-sm">
-                          <p className="font-semibold">{n.title}</p>
-                          <p className="text-[11px] text-[#667085] truncate mt-0.5">{n.message}</p>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-pink-50 text-pink-800 border border-pink-200">
-                            {n.type}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-[11px] text-[#667085]">
-                          {new Date(n.createdAt).toLocaleDateString()}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <button
-                            onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <Trash2 size={13} /> Delete
-                          </button>
+                  </thead>
+                  <tbody className="divide-y divide-[#F1F5F9]">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-xs text-[#667085]">
+                          <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading notifications...
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-xs text-[#667085]">No notifications found.</td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((n) => (
+                        <tr key={n.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-5 py-3.5 font-bold text-xs text-[#141B47]">
+                            {n.customerName} ({n.customerIdentifier})
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-[#172236] max-w-sm">
+                            <p className="font-semibold">{n.title}</p>
+                            <p className="text-[11px] text-[#667085] truncate mt-0.5">{n.message}</p>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-pink-50 text-pink-800 border border-pink-200">
+                              {n.type}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-[11px] text-[#667085]">
+                            {new Date(n.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <button
+                              onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 

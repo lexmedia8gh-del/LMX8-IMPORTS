@@ -133,11 +133,11 @@ export default function AddCustomerPage() {
             </div>
           )}
 
-          <div className="pt-4 flex justify-end">
+          <div className="pt-4 flex flex-col sm:flex-row justify-end">
             <button
               type="submit"
               disabled={isPending}
-              className="h-12 px-8 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm disabled:opacity-50 bg-[#0B1F44] text-white"
+              className="w-full sm:w-auto h-12 px-6 sm:px-8 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm disabled:opacity-50 bg-[#0B1F44] text-white"
             >
               <UserPlus size={18} />
               {isPending ? "Creating..." : "CREATE CUSTOMER"}

@@ -80,10 +80,10 @@ export function AdminDrawer({
         className={`relative z-10 w-full ${widthClassName} bg-white shadow-2xl flex flex-col h-full overflow-hidden transition-transform duration-300 ease-out animate-in slide-in-from-right`}
       >
         {/* Sticky Header */}
-        <div className="px-6 py-5 border-b border-[#E5E7EB] bg-[#F7F9FC] shrink-0 flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3 min-w-0">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E5E7EB] bg-[#F7F9FC] shrink-0 flex items-start justify-between gap-3 sm:gap-4">
+          <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
             {icon && (
-              <div className="w-10 h-10 rounded-xl bg-[#141B47] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#141B47] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
                 {icon}
               </div>
             )}
@@ -91,14 +91,14 @@ export function AdminDrawer({
               <div className="flex items-center gap-2 flex-wrap">
                 <h2
                   id="drawer-title"
-                  className="text-lg md:text-xl font-bold text-[#141B47] leading-tight truncate"
+                  className="text-base sm:text-lg md:text-xl font-bold text-[#141B47] leading-tight truncate"
                 >
                   {title}
                 </h2>
                 {badge}
               </div>
               {description && (
-                <p className="text-xs text-[#667085] mt-1 leading-relaxed">
+                <p className="text-xs text-[#667085] mt-0.5 sm:mt-1 leading-relaxed">
                   {description}
                 </p>
               )}
@@ -108,21 +108,21 @@ export function AdminDrawer({
           <button
             type="button"
             onClick={handleAttemptClose}
-            className="p-2 rounded-xl text-[#667085] hover:text-[#141B47] hover:bg-gray-200/60 transition-colors shrink-0 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-[#F2901F]"
+            className="p-1.5 sm:p-2 rounded-xl text-[#667085] hover:text-[#141B47] hover:bg-gray-200/60 transition-colors shrink-0 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-[#F2901F]"
             aria-label="Close drawer"
           >
-            <X size={20} />
+            <X size={18} className="sm:size-5" />
           </button>
         </div>
 
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-7 space-y-6 bg-white text-[#172236] overscroll-contain">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-7 space-y-5 sm:space-y-6 bg-white text-[#172236] overscroll-contain">
           {children}
         </div>
 
         {/* Sticky Footer */}
         {footer && (
-          <div className="px-6 py-4 border-t border-[#E5E7EB] bg-[#F7F9FC] shrink-0 flex items-center justify-end gap-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-t border-[#E5E7EB] bg-[#F7F9FC] shrink-0 flex items-center justify-end gap-2.5 sm:gap-3 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
             {footer}
           </div>
         )}

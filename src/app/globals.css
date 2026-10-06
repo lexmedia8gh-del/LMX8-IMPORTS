@@ -44,6 +44,17 @@
   --color-lmx-muted:     #94A3B8;
   --color-lmx-meta:      #667085;
 
+  /* ── Brand Alias Tokens for standard Tailwind classes ── */
+  --color-brand-navy:      #141B47;
+  --color-brand-deep:      #0C102B;
+  --color-brand-secondary: #355DAF;
+  --color-brand-gold:      #F2901F;
+  --color-brand-light:     #F1F5F9;
+  --color-brand-error:     #EF4444;
+  --color-brand-surface:   #F7F9FC;
+  --color-brand-text:      #172236;
+  --color-brand-muted:     #667085;
+
   --radius-sm:  6px;
   --radius-md:  10px;
   --radius-lg:  12px;
