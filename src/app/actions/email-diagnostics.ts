@@ -249,9 +249,18 @@ export async function retryEmailLogAction(logId: string): Promise<{ success: boo
         } else {
           result = { success: false, error: "Shipment ID missing on log." };
         }
-      } else if (isBrevoEmailMilestone(log.eventType)) {
+      } else if (isBrevoEmailMilestone(log.eventType) || (log.eventType && ["SHIPMENT_ORDER_CONFIRMED", "SHIPMENT_PREPARING", "SHIPMENT_DEPARTED_CHINA", "SHIPMENT_IN_TRANSIT", "SHIPMENT_ARRIVED_GHANA", "SHIPMENT_CUSTOMS_CLEARANCE"].includes(log.eventType))) {
+        const milestoneMap: Record<string, any> = {
+          SHIPMENT_ORDER_CONFIRMED: "SHIPMENT_CREATED",
+          SHIPMENT_PREPARING: "PREPARING_SHIPMENT",
+          SHIPMENT_DEPARTED_CHINA: "SHIPPED",
+          SHIPMENT_IN_TRANSIT: "IN_TRANSIT",
+          SHIPMENT_ARRIVED_GHANA: "ARRIVED_AT_DESTINATION",
+          SHIPMENT_CUSTOMS_CLEARANCE: "CUSTOMS_CLEARANCE",
+        };
+        const targetMilestone = milestoneMap[log.eventType] || log.eventType;
         if (log.shipmentId) {
-          result = await sendShipmentMilestoneEmail({ shipmentId: log.shipmentId, milestone: log.eventType as any });
+          result = await sendShipmentMilestoneEmail({ shipmentId: log.shipmentId, milestone: targetMilestone });
         } else {
           result = { success: false, error: "Shipment ID missing on log." };
         }

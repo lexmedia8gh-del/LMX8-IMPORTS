@@ -24,12 +24,27 @@ export {
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
 // Milestone definition: ONLY these FIRST SIX shipment stages trigger automatic milestone Brevo emails:
-// 1. Order Confirmed (SHIPMENT_CREATED)
-// 2. Preparing for Shipment (PREPARING_SHIPMENT)
-// 3. Departed China (SHIPPED)
-// 4. On the Way to Ghana (IN_TRANSIT)
-// 5. Arrived in Ghana (ARRIVED_AT_DESTINATION)
-// 6. Customs Clearance (CUSTOMS_CLEARANCE)
+// 1. Order Confirmed (SHIPMENT_CREATED) -> SHIPMENT_ORDER_CONFIRMED
+// 2. Preparing for Shipment (PREPARING_SHIPMENT) -> SHIPMENT_PREPARING
+// 3. Departed China (SHIPPED) -> SHIPMENT_DEPARTED_CHINA
+// 4. On the Way to Ghana (IN_TRANSIT) -> SHIPMENT_IN_TRANSIT
+// 5. Arrived in Ghana (ARRIVED_AT_DESTINATION) -> SHIPMENT_ARRIVED_GHANA
+// 6. Customs Clearance (CUSTOMS_CLEARANCE) -> SHIPMENT_CUSTOMS_CLEARANCE
+
+export const SHIPMENT_EMAIL_EVENTS: Record<ShipmentStatus, string | null> = {
+  SHIPMENT_CREATED: "SHIPMENT_ORDER_CONFIRMED",
+  PREPARING_SHIPMENT: "SHIPMENT_PREPARING",
+  SHIPPED: "SHIPMENT_DEPARTED_CHINA",
+  IN_TRANSIT: "SHIPMENT_IN_TRANSIT",
+  ARRIVED_AT_DESTINATION: "SHIPMENT_ARRIVED_GHANA",
+  CUSTOMS_CLEARANCE: "SHIPMENT_CUSTOMS_CLEARANCE",
+  OUT_FOR_DELIVERY: null,
+  DELIVERED: null,
+  ON_HOLD: null,
+};
+
+export type ShipmentEmailStatus = keyof typeof SHIPMENT_EMAIL_EVENTS;
+
 export const BREVO_EMAIL_MILESTONES = [
   "SHIPMENT_CREATED",
   "PREPARING_SHIPMENT",
@@ -42,7 +57,7 @@ export const BREVO_EMAIL_MILESTONES = [
 export type BrevoMilestone = (typeof BREVO_EMAIL_MILESTONES)[number];
 
 export function isBrevoEmailMilestone(status: string): status is BrevoMilestone {
-  return (BREVO_EMAIL_MILESTONES as readonly string[]).includes(status);
+  return Boolean(SHIPMENT_EMAIL_EVENTS[status as ShipmentStatus]);
 }
 
 // Milestone-specific descriptions
@@ -925,20 +940,22 @@ export async function sendShipmentCreatedEmail(shipmentId: string): Promise<{ su
   }
 }
 
-// 4. Milestone/Shipment Status Changed Email
-export async function sendShipmentMilestoneEmail(params: {
+// 4. Milestone/Shipment Status Changed Email Dispatcher
+export interface SendShipmentStatusEmailParams {
   shipmentId: string;
-  milestone: ShipmentStatus;
-}): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
-  if (!isBrevoEmailMilestone(params.milestone)) {
-    return {
-      success: true,
-      skipped: true,
-      reason: `Status '${params.milestone}' is a portal-only stage and does not send emails.`,
-    };
-  }
+  customerId?: string;
+  status: ShipmentStatus;
+  event: string;
+}
 
-  const milestone = params.milestone as BrevoMilestone;
+export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailParams): Promise<{
+  success: boolean;
+  messageId?: string;
+  skipped?: boolean;
+  reason?: string;
+  error?: string;
+}> {
+  console.log(`SHIPMENT_EMAIL_EVENT_DETECTED\nevent: ${params.event}`);
 
   try {
     const shipment = await prisma.shipment.findUnique({
@@ -946,9 +963,49 @@ export async function sendShipmentMilestoneEmail(params: {
       include: { customer: true, batch: true, payments: true },
     });
 
-    if (!shipment) return { success: false, error: "Shipment not found." };
+    if (!shipment) {
+      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason = SHIPMENT_NOT_FOUND");
+      return { success: false, skipped: true, reason: "SHIPMENT_NOT_FOUND" };
+    }
+
     const customer = shipment.customer;
-    if (!customer) return { success: false, error: "Customer not found." };
+    if (!customer) {
+      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason = CUSTOMER_NOT_FOUND");
+      return { success: false, skipped: true, reason: "CUSTOMER_NOT_FOUND" };
+    }
+
+    const recipientEmail = customer.email?.trim();
+    if (!recipientEmail || !recipientEmail.includes("@") || !recipientEmail.includes(".")) {
+      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason = CUSTOMER_EMAIL_MISSING");
+      const idempotencyKey = `milestone-${shipment.id}-${params.status}`;
+      await prisma.emailLog.upsert({
+        where: { idempotencyKey },
+        update: { status: "SKIPPED", errorMessage: "CUSTOMER_EMAIL_MISSING", updatedAt: new Date() },
+        create: {
+          customerId: customer.id,
+          shipmentId: shipment.id,
+          batchId: shipment.batchId,
+          eventType: params.event,
+          status: "SKIPPED",
+          recipient: "NONE",
+          subject: getMilestoneEmailSubject(params.status as any, shipment.batch?.name || "Consignment"),
+          idempotencyKey,
+          errorMessage: "CUSTOMER_EMAIL_MISSING",
+        },
+      }).catch(() => {});
+      return { success: true, skipped: true, reason: "CUSTOMER_EMAIL_MISSING" };
+    }
+
+    const idempotencyKey = `milestone-${shipment.id}-${params.status}`;
+    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
+    if (existingLog && existingLog.status === "SENT") {
+      console.log("SHIPMENT_EMAIL_SKIPPED\nreason = ALREADY_SENT");
+      return {
+        success: true,
+        skipped: true,
+        reason: "ALREADY_SENT",
+      };
+    }
 
     const batch = shipment.batch;
     let batchDisplay = "Consignment";
@@ -964,37 +1021,6 @@ export async function sendShipmentMilestoneEmail(params: {
     const outstandingBalance = Math.max(0, totalShippingFee - amountPaid);
     const isShippingFeeUnpaid = totalShippingFee > 0 && outstandingBalance > 0;
 
-    const idempotencyKey = `milestone-${shipment.id}-${milestone}`;
-    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
-    if (existingLog && existingLog.status === "SENT") {
-      return {
-        success: true,
-        skipped: true,
-        reason: `Milestone '${milestone}' email already sent for shipment ${shipment.trackingNumber}.`,
-      };
-    }
-
-    const recipientEmail = customer.email?.trim();
-    if (!recipientEmail || !recipientEmail.includes("@")) {
-      await prisma.emailLog.upsert({
-        where: { idempotencyKey },
-        update: { status: "SKIPPED", errorMessage: "Customer has no valid email address.", updatedAt: new Date() },
-        create: {
-          customerId: customer.id,
-          shipmentId: shipment.id,
-          batchId: batch?.id || null,
-          eventType: milestone,
-          status: "SKIPPED",
-          recipient: "NONE",
-          subject: getMilestoneEmailSubject(milestone, batchDisplay, isShippingFeeUnpaid),
-          idempotencyKey,
-          errorMessage: "Customer has no valid email address.",
-        },
-      });
-      return { success: true, skipped: true, reason: "Customer has no valid email." };
-    }
-
-    const subject = getMilestoneEmailSubject(milestone, batchDisplay, isShippingFeeUnpaid);
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/shipments/${shipment.trackingNumber}`;
     const paymentUrl = `${portalBase}/portal/payments/${shipment.id}`;
@@ -1004,13 +1030,15 @@ export async function sendShipmentMilestoneEmail(params: {
       day: "numeric",
     });
 
+    const subject = getMilestoneEmailSubject(params.status as any, batchDisplay, isShippingFeeUnpaid);
+
     const htmlContent = generateMilestoneEmailHtml({
       customerName: customer.name,
       customerIdentifier: customer.customerIdentifier,
       batchDisplay,
       trackingNumber: shipment.trackingNumber,
       description: shipment.description,
-      milestone,
+      milestone: params.status as any,
       statusDate,
       portalUrl,
       isShippingFeeUnpaid,
@@ -1020,22 +1048,24 @@ export async function sendShipmentMilestoneEmail(params: {
       paymentUrl,
     });
 
-    const textContent = `LMX8 IMPORTS\n\nHello ${customer.name},\n\nYour shipment status has been updated.\n\nBatch: ${batchDisplay}\nShipment: ${shipment.trackingNumber}\nStatus: ${SHIPMENT_STATUS_ADMIN_LABELS[milestone] || milestone}\nDate: ${statusDate}\n\n${MILESTONE_EMAIL_MESSAGES[milestone]}\n\nView full tracking timeline in portal: ${portalUrl}\n\nRegards,\nLMX8 IMPORTS`;
+    const textContent = `LMX8 IMPORTS\n\nHello ${customer.name},\n\nYour shipment status has been updated.\n\nBatch: ${batchDisplay}\nShipment: ${shipment.trackingNumber}\nStatus: ${SHIPMENT_STATUS_ADMIN_LABELS[params.status] || params.status}\nDate: ${statusDate}\n\n${MILESTONE_EMAIL_MESSAGES[params.status as BrevoMilestone] || ""}\n\nView full tracking timeline in portal: ${portalUrl}\n\nRegards,\nLMX8 IMPORTS`;
 
     await prisma.emailLog.upsert({
       where: { idempotencyKey },
-      update: { status: "PENDING", recipient: recipientEmail, subject, updatedAt: new Date() },
+      update: { status: "PENDING", recipient: recipientEmail, subject, eventType: params.event, updatedAt: new Date() },
       create: {
         customerId: customer.id,
         shipmentId: shipment.id,
-        batchId: batch?.id || null,
-        eventType: milestone,
+        batchId: shipment.batchId,
+        eventType: params.event,
         status: "PENDING",
         recipient: recipientEmail,
         subject,
         idempotencyKey,
       },
-    });
+    }).catch(() => {});
+
+    console.log("BREVO_SHIPMENT_EMAIL_DISPATCH_START");
 
     const sendResult = await sendBrevoEmail({
       to: [{ email: recipientEmail, name: customer.name }],
@@ -1045,22 +1075,53 @@ export async function sendShipmentMilestoneEmail(params: {
     });
 
     if (sendResult.success) {
+      console.log(`BREVO_SHIPMENT_EMAIL_DISPATCH_SUCCESS\nmessageId: ${sendResult.messageId || "dispatched"}`);
       await prisma.emailLog.update({
         where: { idempotencyKey },
-        data: { status: "SENT", providerMessageId: sendResult.messageId || null, sentAt: new Date() },
-      });
-      return { success: true };
+        data: {
+          status: "SENT",
+          providerMessageId: sendResult.messageId || null,
+          sentAt: new Date(),
+          errorMessage: null,
+        },
+      }).catch(() => {});
+      return { success: true, messageId: sendResult.messageId };
     } else {
+      console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: ${sendResult.status || 500}\nerror: ${sendResult.error}`);
       await prisma.emailLog.update({
         where: { idempotencyKey },
-        data: { status: "FAILED", failedAt: new Date(), errorMessage: sendResult.error || "Failed to send email." },
-      });
+        data: {
+          status: "FAILED",
+          failedAt: new Date(),
+          errorMessage: sendResult.error || "Failed to send email.",
+        },
+      }).catch(() => {});
       return { success: false, error: sendResult.error };
     }
   } catch (err: any) {
-    console.error("[sendShipmentMilestoneEmail] Exception caught:", err);
-    return { success: false, error: err?.message || "Internal error sending milestone email." };
+    const errorMsg = typeof err?.message === "string" ? err.message : "Internal error sending milestone email.";
+    console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${errorMsg}`);
+    return { success: false, error: errorMsg };
   }
+}
+
+export async function sendShipmentMilestoneEmail(params: {
+  shipmentId: string;
+  milestone: ShipmentStatus;
+}): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
+  const event = SHIPMENT_EMAIL_EVENTS[params.milestone];
+  if (!event) {
+    return {
+      success: true,
+      skipped: true,
+      reason: `Status '${params.milestone}' is a portal-only stage and does not send emails.`,
+    };
+  }
+  return sendShipmentStatusEmail({
+    shipmentId: params.shipmentId,
+    status: params.milestone,
+    event,
+  });
 }
 
 // 5. Shipping Fee Reminder

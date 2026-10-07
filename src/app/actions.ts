@@ -13,9 +13,11 @@ import {
   STORAGE_BUCKET,
 } from "@/lib/storage";
 import {
+  sendShipmentStatusEmail,
   sendShipmentMilestoneEmail,
   sendShippingFeeReminderEmail,
   isBrevoEmailMilestone,
+  SHIPMENT_EMAIL_EVENTS,
 } from "@/lib/email/brevo";
 import { broadcastShipmentUpdate } from "@/lib/supabase-realtime-server";
 import { revalidatePath } from "next/cache";
@@ -306,11 +308,18 @@ export async function createShipmentAction(data: any): Promise<UIShipment> {
   });
 
   // Milestone 1 / Initial Milestone: Trigger Brevo email if status is an email milestone
-  if (isBrevoEmailMilestone(prismaStatus)) {
-    sendShipmentMilestoneEmail({
-      shipmentId: shipment.id,
-      milestone: prismaStatus,
-    }).catch((err) => console.error("[Brevo] Error sending initial milestone email:", err));
+  const initialEvent = SHIPMENT_EMAIL_EVENTS[prismaStatus];
+  if (initialEvent) {
+    try {
+      await sendShipmentStatusEmail({
+        shipmentId: shipment.id,
+        customerId: shipment.customerId,
+        status: prismaStatus,
+        event: initialEvent,
+      });
+    } catch (err: any) {
+      console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
+    }
   }
 
   return mapPrismaShipment(shipment);
@@ -409,6 +418,8 @@ export async function updateShipmentStatusAction(
   const previousStatus = existing.status;
   const isStatusChanged = previousStatus !== status;
 
+  console.log(`SHIPMENT_STATUS_UPDATE_START\nshipmentId: ${existing.id}\noldStatus: ${previousStatus}\nnewStatus: ${status}`);
+
   // 2. Commit shipment update and tracking event to database
   const shipment = await prisma.shipment.update({
     where: { id: existing.id },
@@ -430,6 +441,8 @@ export async function updateShipmentStatusAction(
       batch: true,
     },
   });
+
+  console.log("SHIPMENT_STATUS_UPDATE_SUCCESS");
 
   // 3. Fire in-app customer notification on status change
   const statusMessages: Partial<Record<ShipmentStatus, { title: string; message: string }>> = {
@@ -457,15 +470,21 @@ export async function updateShipmentStatusAction(
     }).catch(console.error);
   }
 
-  // 4. Brevo Email Milestone Dispatch
-  // Only the first 6 defined milestones trigger Brevo emails (OUT_FOR_DELIVERY and DELIVERED do NOT)
-  if (isStatusChanged && isBrevoEmailMilestone(status)) {
-    sendShipmentMilestoneEmail({
-      shipmentId: shipment.id,
-      milestone: status,
-    }).catch((err) => {
-      console.error(`[Brevo] Error dispatching milestone email for ${existing.trackingNumber} (${status}):`, err);
-    });
+  // 4. Brevo Email Milestone Dispatch (Triggered ONLY after DB success and only if status changed)
+  if (isStatusChanged) {
+    const emailEvent = SHIPMENT_EMAIL_EVENTS[status];
+    if (emailEvent) {
+      try {
+        await sendShipmentStatusEmail({
+          shipmentId: shipment.id,
+          customerId: shipment.customerId,
+          status,
+          event: emailEvent,
+        });
+      } catch (err: any) {
+        console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
+      }
+    }
   }
 
   revalidatePath("/admin/shipments");
@@ -527,6 +546,8 @@ export async function addTrackingEventAction(
     const isStatusChanged = previousStatus !== data.status;
     const eventTimestamp = data.timestamp ? new Date(data.timestamp) : new Date();
 
+    console.log(`SHIPMENT_STATUS_UPDATE_START\nshipmentId: ${existing.id}\noldStatus: ${previousStatus}\nnewStatus: ${data.status}`);
+
     // 1. Create real database tracking event
     const createdEvent = await prisma.trackingEvent.create({
       data: {
@@ -545,6 +566,8 @@ export async function addTrackingEventAction(
         where: { id: existing.id },
         data: { status: data.status as any },
       });
+
+      console.log("SHIPMENT_STATUS_UPDATE_SUCCESS");
 
       // Fire customer notifications
       const statusMessages: Partial<Record<ShipmentStatus, { title: string; message: string }>> = {
@@ -572,14 +595,22 @@ export async function addTrackingEventAction(
         }).catch(console.error);
       }
 
-      if (isBrevoEmailMilestone(data.status)) {
-        sendShipmentMilestoneEmail({
-          shipmentId: existing.id,
-          milestone: data.status,
-        }).catch((err) => {
-          console.error(`[Brevo] Error dispatching milestone email for ${existing.trackingNumber} (${data.status}):`, err);
-        });
+      // Brevo Email Milestone Dispatch (Triggered ONLY after DB success and only if status changed)
+      const emailEvent = SHIPMENT_EMAIL_EVENTS[data.status];
+      if (emailEvent) {
+        try {
+          await sendShipmentStatusEmail({
+            shipmentId: existing.id,
+            customerId: existing.customerId,
+            status: data.status,
+            event: emailEvent,
+          });
+        } catch (err: any) {
+          console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
+        }
       }
+    } else {
+      console.log("SHIPMENT_STATUS_UPDATE_SUCCESS");
     }
 
     // 3. Audit log
@@ -1181,13 +1212,18 @@ export async function updateBatchStatusAction(
 
       // Brevo Email Milestone Dispatch for batch status transition
       // Only the first 6 milestones trigger emails; OUT_FOR_DELIVERY and DELIVERED do NOT.
-      if (isBrevoEmailMilestone(normalizedStage)) {
-        sendShipmentMilestoneEmail({
-          shipmentId: shipment.id,
-          milestone: normalizedStage,
-        }).catch((err) => {
-          console.error(`[Brevo] Error sending batch milestone email for shipment ${shipment.trackingNumber}:`, err);
-        });
+      const emailEvent = SHIPMENT_EMAIL_EVENTS[normalizedStage as ShipmentStatus];
+      if (emailEvent && shipment.status !== normalizedStage) {
+        try {
+          await sendShipmentStatusEmail({
+            shipmentId: shipment.id,
+            customerId: shipment.customerId,
+            status: normalizedStage as ShipmentStatus,
+            event: emailEvent,
+          });
+        } catch (err: any) {
+          console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
+        }
       }
     }
   }
@@ -1451,8 +1487,14 @@ export async function sendShippingFeeReminderAction(trackingNumber: string) {
 export async function getShipmentEmailLogsAction(trackingNumber: string) {
   await requireAdminSession();
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { trackingNumber },
+  const shipment = await prisma.shipment.findFirst({
+    where: {
+      OR: [
+        { id: trackingNumber },
+        { trackingNumber: trackingNumber },
+        { trackingNumber: trackingNumber.toUpperCase() },
+      ],
+    },
   });
 
   if (!shipment) return [];
