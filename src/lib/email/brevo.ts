@@ -138,6 +138,7 @@ export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<Brev
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000),
     });
 
     const data = await response.json().catch(() => ({}));
@@ -163,6 +164,7 @@ export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<Brev
 function getPortalBaseUrl(): string {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`;
   return "https://lmx8imports.com";
 }
 

@@ -125,12 +125,12 @@ export default function AdminEmailsPage() {
           <div className="space-y-2 text-xs text-[#667085]">
             <div className="flex justify-between">
               <span>Sender Name:</span>
-              <span className="font-semibold text-[#172236]">{data?.config?.BREVO_SENDER_NAME || "LEXMEDIA.GH"}</span>
+              <span className="font-semibold text-[#172236]">{data?.config?.BREVO_SENDER_NAME || "LMX8 IMPORTS"}</span>
             </div>
             <div className="flex justify-between">
               <span>Sender Email:</span>
               <span className="font-semibold text-[#172236] truncate max-w-[200px]" title={data?.config?.senderEmailValue}>
-                {data?.config?.senderEmailValue || "notifications@lmx8imports.com"}
+                {data?.config?.senderEmailValue || "lexmedia8gh@gmail.com"}
               </span>
             </div>
           </div>
