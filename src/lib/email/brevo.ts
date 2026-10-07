@@ -6,7 +6,7 @@ import { ShipmentStatus, SHIPMENT_STATUS_LABELS, SHIPMENT_STATUS_ADMIN_LABELS } 
 // Brevo Configuration & Constants
 // ─────────────────────────────────────────────────────────────────────────────
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
-const SENDER_NAME = "LMX8 IMPORTS";
+const SENDER_NAME = process.env.BREVO_SENDER_NAME || "LEXMEDIA.GH";
 const DEFAULT_SENDER_EMAIL = "notifications@lmx8imports.com";
 
 // Milestone definition: ONLY these 6 stages trigger Brevo emails
@@ -155,6 +155,8 @@ export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<Brev
   }
 
   try {
+    console.log(`[EMAIL_SEND_START] Recipient: ${recipientEmail}, Subject: "${params.subject}"`);
+
     const payload = {
       sender: {
         name: SENDER_NAME,
@@ -183,7 +185,7 @@ export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<Brev
 
     if (!response.ok) {
       const errorMsg = data?.message || data?.error || `Brevo HTTP ${response.status}: ${response.statusText}`;
-      console.error("[Brevo] Dispatch error:", errorMsg);
+      console.error(`[EMAIL_SEND_FAILURE] Recipient: ${recipientEmail}, Error: ${errorMsg}`);
       return {
         success: false,
         error: errorMsg,
@@ -191,13 +193,14 @@ export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<Brev
     }
 
     const messageId = data?.messageId || data?.id || `brevo-${Date.now()}`;
+    console.log(`[EMAIL_SEND_SUCCESS] Recipient: ${recipientEmail}, MessageId: ${messageId}`);
     return {
       success: true,
       messageId: String(messageId),
     };
   } catch (err: any) {
     const errorMsg = err?.message || "Unexpected error dispatching Brevo email.";
-    console.error("[Brevo] Network/runtime error:", errorMsg);
+    console.error(`[EMAIL_SEND_FAILURE] Recipient: ${recipientEmail}, Exception: ${errorMsg}`);
     return {
       success: false,
       error: errorMsg,
