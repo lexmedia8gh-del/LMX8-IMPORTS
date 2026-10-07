@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { getShipmentByIdAction } from "@/app/actions";
+import { getPublicShipmentAction } from "@/app/actions";
 import { Shipment } from "@/lib/db";
 import { ShipmentStatusBadge, ShipmentTimeline } from "@/components/shipment-status";
 import { useShipmentRealtime } from "@/hooks/use-shipment-realtime";
@@ -46,6 +46,7 @@ function TrackContent() {
     initialShipment: initialData,
     shipmentIdOrTrackingNumber: activeTrackingNumber || null,
     enabled: Boolean(activeTrackingNumber && searched),
+    isPublic: true,
   });
 
   const performSearch = useCallback(async (idToSearch: string) => {
@@ -57,7 +58,7 @@ function TrackContent() {
     setActiveTrackingNumber(cleanId);
 
     try {
-      const result = await getShipmentByIdAction(cleanId);
+      const result = await getPublicShipmentAction(cleanId);
       setInitialData(result);
     } catch (err) {
       console.error("[Track] Error searching shipment:", err);

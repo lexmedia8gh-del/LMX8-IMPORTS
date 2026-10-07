@@ -145,6 +145,35 @@ export async function getShipmentByIdAction(trackingNumber: string): Promise<UIS
 }
 
 /**
+ * Public shipment lookup without requiring an active user session.
+ * Exposes only safe tracking metadata and photos, mapped to the full UIShipment type.
+ */
+export async function getPublicShipmentAction(trackingNumber: string): Promise<UIShipment | null> {
+  try {
+    if (!trackingNumber) return null;
+    const cleanId = trackingNumber.trim().toUpperCase();
+
+    const shipment = await prisma.shipment.findFirst({
+      where: {
+        OR: [
+          { id: trackingNumber.trim() },
+          { trackingNumber: cleanId },
+          { trackingNumber: trackingNumber.trim() },
+        ],
+      },
+      include: { trackingEvents: true, photos: true, customer: true, batch: true },
+    });
+
+    if (!shipment) return null;
+
+    return mapPrismaShipment(shipment);
+  } catch (err) {
+    console.warn("[Action] getPublicShipmentAction fallback triggered:", err);
+    return null;
+  }
+}
+
+/**
  * Public tracking lookup without exposing private customer documents or IDOR data
  */
 export async function getPublicShipmentTrackingAction(trackingNumber: string) {

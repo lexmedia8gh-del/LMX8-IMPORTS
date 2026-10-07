@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase-client";
 import { Shipment as UIShipment } from "@/lib/db";
-import { getShipmentByIdAction } from "@/app/actions";
+import { getShipmentByIdAction, getPublicShipmentAction } from "@/app/actions";
 import { RealtimeChannel } from "@supabase/supabase-js";
 
 interface UseShipmentRealtimeOptions {
@@ -11,6 +11,7 @@ interface UseShipmentRealtimeOptions {
   shipmentIdOrTrackingNumber?: string | null;
   onUpdate?: (updatedShipment: UIShipment) => void;
   enabled?: boolean;
+  isPublic?: boolean;
 }
 
 export function useShipmentRealtime({
@@ -18,6 +19,7 @@ export function useShipmentRealtime({
   shipmentIdOrTrackingNumber = null,
   onUpdate,
   enabled = true,
+  isPublic = false,
 }: UseShipmentRealtimeOptions) {
   const [shipment, setShipment] = useState<UIShipment | null>(initialShipment ?? null);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(false);
@@ -52,7 +54,9 @@ export function useShipmentRealtime({
     if (!targetIdentifier) return;
     setIsUpdating(true);
     try {
-      const fresh = await getShipmentByIdAction(targetIdentifier);
+      const fresh = isPublic
+        ? await getPublicShipmentAction(targetIdentifier)
+        : await getShipmentByIdAction(targetIdentifier);
       if (fresh) {
         lastUpdateTimestampRef.current = Date.now();
         setShipment(fresh);
@@ -66,7 +70,7 @@ export function useShipmentRealtime({
     } finally {
       setIsUpdating(false);
     }
-  }, [targetIdentifier]);
+  }, [targetIdentifier, isPublic]);
 
   /**
    * Applies an incoming shipment update safely.
