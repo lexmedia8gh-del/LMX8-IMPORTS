@@ -7,7 +7,7 @@ import { ShipmentStatus, SHIPMENT_STATUS_LABELS, SHIPMENT_STATUS_ADMIN_LABELS } 
 // ─────────────────────────────────────────────────────────────────────────────
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 const SENDER_NAME = process.env.BREVO_SENDER_NAME || "LEXMEDIA.GH";
-const DEFAULT_SENDER_EMAIL = "notifications@lmx8imports.com";
+const DEFAULT_SENDER_EMAIL = "lexmedia8gh@gmail.com";
 
 // Milestone definition: ONLY these 6 stages trigger Brevo emails
 export const BREVO_EMAIL_MILESTONES = [
