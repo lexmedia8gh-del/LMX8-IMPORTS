@@ -37,13 +37,8 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
     })
   );
 
-  // If shipment belongs to a batch and shipment is not individually completed or on hold,
-  // the shipment inherits the batch's current logistics stage!
-  const hasBatch = !!s.batch;
-  const isIndividualOverride = s.status === "DELIVERED" || s.status === "ON_HOLD";
-  const effectiveStatus: ShipmentStatus = (hasBatch && s.batch.status && s.batch.status !== "CLOSED" && !isIndividualOverride)
-    ? normalizeBatchStatus(s.batch.status)
-    : (s.status as ShipmentStatus);
+  // Authoritative Shipment Status: Persisted shipment status is the single source of truth
+  const effectiveStatus: ShipmentStatus = (s.status as ShipmentStatus) || "SHIPMENT_CREATED";
 
   const batchStatusStr = s.batch?.status || undefined;
   const batchStageLabel = s.batch ? getBatchCustomerLabel(s.batch.status) : undefined;

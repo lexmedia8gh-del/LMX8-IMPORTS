@@ -164,8 +164,18 @@ export function ShipmentTimeline({
         const isCurrent = isAllDelivered ? index === STATUS_JOURNEY.length - 1 : index === currentIndex;
         const isUpcoming = !isCompleted && !isCurrent;
 
-        // Find tracking events matching this stage
-        const stageEvents = sortedEvents.filter((e) => e.status === status);
+        // Find tracking events matching this stage and deduplicate by date/note/location
+        const rawStageEvents = sortedEvents.filter((e) => e.status === status);
+        const stageEvents = rawStageEvents.filter(
+          (evt, idx, self) =>
+            idx ===
+            self.findIndex(
+              (t) =>
+                t.date === evt.date &&
+                (t.note || "") === (evt.note || "") &&
+                (t.location || "") === (evt.location || "")
+            )
+        );
         const latestEvent = stageEvents[stageEvents.length - 1];
         const label = SHIPMENT_STATUS_LABELS[status] ?? status;
 
