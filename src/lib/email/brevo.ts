@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ShipmentStatus, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
+import { getBrandingForEmail, EmailBrandingInfo } from "@/lib/branding";
 import {
   getBrevoServerConfig,
   validateBrevoConfig,
@@ -372,12 +373,19 @@ function getPortalBaseUrl(): string {
   return "https://lmx8imports.com";
 }
 
-function wrapInBrandedLayout(title: string, bodyContent: string, footerContent?: string): string {
+export async function wrapInBrandedLayout(title: string, bodyContent: string, footerContent?: string, brandingOverride?: EmailBrandingInfo): Promise<string> {
+  const branding = brandingOverride || (await getBrandingForEmail());
   const footer = footerContent || `
-    <strong>LMX8 IMPORTS CTRL ROOM</strong><br>
+    <strong>${branding.businessName} CTRL ROOM</strong><br>
     Tema Port & Accra, Ghana · Shenzhen & Guangzhou, China<br>
     This is an automated notification. Secure payment processing powered by Paystack.
   `;
+
+  // Main logo configured in Admin -> Branding replaces the static text header
+  const headerLogoHtml = branding.logoUrl
+    ? `<img src="${branding.logoUrl}" alt="${branding.businessName}" style="max-height: 48px; max-width: 240px; width: auto; height: auto; display: block; object-fit: contain; margin-bottom: 4px;" />`
+    : `<h1 class="logo">${branding.shortName} <span>${branding.businessName.replace(branding.shortName, "").trim() || "IMPORTS"}</span></h1>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -387,16 +395,16 @@ function wrapInBrandedLayout(title: string, bodyContent: string, footerContent?:
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #F8FAFC; color: #172236; }
     .container { max-width: 600px; margin: 24px auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-    .header { background: #141B47; padding: 28px 32px; text-align: left; }
+    .header { background: ${branding.primaryColor || "#141B47"}; padding: 28px 32px; text-align: left; }
     .logo { color: #FFFFFF; font-size: 22px; font-weight: 800; letter-spacing: 0.5px; margin: 0; }
-    .logo span { color: #F2901F; }
-    .tagline { color: #94A3B8; font-size: 12px; font-weight: 500; margin-top: 4px; }
+    .logo span { color: ${branding.accentColor || "#F2901F"}; }
+    .tagline { color: #94A3B8; font-size: 12px; font-weight: 500; margin-top: 6px; }
     .body { padding: 32px; }
-    .greeting { font-size: 16px; font-weight: 600; color: #141B47; margin: 0 0 12px 0; }
+    .greeting { font-size: 16px; font-weight: 600; color: ${branding.primaryColor || "#141B47"}; margin: 0 0 12px 0; }
     .lead { font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0; }
     .status-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
-    .status-badge { display: inline-block; background: #141B47; color: #FFFFFF; padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
-    .btn { display: inline-block; background: #F2901F; color: #FFFFFF !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 14px 28px; border-radius: 10px; text-align: center; margin: 8px 0 24px 0; }
+    .status-badge { display: inline-block; background: ${branding.primaryColor || "#141B47"}; color: #FFFFFF; padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .btn { display: inline-block; background: ${branding.accentColor || "#F2901F"}; color: #FFFFFF !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 14px 28px; border-radius: 10px; text-align: center; margin: 8px 0 24px 0; }
     .footer { background: #F1F5F9; padding: 20px 32px; font-size: 12px; color: #64748B; line-height: 1.6; border-top: 1px solid #E2E8F0; text-align: center; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     tr { border-top: 1px solid #E2E8F0; }
@@ -408,8 +416,8 @@ function wrapInBrandedLayout(title: string, bodyContent: string, footerContent?:
 <body>
   <div class="container">
     <div class="header">
-      <h1 class="logo">LMX8 <span>IMPORTS</span></h1>
-      <div class="tagline">Your Goods. Our Priority. · China to Ghana Logistics</div>
+      ${headerLogoHtml}
+      <div class="tagline">${branding.tagline}</div>
     </div>
     <div class="body">
       ${bodyContent}
@@ -423,7 +431,7 @@ function wrapInBrandedLayout(title: string, bodyContent: string, footerContent?:
 }
 
 // Template Generators
-export function generateCustomerWelcomeHtml(data: { customerName: string; customerIdentifier: string; portalUrl: string }) {
+export async function generateCustomerWelcomeHtml(data: { customerName: string; customerIdentifier: string; portalUrl: string }): Promise<string> {
   const content = `
     <p class="greeting">Hello ${data.customerName},</p>
     <p class="lead">Welcome to LMX8 IMPORTS! Your customer account has been created successfully.</p>
@@ -445,7 +453,7 @@ export function generateCustomerWelcomeHtml(data: { customerName: string; custom
   return wrapInBrandedLayout("Welcome to LMX8 IMPORTS", content);
 }
 
-export function generateSourcingRequestCreatedHtml(data: {
+export async function generateSourcingRequestCreatedHtml(data: {
   customerName: string;
   requestNumber: string;
   productDetails: string;
@@ -453,7 +461,7 @@ export function generateSourcingRequestCreatedHtml(data: {
   preferredSizeColor?: string;
   additionalInstructions?: string;
   portalUrl: string;
-}) {
+}): Promise<string> {
   const content = `
     <p class="greeting">Hello ${data.customerName},</p>
     <p class="lead">We have successfully received your product sourcing request from China! Our team is already reviewing details to secure the best quotation for you.</p>
@@ -492,17 +500,17 @@ export function generateSourcingRequestCreatedHtml(data: {
   return wrapInBrandedLayout("Product Sourcing Request Received", content);
 }
 
-export function generateShipmentCreatedHtml(data: {
+export async function generateShipmentCreatedHtml(data: {
   customerName: string;
   trackingNumber: string;
   description: string;
   status: string;
   estimatedArrival?: string;
   portalUrl: string;
-}) {
+}): Promise<string> {
   const content = `
     <p class="greeting">Hello ${data.customerName},</p>
-    <p class="lead">A new shipment has been registered under your account! You can monitor its status throughout its 8-stage logistics timeline.</p>
+    <p class="lead">A new shipment has been registered under your account! You can monitor its status throughout its logistics timeline.</p>
     <div class="status-card">
       <div class="status-badge">Shipment Registered</div>
       <table>
@@ -532,14 +540,14 @@ export function generateShipmentCreatedHtml(data: {
   return wrapInBrandedLayout("New Shipment Registered - LMX8", content);
 }
 
-export function generateShipmentStatusChangedHtml(data: {
+export async function generateShipmentStatusChangedHtml(data: {
   customerName: string;
   trackingNumber: string;
   previousStatus: string;
   newStatus: string;
   note?: string;
   portalUrl: string;
-}) {
+}): Promise<string> {
   const content = `
     <p class="greeting">Hello ${data.customerName},</p>
     <p class="lead">Your shipment's status has been updated in our warehouse/logistics system.</p>
@@ -572,14 +580,14 @@ export function generateShipmentStatusChangedHtml(data: {
   return wrapInBrandedLayout("Shipment Status Update - LMX8", content);
 }
 
-export function generateCreditPurchaseSuccessHtml(data: {
+export async function generateCreditPurchaseSuccessHtml(data: {
   customerName: string;
   reference: string;
   amount: number;
   credits: number;
   date: string;
   portalUrl: string;
-}) {
+}): Promise<string> {
   const content = `
     <p class="greeting">Hello ${data.customerName},</p>
     <p class="lead">Your payment was processed successfully, and credits have been added to your sourcing account!</p>
@@ -611,14 +619,14 @@ export function generateCreditPurchaseSuccessHtml(data: {
   return wrapInBrandedLayout("Sourcing Credits Payment Confirmed - LMX8", content);
 }
 
-export function generateShippingFeePaidHtml(data: {
+export async function generateShippingFeePaidHtml(data: {
   customerName: string;
   trackingNumber: string;
   reference: string;
   amount: number;
   date: string;
   portalUrl: string;
-}) {
+}): Promise<string> {
   const content = `
     <p class="greeting">Hello ${data.customerName},</p>
     <p class="lead">Your shipping fee payment has been successfully processed and verified! Your cargo has been cleared for processing/release.</p>
@@ -666,7 +674,7 @@ export interface MilestoneEmailData {
   paymentUrl?: string;
 }
 
-export function generateMilestoneEmailHtml(data: MilestoneEmailData): string {
+export async function generateMilestoneEmailHtml(data: MilestoneEmailData): Promise<string> {
   const milestoneLabel = (SHIPMENT_STATUS_ADMIN_LABELS as Record<string, string>)[data.milestone] || data.milestone;
   const formatGHS = (val: number) => `GHS ${val.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -743,14 +751,14 @@ export function generateMilestoneEmailHtml(data: MilestoneEmailData): string {
     ${paymentCard}
 
     <p style="font-size: 13px; color: #64748B; line-height: 1.5; margin: 16px 0 0 0;">
-      You can log in to your LMX8 IMPORTS customer portal at any time to inspect the full timeline, photos, and tracking events for your cargo.
+      You can log in to your customer portal at any time to inspect the full timeline, photos, and tracking events for your cargo.
     </p>
   `;
-  return wrapInBrandedLayout(data.isShippingFeeUnpaid ? "LMX8 IMPORTS Shipment Update — Action Required" : "LMX8 IMPORTS Shipment Update", content);
+  return wrapInBrandedLayout(data.isShippingFeeUnpaid ? "Shipment Update — Action Required" : "Shipment Update", content);
 }
 
 // Retro-compatible reminder generator
-export function generateShippingFeeReminderHtml(data: {
+export async function generateShippingFeeReminderHtml(data: {
   customerName: string;
   customerIdentifier: string;
   batchDisplay: string;
@@ -760,7 +768,7 @@ export function generateShippingFeeReminderHtml(data: {
   outstandingBalance: number;
   paymentUrl: string;
   portalUrl: string;
-}): string {
+}): Promise<string> {
   const formatGHS = (val: number) => `GHS ${val.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const content = `
@@ -795,8 +803,9 @@ export function generateShippingFeeReminderHtml(data: {
       You can also log in to your <a href="${data.portalUrl}" style="color: #141B47; font-weight: 600;">Customer Portal</a> to view payment receipts and invoice details.
     </p>
   `;
-  return wrapInBrandedLayout("LMX8 IMPORTS Shipping Fee Notice", content);
+  return wrapInBrandedLayout("Shipping Fee Statement Notice", content);
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // High-Level Transactional Event Dispatchers (With Database Idempotency)
@@ -823,7 +832,7 @@ export async function sendCustomerCreatedEmail(customerId: string): Promise<{ su
 
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/login`;
-    const htmlContent = generateCustomerWelcomeHtml({
+    const htmlContent = await generateCustomerWelcomeHtml({
       customerName: customer.name,
       customerIdentifier: customer.customerIdentifier,
       portalUrl,
@@ -893,7 +902,7 @@ export async function sendSourcingRequestCreatedEmail(requestId: string): Promis
 
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/sourcing`;
-    const htmlContent = generateSourcingRequestCreatedHtml({
+    const htmlContent = await generateSourcingRequestCreatedHtml({
       customerName: customer.name,
       requestNumber: request.requestNumber,
       productDetails: request.productDetails,
@@ -972,7 +981,7 @@ export async function sendShipmentCreatedEmail(shipmentId: string): Promise<{ su
 
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/shipments/${shipment.trackingNumber}`;
-    const htmlContent = generateShipmentCreatedHtml({
+    const htmlContent = await generateShipmentCreatedHtml({
       customerName: customer.name,
       trackingNumber: shipment.trackingNumber,
       description: shipment.description,
@@ -1122,7 +1131,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
 
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/shipments/${shipment.trackingNumber}`;
-    const paymentUrl = `${portalBase}/portal/payments/${shipment.id}`;
+    const paymentUrl = `${portalBase}/pay/${shipment.id}`;
     const statusDate = new Date().toLocaleDateString("en-GH", {
       year: "numeric",
       month: "short",
@@ -1131,7 +1140,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
 
     const subject = getMilestoneEmailSubject(params.status, batchDisplay, isShippingFeeUnpaid);
 
-    const htmlContent = generateMilestoneEmailHtml({
+    const htmlContent = await generateMilestoneEmailHtml({
       customerName: customer.name,
       customerIdentifier: customer.customerIdentifier,
       batchDisplay,
@@ -1292,9 +1301,9 @@ export async function sendShippingFeeReminderEmail(params: {
     const subject = `LMX8 IMPORTS — Shipping Fee Statement for ${shipment.trackingNumber}`;
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/payments`;
-    const paymentUrl = `${portalBase}/portal/payments/${shipment.id}`;
+    const paymentUrl = `${portalBase}/pay/${shipment.id}`;
 
-    const htmlContent = generateShippingFeeReminderHtml({
+    const htmlContent = await generateShippingFeeReminderHtml({
       customerName: customer.name,
       customerIdentifier: customer.customerIdentifier,
       batchDisplay,
@@ -1394,7 +1403,7 @@ export async function sendCreditPurchaseSuccessEmail(paymentId: string): Promise
 
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/credits`;
-    const htmlContent = generateCreditPurchaseSuccessHtml({
+    const htmlContent = await generateCreditPurchaseSuccessHtml({
       customerName: customer.name,
       reference: payment.reference,
       amount: payment.amount,
@@ -1470,7 +1479,7 @@ export async function sendShippingFeePaidSuccessEmail(paymentId: string): Promis
 
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/payments`;
-    const htmlContent = generateShippingFeePaidHtml({
+    const htmlContent = await generateShippingFeePaidHtml({
       customerName: customer.name,
       trackingNumber: shipment.trackingNumber,
       reference: payment.reference,

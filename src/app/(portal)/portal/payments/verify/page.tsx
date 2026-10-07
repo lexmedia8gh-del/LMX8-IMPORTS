@@ -48,35 +48,6 @@ export default async function PaymentVerificationPage(props: {
   // Attempt server-side verification and processing
   const result = await verifyPaymentAction(reference);
 
-  // If customer is not authenticated, prompt to sign in and redirect back with reference
-  if (result.unauthorized) {
-    const returnUrl = `/portal/payments/verify?reference=${encodeURIComponent(reference)}`;
-    return (
-      <div className="max-w-lg mx-auto py-12 px-4">
-        <div className="bg-white rounded-2xl p-8 border border-[#E5E7EB] shadow-sm text-center">
-          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-            <LogIn size={28} />
-          </div>
-          <h2 className="text-xl font-bold text-[#172236]">Sign In to Confirm Payment</h2>
-          <p className="text-sm text-[#667085] mt-2 mb-4">
-            Your transaction was received with reference:
-          </p>
-          <p className="font-mono text-xs bg-gray-100 text-gray-700 py-1.5 px-3 rounded-lg inline-block mb-6 font-semibold">
-            {reference}
-          </p>
-          <p className="text-xs text-[#667085] mb-6">
-            Please sign in to link this payment to your customer account.
-          </p>
-          <Link href={`/login?redirect=${encodeURIComponent(returnUrl)}`}>
-            <button className="w-full px-6 py-3 bg-[#141B47] text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity cursor-pointer flex items-center justify-center gap-2">
-              Sign In to Complete Verification <ArrowRight size={16} />
-            </button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   // Payment Verification Error
   if (result.error && result.status !== "SUCCESS") {
     return (
@@ -189,7 +160,16 @@ export default async function PaymentVerificationPage(props: {
 
           {/* Action CTAs */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            {isCredit ? (
+            {payment?.shipmentTrackingNumber ? (
+              <Link href={`/track?id=${encodeURIComponent(payment.shipmentTrackingNumber)}`}>
+                <button 
+                  className="w-full sm:w-auto px-6 py-3 text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+                  style={{ background: "#F2901F" }}
+                >
+                  Track Shipment Now <ArrowRight size={16} />
+                </button>
+              </Link>
+            ) : isCredit ? (
               <Link href="/portal/credits">
                 <button 
                   className="w-full sm:w-auto px-6 py-3 text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity cursor-pointer flex items-center justify-center gap-2 shadow-sm"
@@ -217,7 +197,7 @@ export default async function PaymentVerificationPage(props: {
 
             <Link href="/portal">
               <button className="w-full sm:w-auto px-6 py-3 bg-gray-100 text-[#172236] text-sm font-semibold rounded-xl hover:bg-gray-200 transition-colors cursor-pointer">
-                Dashboard
+                Portal Login
               </button>
             </Link>
           </div>

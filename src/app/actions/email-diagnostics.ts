@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth";
-import { sendBrevoEmail, ensureEmailLogSchema, getBrevoDiagnostics } from "@/lib/email/brevo";
+import { sendBrevoEmail, ensureEmailLogSchema, getBrevoDiagnostics, wrapInBrandedLayout } from "@/lib/email/brevo";
 import { revalidatePath } from "next/cache";
 
 export async function getEmailDiagnosticsAction() {
@@ -85,16 +85,35 @@ export async function sendTestEmailAction(recipientEmail: string): Promise<{
     }
 
     const subject = `LMX8 IMPORTS — Brevo Diagnostic Test (${new Date().toLocaleTimeString()})`;
-    const htmlContent = `
-      <div style="font-family: sans-serif; padding: 24px; background: #F8FAFC; border-radius: 12px; color: #172236;">
-        <h2 style="color: #141B47; margin-top: 0;">LMX8 IMPORTS — Brevo Diagnostic Test</h2>
-        <p>This is a test email dispatched from the <strong>LMX8 IMPORTS Ctrl Room</strong> diagnostic dashboard.</p>
-        <p><strong>Triggered By:</strong> Admin (${admin.name || admin.email})</p>
-        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 16px 0;" />
-        <p style="font-size: 12px; color: #64748B;">If you received this email, Brevo REST API v3 integration is fully operational and authenticated.</p>
+    const testBody = `
+      <div class="status-card">
+        <div class="status-badge" style="background: #10B981;">Diagnostic Test Passed</div>
+        <p class="greeting" style="margin-top: 12px;">Hello ${admin.name || "Administrator"},</p>
+        <p class="lead">This test email was dispatched from the <strong>LMX8 IMPORTS Ctrl Room</strong> email diagnostic suite.</p>
+        <table>
+          <tr>
+            <td class="label">Triggered By</td>
+            <td class="val">${admin.name || admin.email}</td>
+          </tr>
+          <tr>
+            <td class="label">Recipient</td>
+            <td class="val">${cleanEmail}</td>
+          </tr>
+          <tr>
+            <td class="label">Timestamp</td>
+            <td class="val">${new Date().toLocaleString("en-GH")}</td>
+          </tr>
+          <tr>
+            <td class="label">Status</td>
+            <td class="val" style="color: #10B981;">Operational (200 OK)</td>
+          </tr>
+        </table>
       </div>
+      <p style="font-size: 13px; color: #64748B; margin-top: 16px;">
+        Brevo REST API v3 transactional pipeline and dynamic branding logo resolution are fully active and authenticated.
+      </p>
     `;
+    const htmlContent = await wrapInBrandedLayout("LMX8 IMPORTS — Diagnostic Test", testBody);
 
     const idempotencyKey = `diagnostic-test-${Date.now()}`;
 

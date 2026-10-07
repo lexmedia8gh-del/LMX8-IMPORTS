@@ -38,26 +38,26 @@ async function runTests() {
     );
   }
 
-  // Test 2: Verify non-triggering stages return null / false
+  // Test 2: Verify all timeline stages trigger automated emails
   assert(
-    SHIPMENT_EMAIL_EVENTS.OUT_FOR_DELIVERY === null,
-    "OUT_FOR_DELIVERY does NOT trigger automated email (mapped to null)"
+    SHIPMENT_EMAIL_EVENTS.OUT_FOR_DELIVERY === "SHIPMENT_OUT_FOR_DELIVERY",
+    "OUT_FOR_DELIVERY triggers automated email (mapped to SHIPMENT_OUT_FOR_DELIVERY)"
   );
   assert(
-    !isBrevoEmailMilestone("OUT_FOR_DELIVERY"),
-    "isBrevoEmailMilestone('OUT_FOR_DELIVERY') returns false"
+    isBrevoEmailMilestone("OUT_FOR_DELIVERY"),
+    "isBrevoEmailMilestone('OUT_FOR_DELIVERY') returns true"
   );
   assert(
-    SHIPMENT_EMAIL_EVENTS.DELIVERED === null,
-    "DELIVERED does NOT trigger automated email (mapped to null)"
+    SHIPMENT_EMAIL_EVENTS.DELIVERED === "SHIPMENT_DELIVERED",
+    "DELIVERED triggers automated email (mapped to SHIPMENT_DELIVERED)"
   );
   assert(
-    !isBrevoEmailMilestone("DELIVERED"),
-    "isBrevoEmailMilestone('DELIVERED') returns false"
+    isBrevoEmailMilestone("DELIVERED"),
+    "isBrevoEmailMilestone('DELIVERED') returns true"
   );
   assert(
-    SHIPMENT_EMAIL_EVENTS.ON_HOLD === null,
-    "ON_HOLD does NOT trigger automated email (mapped to null)"
+    SHIPMENT_EMAIL_EVENTS.ON_HOLD === "SHIPMENT_ON_HOLD",
+    "ON_HOLD triggers automated email (mapped to SHIPMENT_ON_HOLD)"
   );
 
   // Test 3: Verify Subjects for all 6 events
@@ -100,7 +100,7 @@ async function runTests() {
   );
 
   // Test 6: Verify HTML Generation for Customs Clearance with Unpaid Shipping Fee
-  const htmlUnpaid = generateMilestoneEmailHtml({
+  const htmlUnpaid = await generateMilestoneEmailHtml({
     customerName: "Kofi Mensah",
     customerIdentifier: "LMX-001",
     batchDisplay: "AIR-CARGO-BATCH-04",
@@ -122,7 +122,7 @@ async function runTests() {
   assert(htmlUnpaid.includes("https://lmx8imports.com/portal/payments/shipment-uuid-123"), "HTML Pay button links to existing customer payment URL");
 
   // Test 7: Verify HTML Generation for Customs Clearance when Fee is Paid
-  const htmlPaid = generateMilestoneEmailHtml({
+  const htmlPaid = await generateMilestoneEmailHtml({
     customerName: "Kofi Mensah",
     customerIdentifier: "LMX-001",
     batchDisplay: "AIR-CARGO-BATCH-04",

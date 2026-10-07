@@ -95,3 +95,50 @@ export function clearBrandingCache() {
   cachedBranding = null;
   lastCacheTime = 0;
 }
+
+export interface EmailBrandingInfo {
+  businessName: string;
+  shortName: string;
+  tagline: string;
+  logoUrl: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+}
+
+/**
+ * Server-side helper to resolve the Main Logo and color theme configured in Admin -> Branding
+ * specifically for rendering high-fidelity transactional emails.
+ */
+export async function getBrandingForEmail(): Promise<EmailBrandingInfo> {
+  const settings = await getBrandSettings();
+  
+  // Directly reads the Main Logo configured in Admin -> Branding (with light/dark fallbacks)
+  const logoPath = settings.mainLogo || settings.lightLogo || settings.darkLogo || null;
+  let logoUrl: string | null = null;
+
+  if (logoPath) {
+    if (logoPath.startsWith("http://") || logoPath.startsWith("https://") || logoPath.startsWith("data:")) {
+      logoUrl = logoPath;
+    } else {
+      try {
+        const { generateSignedUrl, STORAGE_BUCKET } = await import("@/lib/storage");
+        // Sign with 1-year expiry (31,536,000 seconds) so transactional email recipients can render the image reliably
+        const signed = await generateSignedUrl(logoPath, 365 * 24 * 3600, STORAGE_BUCKET);
+        logoUrl = signed || null;
+      } catch (err) {
+        console.warn("[Branding Service] Unable to generate signed URL for email logo:", err);
+      }
+    }
+  }
+
+  return {
+    businessName: settings.businessName || "LMX8 IMPORTS",
+    shortName: settings.shortName || "LMX8",
+    tagline: settings.tagline || "Your Goods. Our Priority. · China to Ghana Logistics",
+    logoUrl,
+    primaryColor: settings.primaryColor || "#141B47",
+    secondaryColor: settings.secondaryColor || "#355DAF",
+    accentColor: settings.accentColor || "#F2901F",
+  };
+}

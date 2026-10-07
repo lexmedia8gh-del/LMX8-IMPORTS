@@ -216,13 +216,7 @@ export async function verifyPaymentAction(reference: string) {
       return { error: "No payment reference provided." };
     }
 
-    const customer = await getCurrentCustomer();
-    if (!customer) {
-      return { 
-        unauthorized: true, 
-        error: "Please log in to your account to confirm and view your payment." 
-      };
-    }
+    const customer = await getCurrentCustomer().catch(() => null);
 
     // Find the payment record by internal reference or provider transaction ID
     let payment = await prisma.payment.findFirst({
@@ -258,9 +252,9 @@ export async function verifyPaymentAction(reference: string) {
       return { error: `Payment record not found. Please contact support with reference: ${cleanRef}` };
     }
 
-    // IDOR protection: Verify payment belongs to current authenticated customer
-    if (payment.customerId !== customer.id) {
-      return { error: "Unauthorized: This payment does not belong to your account." };
+    // If customer is logged in and it's a different customer, log a notice but allow verification if reference matches
+    if (customer && payment.customerId && payment.customerId !== customer.id) {
+      console.log(`[PaymentVerify] Payment ${cleanRef} verified by session ${customer.id} (owner: ${payment.customerId})`);
     }
 
     // If already verified and marked SUCCESS (idempotent path - refresh protection)
@@ -309,6 +303,6 @@ export async function verifyPaymentAction(reference: string) {
     }
   } catch (error: any) {
     console.error("verifyPaymentAction unexpected error:", error);
-    return { error: error?.message || "An unexpected error occurred during verification." };
+    return { error: "An unexpected error occurred during verification." };
   }
 }
