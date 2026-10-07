@@ -9,9 +9,9 @@ export async function getEmailDiagnosticsAction() {
   await requireAdminSession();
   await ensureEmailLogSchema();
 
-  try {
-    const config = getBrevoDiagnostics();
+  const config = getBrevoDiagnostics();
 
+  try {
     const logs = await prisma.emailLog.findMany({
       orderBy: { createdAt: "desc" },
       take: 150,
@@ -56,7 +56,7 @@ export async function getEmailDiagnosticsAction() {
     return {
       success: false,
       error: err?.message || "Failed to load email diagnostics.",
-      config: { BREVO_API_KEY: "missing", BREVO_SENDER_EMAIL: "missing", BREVO_SENDER_NAME: "missing", senderEmailValue: "" },
+      config,
       stats: { total: 0, sent: 0, failed: 0, pending: 0, skipped: 0 },
       logs: [],
     };

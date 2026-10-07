@@ -1,15 +1,28 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { ShipmentStatus, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
+import {
+  getBrevoServerConfig,
+  validateBrevoConfig,
+  getBrevoDiagnostics,
+  BrevoServerConfig,
+  BrevoValidationResult,
+  BrevoDiagnosticsReport,
+} from "./config";
+
+export {
+  getBrevoServerConfig,
+  validateBrevoConfig,
+  getBrevoDiagnostics,
+  type BrevoServerConfig,
+  type BrevoValidationResult,
+  type BrevoDiagnosticsReport,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Brevo Configuration & Constants
 // ─────────────────────────────────────────────────────────────────────────────
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
-
-// Default Sender values in case they are not in process.env
-const DEFAULT_SENDER_NAME = "LMX8 IMPORTS";
-const DEFAULT_SENDER_EMAIL = "lexmedia8gh@gmail.com";
 
 // Milestone definition: ONLY these 6 stages trigger automatic milestone Brevo emails
 export const BREVO_EMAIL_MILESTONES = [
@@ -62,20 +75,16 @@ export function getMilestoneEmailSubject(milestone: BrevoMilestone, batchDisplay
 // Environment Validation Helper
 // ─────────────────────────────────────────────────────────────────────────────
 export function validateEmailEnv() {
-  const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || DEFAULT_SENDER_EMAIL;
-  const senderName = process.env.BREVO_SENDER_NAME || DEFAULT_SENDER_NAME;
-
-  if (!apiKey || apiKey.trim() === "") {
-    return { valid: false, error: "BREVO_API_KEY is not configured" };
+  const result = validateBrevoConfig();
+  if (!result.valid) {
+    return { valid: false, error: result.errors[0] || "Brevo configuration is incomplete" };
   }
-  if (!senderEmail || senderEmail.trim() === "" || !senderEmail.includes("@")) {
-    return { valid: false, error: "BREVO_SENDER_EMAIL is not configured" };
-  }
-  if (!senderName || senderName.trim() === "") {
-    return { valid: false, error: "BREVO_SENDER_NAME is not configured" };
-  }
-  return { valid: true, apiKey: apiKey.trim(), senderEmail: senderEmail.trim(), senderName: senderName.trim() };
+  return {
+    valid: true,
+    apiKey: result.apiKey!,
+    senderEmail: result.senderEmail!,
+    senderName: result.senderName!,
+  };
 }
 
 // Dummy schema ensuring helper for retro-compatibility
@@ -1169,16 +1178,3 @@ export async function sendShippingFeePaidSuccessEmail(paymentId: string): Promis
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Diagnostics Endpoint Helper
-// ─────────────────────────────────────────────────────────────────────────────
-export function getBrevoDiagnostics() {
-  const envVal = validateEmailEnv();
-
-  return {
-    BREVO_API_KEY: envVal.valid ? "configured" : "missing",
-    BREVO_SENDER_EMAIL: envVal.senderEmail ? "configured" : "missing",
-    BREVO_SENDER_NAME: envVal.senderName ? "configured" : "missing",
-    senderEmailValue: envVal.senderEmail || DEFAULT_SENDER_EMAIL,
-  };
-}

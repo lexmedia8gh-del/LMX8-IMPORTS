@@ -110,27 +110,53 @@ export default function AdminEmailsPage() {
         <div className="bg-white rounded-2xl p-6 shadow-xs border border-[#E5E7EB] space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-sm text-[#141B47] flex items-center gap-2">
-              <ShieldCheck size={18} className="text-emerald-600" /> API Authentication
+              <ShieldCheck size={18} className="text-emerald-600" /> Brevo API Key
             </h3>
             <span
               className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                data?.config?.BREVO_API_KEY === "configured"
+                data?.config?.apiKeyConfigured || data?.config?.BREVO_API_KEY === "configured"
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                   : "bg-red-50 text-red-700 border border-red-200"
               }`}
             >
-              {data?.config?.BREVO_API_KEY || "Checking..."}
+              {loading
+                ? "Checking..."
+                : (data?.config?.apiKeyConfigured || data?.config?.BREVO_API_KEY === "configured")
+                ? "Configured"
+                : "Missing"}
             </span>
           </div>
           <div className="space-y-2 text-xs text-[#667085]">
-            <div className="flex justify-between">
-              <span>Sender Name:</span>
-              <span className="font-semibold text-[#172236]">{data?.config?.BREVO_SENDER_NAME || "LMX8 IMPORTS"}</span>
+            <div className="flex justify-between items-center">
+              <span>Environment:</span>
+              <span className="font-semibold text-[#172236]">{data?.config?.environment || "Production"}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
+              <span>Sender Name:</span>
+              <span className="font-semibold text-[#172236]">
+                {loading ? (
+                  "Checking..."
+                ) : data?.config?.senderName ? (
+                  data.config.senderName
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200">
+                    Missing
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
               <span>Sender Email:</span>
-              <span className="font-semibold text-[#172236] truncate max-w-[200px]" title={data?.config?.senderEmailValue}>
-                {data?.config?.senderEmailValue || "lexmedia8gh@gmail.com"}
+              <span className="font-semibold text-[#172236] truncate max-w-[200px]" title={data?.config?.senderEmail || undefined}>
+                {loading ? (
+                  "Checking..."
+                ) : data?.config?.senderEmail ? (
+                  data.config.senderEmail
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200">
+                    Missing
+                  </span>
+                )}
               </span>
             </div>
           </div>
