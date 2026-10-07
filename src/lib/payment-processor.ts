@@ -158,6 +158,21 @@ export async function processPaymentSuccess(reference: string) {
       } catch (notifErr) {
         console.error("Payment notification failed:", notifErr);
       }
+
+      try {
+        const { sendCreditPurchaseSuccessEmail, sendShippingFeePaidSuccessEmail } = await import("@/lib/email/brevo");
+        if (result.type === "CREDIT_PURCHASE") {
+          sendCreditPurchaseSuccessEmail(result.paymentId).catch((err) =>
+            console.error("[Brevo] Error dispatching credit purchase email:", err)
+          );
+        } else if (result.type === "SHIPPING_FEE") {
+          sendShippingFeePaidSuccessEmail(result.paymentId).catch((err) =>
+            console.error("[Brevo] Error dispatching shipping fee email:", err)
+          );
+        }
+      } catch (emailErr) {
+        console.error("[Brevo] Error dispatching payment success emails:", emailErr);
+      }
     }
 
     return { success: true, ...result };

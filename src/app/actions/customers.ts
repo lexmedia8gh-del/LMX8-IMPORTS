@@ -166,6 +166,14 @@ export async function createCustomerAction(formData: FormData) {
     revalidatePath("/portal");
     revalidatePath("/portal/credits");
     revalidatePath("/portal/sourcing");
+
+    // Dispatch Welcome Email through Central Email Service (non-blocking)
+    import("@/lib/email/brevo").then(({ sendCustomerCreatedEmail }) => {
+      sendCustomerCreatedEmail(createdCustomerId).catch((err) =>
+        console.error("[Brevo] Error dispatching welcome email:", err)
+      );
+    });
+
     return { success: true, customerIdentifier, customerId: createdCustomerId };
   } catch (error: any) {
     console.error("[createCustomerAction] Error creating customer:", error);

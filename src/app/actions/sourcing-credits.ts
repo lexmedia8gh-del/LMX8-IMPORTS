@@ -69,7 +69,7 @@ export async function createSourcingRequestAction(data: {
 
       if (existing) {
         // Same key already committed — return idempotent success
-        return { requestNumber: existing.requestNumber, alreadyProcessed: true };
+        return { requestNumber: existing.requestNumber, requestId: existing.id, alreadyProcessed: true };
       }
 
       // 2. Atomic credit deduction with DB-level concurrency lock:
@@ -133,8 +133,16 @@ export async function createSourcingRequestAction(data: {
         },
       });
 
-      return { requestNumber, alreadyProcessed: false };
+      return { requestNumber, requestId: request.id, alreadyProcessed: false };
     });
+
+    if (result && !result.alreadyProcessed && result.requestId) {
+      import("@/lib/email/brevo").then(({ sendSourcingRequestCreatedEmail }) => {
+        sendSourcingRequestCreatedEmail(result.requestId!).catch((err) =>
+          console.error("[Brevo] Error sending sourcing confirmation email:", err)
+        );
+      });
+    }
 
     return { success: true, requestNumber: result.requestNumber };
 

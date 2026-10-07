@@ -141,22 +141,91 @@ export async function retryEmailLogAction(logId: string) {
     return { error: "Email log record not found." };
   }
 
-  const result = await sendBrevoEmail({
-    to: [{ email: log.recipient }],
-    subject: log.subject,
-    htmlContent: `<div style="font-family: sans-serif; padding: 20px;"><h3>LMX8 IMPORTS (Retry)</h3><p>${log.subject}</p></div>`,
-  });
+  const { 
+    sendCustomerCreatedEmail, 
+    sendSourcingRequestCreatedEmail, 
+    sendShipmentCreatedEmail, 
+    sendShipmentMilestoneEmail, 
+    sendShippingFeeReminderEmail, 
+    sendCreditPurchaseSuccessEmail, 
+    sendShippingFeePaidSuccessEmail,
+    isBrevoEmailMilestone,
+    sendBrevoEmail
+  } = await import("@/lib/email/brevo");
+
+  let result: { success: boolean; error?: string } = { success: false, error: "Unsupported event type for retry" };
+
+  try {
+    if (log.eventType === "CUSTOMER_WELCOME") {
+      result = await sendCustomerCreatedEmail(log.customerId);
+    } else if (log.eventType === "SOURCING_REQUEST_CREATED") {
+      const requestId = log.idempotencyKey.replace("sourcing-created-", "");
+      result = await sendSourcingRequestCreatedEmail(requestId);
+    } else if (log.eventType === "SHIPMENT_CREATED") {
+      if (log.shipmentId) {
+        result = await sendShipmentCreatedEmail(log.shipmentId);
+      } else {
+        result = { success: false, error: "Shipment ID missing on log." };
+      }
+    } else if (log.eventType === "CREDIT_PURCHASE_SUCCESS") {
+      const paymentRef = log.idempotencyKey.replace("credit-purchase-success-", "");
+      const p = await prisma.payment.findUnique({ where: { reference: paymentRef } });
+      if (p) {
+        result = await sendCreditPurchaseSuccessEmail(p.id);
+      } else {
+        result = { success: false, error: "Associated payment not found." };
+      }
+    } else if (log.eventType === "SHIPPING_FEE_PAID") {
+      const paymentRef = log.idempotencyKey.replace("shipping-fee-success-", "");
+      const p = await prisma.payment.findUnique({ where: { reference: paymentRef } });
+      if (p) {
+        result = await sendShippingFeePaidSuccessEmail(p.id);
+      } else {
+        result = { success: false, error: "Associated payment not found." };
+      }
+    } else if (log.eventType === "SHIPPING_FEE_REMINDER") {
+      if (log.shipmentId) {
+        result = await sendShippingFeeReminderEmail({ shipmentId: log.shipmentId, force: true });
+      } else {
+        result = { success: false, error: "Shipment ID missing on log." };
+      }
+    } else if (isBrevoEmailMilestone(log.eventType)) {
+      if (log.shipmentId) {
+        result = await sendShipmentMilestoneEmail({ shipmentId: log.shipmentId, milestone: log.eventType as any });
+      } else {
+        result = { success: false, error: "Shipment ID missing on log." };
+      }
+    } else {
+      // Fallback manual dispatch for test / generic emails
+      const r = await sendBrevoEmail({
+        to: [{ email: log.recipient }],
+        subject: log.subject,
+        htmlContent: `
+          <div style="font-family: sans-serif; padding: 24px; background: #F8FAFC; border-radius: 12px; color: #172236; border: 1px solid #E2E8F0;">
+            <h3 style="color: #141B47; margin-top: 0;">LMX8 IMPORTS (Retry Statement)</h3>
+            <p><strong>Original Event:</strong> ${log.eventType}</p>
+            <p><strong>Original Subject:</strong> ${log.subject}</p>
+            <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 16px 0;" />
+            <p style="font-size: 11px; color: #64748B;">This is a system-triggered diagnostic retry dispatch.</p>
+          </div>
+        `,
+      });
+      result = { success: r.success, error: r.error };
+    }
+  } catch (err: any) {
+    result = { success: false, error: err?.message || "Execution exception during retry." };
+  }
 
   if (result.success) {
+    // If the helper updated a separate row or we used the fallback, make sure this logId row is synced
     await prisma.emailLog.update({
       where: { id: logId },
       data: {
         status: "SENT",
-        providerMessageId: result.messageId || null,
         sentAt: new Date(),
         errorMessage: null,
       },
-    });
+    }).catch(() => {});
     revalidatePath("/admin/emails");
     return { success: true };
   } else {
@@ -167,7 +236,7 @@ export async function retryEmailLogAction(logId: string) {
         failedAt: new Date(),
         errorMessage: result.error || "Retry failed.",
       },
-    });
+    }).catch(() => {});
     revalidatePath("/admin/emails");
     return { success: false, error: result.error };
   }

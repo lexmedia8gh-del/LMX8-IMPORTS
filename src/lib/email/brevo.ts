@@ -1,15 +1,17 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { ShipmentStatus, SHIPMENT_STATUS_LABELS, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
+import { ShipmentStatus, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Brevo Configuration & Constants
 // ─────────────────────────────────────────────────────────────────────────────
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
-const SENDER_NAME = process.env.BREVO_SENDER_NAME || "LEXMEDIA.GH";
+
+// Default Sender values in case they are not in process.env
+const DEFAULT_SENDER_NAME = "LMX8 IMPORTS";
 const DEFAULT_SENDER_EMAIL = "lexmedia8gh@gmail.com";
 
-// Milestone definition: ONLY these 6 stages trigger Brevo emails
+// Milestone definition: ONLY these 6 stages trigger automatic milestone Brevo emails
 export const BREVO_EMAIL_MILESTONES = [
   "SHIPMENT_CREATED",
   "SHIPPED",
@@ -25,7 +27,7 @@ export function isBrevoEmailMilestone(status: string): status is BrevoMilestone 
   return (BREVO_EMAIL_MILESTONES as readonly string[]).includes(status);
 }
 
-// Milestone-specific factual descriptions (Anti-marketing, clear and direct)
+// Milestone-specific descriptions
 export const MILESTONE_EMAIL_MESSAGES: Record<BrevoMilestone, string> = {
   SHIPMENT_CREATED: "Your order has been confirmed and is being registered in the LMX8 IMPORTS system.",
   SHIPPED: "Your shipment has departed China and is now on its way to Ghana.",
@@ -35,7 +37,7 @@ export const MILESTONE_EMAIL_MESSAGES: Record<BrevoMilestone, string> = {
   DELIVERED: "Your shipment has been marked as delivered.",
 };
 
-// Milestone-specific email subjects (Dynamic batch substitution)
+// Milestone-specific subjects
 export function getMilestoneEmailSubject(milestone: BrevoMilestone, batchDisplay: string): string {
   const batchPrefix = batchDisplay ? ` — ${batchDisplay}` : "";
   switch (milestone) {
@@ -57,53 +59,28 @@ export function getMilestoneEmailSubject(milestone: BrevoMilestone, batchDisplay
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Database Self-Healing DDL Helper
+// Environment Validation Helper
 // ─────────────────────────────────────────────────────────────────────────────
-let emailLogSchemaEnsured = false;
+export function validateEmailEnv() {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || DEFAULT_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME || DEFAULT_SENDER_NAME;
 
-export async function ensureEmailLogSchema(): Promise<boolean> {
-  if (emailLogSchemaEnsured) return true;
-  try {
-    await prisma.$executeRawUnsafe(`
-      DO $$ BEGIN
-          CREATE TYPE "EmailEventStatus" AS ENUM ('PENDING', 'SENT', 'FAILED', 'SKIPPED');
-      EXCEPTION
-          WHEN duplicate_object THEN null;
-      END $$;
-
-      CREATE TABLE IF NOT EXISTS "EmailLog" (
-          "id" TEXT NOT NULL,
-          "customerId" TEXT NOT NULL,
-          "shipmentId" TEXT,
-          "batchId" TEXT,
-          "eventType" TEXT NOT NULL,
-          "status" "EmailEventStatus" NOT NULL DEFAULT 'PENDING',
-          "recipient" TEXT NOT NULL,
-          "subject" TEXT NOT NULL,
-          "providerMessageId" TEXT,
-          "idempotencyKey" TEXT NOT NULL,
-          "sentAt" TIMESTAMP(3),
-          "failedAt" TIMESTAMP(3),
-          "errorMessage" TEXT,
-          "metadata" JSONB,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "EmailLog_pkey" PRIMARY KEY ("id")
-      );
-
-      CREATE UNIQUE INDEX IF NOT EXISTS "EmailLog_idempotencyKey_key" ON "EmailLog"("idempotencyKey");
-      CREATE INDEX IF NOT EXISTS "EmailLog_customerId_idx" ON "EmailLog"("customerId");
-      CREATE INDEX IF NOT EXISTS "EmailLog_shipmentId_idx" ON "EmailLog"("shipmentId");
-      CREATE INDEX IF NOT EXISTS "EmailLog_eventType_idx" ON "EmailLog"("eventType");
-      CREATE INDEX IF NOT EXISTS "EmailLog_status_idx" ON "EmailLog"("status");
-      CREATE INDEX IF NOT EXISTS "EmailLog_createdAt_idx" ON "EmailLog"("createdAt");
-    `);
-    emailLogSchemaEnsured = true;
-    return true;
-  } catch (err: any) {
-    console.warn("[EmailLog] ensureEmailLogSchema warning:", err?.message || err);
-    return false;
+  if (!apiKey || apiKey.trim() === "") {
+    return { valid: false, error: "BREVO_API_KEY is not configured" };
   }
+  if (!senderEmail || senderEmail.trim() === "" || !senderEmail.includes("@")) {
+    return { valid: false, error: "BREVO_SENDER_EMAIL is not configured" };
+  }
+  if (!senderName || senderName.trim() === "") {
+    return { valid: false, error: "BREVO_SENDER_NAME is not configured" };
+  }
+  return { valid: true, apiKey: apiKey.trim(), senderEmail: senderEmail.trim(), senderName: senderName.trim() };
+}
+
+// Dummy schema ensuring helper for retro-compatibility
+export async function ensureEmailLogSchema(): Promise<boolean> {
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,45 +99,27 @@ export interface BrevoSendResult {
   error?: string;
 }
 
-/**
- * Dispatches an email via Brevo REST API v3.
- * Server-side only, non-blocking to business logic.
- */
 export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<BrevoSendResult> {
-  const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || DEFAULT_SENDER_EMAIL;
-
-  if (!apiKey || apiKey.trim() === "") {
-    console.warn("[Brevo] BREVO_API_KEY is not configured in environment. Skipping email dispatch.");
-    return {
-      success: false,
-      error: "BREVO_API_KEY is not configured.",
-    };
+  const envVal = validateEmailEnv();
+  if (!envVal.valid) {
+    console.warn(`[Brevo Validation Warning] ${envVal.error}. Skipping real dispatch.`);
+    return { success: false, error: envVal.error };
   }
 
   if (!params.to || params.to.length === 0 || !params.to[0].email) {
-    return {
-      success: false,
-      error: "No recipient email provided.",
-    };
+    return { success: false, error: "No recipient email provided." };
   }
 
-  // Basic email syntax validation
   const recipientEmail = params.to[0].email.trim();
   if (!recipientEmail.includes("@") || !recipientEmail.includes(".")) {
-    return {
-      success: false,
-      error: `Invalid recipient email format: ${recipientEmail}`,
-    };
+    return { success: false, error: `Invalid recipient email format: ${recipientEmail}` };
   }
 
   try {
-    console.log(`[EMAIL_SEND_START] Recipient: ${recipientEmail}, Subject: "${params.subject}"`);
-
     const payload = {
       sender: {
-        name: SENDER_NAME,
-        email: senderEmail,
+        name: envVal.senderName,
+        email: envVal.senderEmail,
       },
       to: params.to.map((t) => ({
         email: t.email.trim(),
@@ -174,7 +133,7 @@ export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<Brev
     const response = await fetch(BREVO_API_URL, {
       method: "POST",
       headers: {
-        "api-key": apiKey.trim(),
+        "api-key": envVal.apiKey || "",
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -186,30 +145,20 @@ export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<Brev
     if (!response.ok) {
       const errorMsg = data?.message || data?.error || `Brevo HTTP ${response.status}: ${response.statusText}`;
       console.error(`[EMAIL_SEND_FAILURE] Recipient: ${recipientEmail}, Error: ${errorMsg}`);
-      return {
-        success: false,
-        error: errorMsg,
-      };
+      return { success: false, error: errorMsg };
     }
 
     const messageId = data?.messageId || data?.id || `brevo-${Date.now()}`;
-    console.log(`[EMAIL_SEND_SUCCESS] Recipient: ${recipientEmail}, MessageId: ${messageId}`);
-    return {
-      success: true,
-      messageId: String(messageId),
-    };
+    return { success: true, messageId: String(messageId) };
   } catch (err: any) {
     const errorMsg = err?.message || "Unexpected error dispatching Brevo email.";
     console.error(`[EMAIL_SEND_FAILURE] Recipient: ${recipientEmail}, Exception: ${errorMsg}`);
-    return {
-      success: false,
-      error: errorMsg,
-    };
+    return { success: false, error: errorMsg };
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HTML Email Templates (Branded, Responsive, Professional)
+// HTML Layout & Templates
 // ─────────────────────────────────────────────────────────────────────────────
 function getPortalBaseUrl(): string {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
@@ -217,6 +166,285 @@ function getPortalBaseUrl(): string {
   return "https://lmx8imports.com";
 }
 
+function wrapInBrandedLayout(title: string, bodyContent: string, footerContent?: string): string {
+  const footer = footerContent || `
+    <strong>LMX8 IMPORTS CTRL ROOM</strong><br>
+    Tema Port & Accra, Ghana · Shenzhen & Guangzhou, China<br>
+    This is an automated notification. Secure payment processing powered by Paystack.
+  `;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #F8FAFC; color: #172236; }
+    .container { max-width: 600px; margin: 24px auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: #141B47; padding: 28px 32px; text-align: left; }
+    .logo { color: #FFFFFF; font-size: 22px; font-weight: 800; letter-spacing: 0.5px; margin: 0; }
+    .logo span { color: #F2901F; }
+    .tagline { color: #94A3B8; font-size: 12px; font-weight: 500; margin-top: 4px; }
+    .body { padding: 32px; }
+    .greeting { font-size: 16px; font-weight: 600; color: #141B47; margin: 0 0 12px 0; }
+    .lead { font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0; }
+    .status-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+    .status-badge { display: inline-block; background: #141B47; color: #FFFFFF; padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .btn { display: inline-block; background: #F2901F; color: #FFFFFF !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 14px 28px; border-radius: 10px; text-align: center; margin: 8px 0 24px 0; }
+    .footer { background: #F1F5F9; padding: 20px 32px; font-size: 12px; color: #64748B; line-height: 1.6; border-top: 1px solid #E2E8F0; text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    tr { border-top: 1px solid #E2E8F0; }
+    td { padding: 8px 0; font-size: 13px; }
+    .label { color: #64748B; font-weight: 500; }
+    .val { color: #0F172A; font-weight: 700; text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="logo">LMX8 <span>IMPORTS</span></h1>
+      <div class="tagline">Your Goods. Our Priority. · China to Ghana Logistics</div>
+    </div>
+    <div class="body">
+      ${bodyContent}
+    </div>
+    <div class="footer">
+      ${footer}
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// Template Generators
+export function generateCustomerWelcomeHtml(data: { customerName: string; customerIdentifier: string; portalUrl: string }) {
+  const content = `
+    <p class="greeting">Hello ${data.customerName},</p>
+    <p class="lead">Welcome to LMX8 IMPORTS! Your customer account has been created successfully.</p>
+    <div class="status-card">
+      <div class="status-badge">Account Confirmed</div>
+      <p style="font-size: 14px; font-weight: 600; color: #141B47; margin: 0 0 16px 0;">Here is your unique Customer ID for reference:</p>
+      <table>
+        <tr>
+          <td class="label">Customer ID</td>
+          <td class="val" style="color: #141B47; font-size: 15px; font-family: monospace;">${data.customerIdentifier}</td>
+        </tr>
+      </table>
+    </div>
+    <p class="lead">You can log in to your portal using your Phone Number and the secure PIN provided by your administrator.</p>
+    <div style="text-align: center;">
+      <a href="${data.portalUrl}" class="btn">Log In to Customer Portal</a>
+    </div>
+  `;
+  return wrapInBrandedLayout("Welcome to LMX8 IMPORTS", content);
+}
+
+export function generateSourcingRequestCreatedHtml(data: {
+  customerName: string;
+  requestNumber: string;
+  productDetails: string;
+  quantity: number;
+  preferredSizeColor?: string;
+  additionalInstructions?: string;
+  portalUrl: string;
+}) {
+  const content = `
+    <p class="greeting">Hello ${data.customerName},</p>
+    <p class="lead">We have successfully received your product sourcing request from China! Our team is already reviewing details to secure the best quotation for you.</p>
+    <div class="status-card">
+      <div class="status-badge" style="background: #F59E0B;">Sourcing Request Received</div>
+      <table>
+        <tr>
+          <td class="label">Request Number</td>
+          <td class="val" style="font-family: monospace;">${data.requestNumber}</td>
+        </tr>
+        <tr>
+          <td class="label">Product Details</td>
+          <td class="val">${data.productDetails}</td>
+        </tr>
+        <tr>
+          <td class="label">Quantity</td>
+          <td class="val">${data.quantity}</td>
+        </tr>
+        ${data.preferredSizeColor ? `
+        <tr>
+          <td class="label">Preferred Specs</td>
+          <td class="val">${data.preferredSizeColor}</td>
+        </tr>` : ""}
+        ${data.additionalInstructions ? `
+        <tr>
+          <td class="label">Additional Instructions</td>
+          <td class="val">${data.additionalInstructions}</td>
+        </tr>` : ""}
+      </table>
+    </div>
+    <p class="lead">Your account has been debited 1 credit. We will provide a quotation in your portal as soon as it is available.</p>
+    <div style="text-align: center;">
+      <a href="${data.portalUrl}" class="btn">Check Sourcing Request Status</a>
+    </div>
+  `;
+  return wrapInBrandedLayout("Product Sourcing Request Received", content);
+}
+
+export function generateShipmentCreatedHtml(data: {
+  customerName: string;
+  trackingNumber: string;
+  description: string;
+  status: string;
+  estimatedArrival?: string;
+  portalUrl: string;
+}) {
+  const content = `
+    <p class="greeting">Hello ${data.customerName},</p>
+    <p class="lead">A new shipment has been registered under your account! You can monitor its status throughout its 8-stage logistics timeline.</p>
+    <div class="status-card">
+      <div class="status-badge">Shipment Registered</div>
+      <table>
+        <tr>
+          <td class="label">Tracking ID</td>
+          <td class="val" style="font-family: monospace; color: #141B47; font-size: 14px;">${data.trackingNumber}</td>
+        </tr>
+        <tr>
+          <td class="label">Description</td>
+          <td class="val">${data.description}</td>
+        </tr>
+        <tr>
+          <td class="label">Status</td>
+          <td class="val">${data.status}</td>
+        </tr>
+        ${data.estimatedArrival ? `
+        <tr>
+          <td class="label">Estimated Arrival</td>
+          <td class="val" style="color: #10B981;">${data.estimatedArrival}</td>
+        </tr>` : ""}
+      </table>
+    </div>
+    <div style="text-align: center;">
+      <a href="${data.portalUrl}" class="btn">Track Shipment Progress</a>
+    </div>
+  `;
+  return wrapInBrandedLayout("New Shipment Registered - LMX8", content);
+}
+
+export function generateShipmentStatusChangedHtml(data: {
+  customerName: string;
+  trackingNumber: string;
+  previousStatus: string;
+  newStatus: string;
+  note?: string;
+  portalUrl: string;
+}) {
+  const content = `
+    <p class="greeting">Hello ${data.customerName},</p>
+    <p class="lead">Your shipment's status has been updated in our warehouse/logistics system.</p>
+    <div class="status-card">
+      <div class="status-badge">${data.newStatus}</div>
+      <table>
+        <tr>
+          <td class="label">Tracking ID</td>
+          <td class="val" style="font-family: monospace;">${data.trackingNumber}</td>
+        </tr>
+        <tr>
+          <td class="label">Previous Status</td>
+          <td class="val" style="text-decoration: line-through; color: #94A3B8;">${data.previousStatus}</td>
+        </tr>
+        <tr>
+          <td class="label">New Status</td>
+          <td class="val" style="color: #141B47; font-weight: 800;">${data.newStatus}</td>
+        </tr>
+        ${data.note ? `
+        <tr>
+          <td class="label">Remarks</td>
+          <td class="val" style="font-style: italic;">${data.note}</td>
+        </tr>` : ""}
+      </table>
+    </div>
+    <div style="text-align: center;">
+      <a href="${data.portalUrl}" class="btn">View Live Timeline and Cargo Photos</a>
+    </div>
+  `;
+  return wrapInBrandedLayout("Shipment Status Update - LMX8", content);
+}
+
+export function generateCreditPurchaseSuccessHtml(data: {
+  customerName: string;
+  reference: string;
+  amount: number;
+  credits: number;
+  date: string;
+  portalUrl: string;
+}) {
+  const content = `
+    <p class="greeting">Hello ${data.customerName},</p>
+    <p class="lead">Your payment was processed successfully, and credits have been added to your sourcing account!</p>
+    <div class="status-card" style="background: #ECFDF5; border-color: #A7F3D0;">
+      <div class="status-badge" style="background: #10B981;">Payment Verified</div>
+      <table>
+        <tr>
+          <td class="label" style="color: #065F46;">Reference</td>
+          <td class="val" style="font-family: monospace;">${data.reference}</td>
+        </tr>
+        <tr>
+          <td class="label" style="color: #065F46;">Amount Paid</td>
+          <td class="val" style="color: #065F46;">GHS ${data.amount.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td class="label" style="color: #065F46;">Sourcing Credits Added</td>
+          <td class="val" style="color: #065F46; font-size: 15px;">+${data.credits} Credits</td>
+        </tr>
+        <tr>
+          <td class="label" style="color: #065F46;">Date</td>
+          <td class="val">${data.date}</td>
+        </tr>
+      </table>
+    </div>
+    <div style="text-align: center;">
+      <a href="${data.portalUrl}" class="btn" style="background: #10B981;">Check Your Credit Balance</a>
+    </div>
+  `;
+  return wrapInBrandedLayout("Sourcing Credits Payment Confirmed - LMX8", content);
+}
+
+export function generateShippingFeePaidHtml(data: {
+  customerName: string;
+  trackingNumber: string;
+  reference: string;
+  amount: number;
+  date: string;
+  portalUrl: string;
+}) {
+  const content = `
+    <p class="greeting">Hello ${data.customerName},</p>
+    <p class="lead">Your shipping fee payment has been successfully processed and verified! Your cargo has been cleared for processing/release.</p>
+    <div class="status-card" style="background: #ECFDF5; border-color: #A7F3D0;">
+      <div class="status-badge" style="background: #10B981;">Shipping Fee Paid</div>
+      <table>
+        <tr>
+          <td class="label" style="color: #065F46;">Tracking ID</td>
+          <td class="val" style="font-family: monospace;">${data.trackingNumber}</td>
+        </tr>
+        <tr>
+          <td class="label" style="color: #065F46;">Payment Reference</td>
+          <td class="val" style="font-family: monospace;">${data.reference}</td>
+        </tr>
+        <tr>
+          <td class="label" style="color: #065F46;">Amount Paid</td>
+          <td class="val" style="color: #065F46; font-size: 15px;">GHS ${data.amount.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td class="label" style="color: #065F46;">Date</td>
+          <td class="val">${data.date}</td>
+        </tr>
+      </table>
+    </div>
+    <div style="text-align: center;">
+      <a href="${data.portalUrl}" class="btn" style="background: #10B981;">View Shipment Timeline</a>
+    </div>
+  `;
+  return wrapInBrandedLayout("Shipping Fee Payment Confirmed - LMX8", content);
+}
+
+// Retro-compatible email body generator
 export function generateMilestoneEmailHtml(data: {
   customerName: string;
   customerIdentifier: string;
@@ -230,85 +458,46 @@ export function generateMilestoneEmailHtml(data: {
   const milestoneLabel = SHIPMENT_STATUS_ADMIN_LABELS[data.milestone] || data.milestone;
   const message = MILESTONE_EMAIL_MESSAGES[data.milestone];
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LMX8 IMPORTS Shipment Update</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #F8FAFC; color: #172236; }
-    .container { max-width: 600px; margin: 24px auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-    .header { background: #141B47; padding: 28px 32px; text-align: left; }
-    .logo { color: #FFFFFF; font-size: 22px; font-weight: 800; letter-spacing: 0.5px; margin: 0; }
-    .logo span { color: #F2901F; }
-    .tagline { color: #94A3B8; font-size: 12px; font-weight: 500; margin-top: 4px; }
-    .body { padding: 32px; }
-    .greeting { font-size: 16px; font-weight: 600; color: #141B47; margin: 0 0 12px 0; }
-    .lead { font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0; }
-    .status-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
-    .status-badge { display: inline-block; background: #141B47; color: #FFFFFF; padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
-    .status-badge.delivered { background: #10B981; }
-    .status-message { font-size: 14px; font-weight: 600; color: #141B47; margin: 0 0 16px 0; line-height: 1.5; }
-    .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid #EDF2F7; font-size: 13px; }
-    .detail-label { color: #64748B; font-weight: 500; }
-    .detail-value { color: #0F172A; font-weight: 700; text-align: right; }
-    .btn { display: inline-block; background: #F2901F; color: #FFFFFF !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 14px 28px; border-radius: 10px; text-align: center; margin: 8px 0 24px 0; }
-    .footer { background: #F1F5F9; padding: 20px 32px; font-size: 12px; color: #64748B; line-height: 1.6; border-top: 1px solid #E2E8F0; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1 class="logo">LMX8 <span>IMPORTS</span></h1>
-      <div class="tagline">Your Goods. Our Priority. · China to Ghana Logistics</div>
-    </div>
-    <div class="body">
-      <p class="greeting">Hello ${data.customerName || "Valued Customer"},</p>
-      <p class="lead">Your shipment status has been updated. Here are the latest details on your consignment:</p>
+  const content = `
+    <p class="greeting">Hello ${data.customerName || "Valued Customer"},</p>
+    <p class="lead">Your shipment status has been updated. Here are the latest details on your consignment:</p>
+    
+    <div class="status-card">
+      <div class="status-badge ${data.milestone === 'DELIVERED' ? 'delivered' : ''}">${milestoneLabel}</div>
+      <p style="font-size: 14px; font-weight: 600; color: #141B47; margin: 0 0 16px 0; line-height: 1.5;">${message}</p>
       
-      <div class="status-card">
-        <div class="status-badge ${data.milestone === 'DELIVERED' ? 'delivered' : ''}">${milestoneLabel}</div>
-        <p class="status-message">${message}</p>
-        
-        <table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
-          <tr style="border-top: 1px solid #E2E8F0;">
-            <td style="padding: 8px 0; color: #64748B; font-size: 13px; font-weight: 500;">Batch</td>
-            <td style="padding: 8px 0; color: #0F172A; font-size: 13px; font-weight: 700; text-align: right;">${data.batchDisplay}</td>
-          </tr>
-          <tr style="border-top: 1px solid #E2E8F0;">
-            <td style="padding: 8px 0; color: #64748B; font-size: 13px; font-weight: 500;">Tracking Number</td>
-            <td style="padding: 8px 0; color: #141B47; font-size: 13px; font-weight: 800; font-family: monospace; text-align: right;">${data.trackingNumber}</td>
-          </tr>
-          <tr style="border-top: 1px solid #E2E8F0;">
-            <td style="padding: 8px 0; color: #64748B; font-size: 13px; font-weight: 500;">Description</td>
-            <td style="padding: 8px 0; color: #0F172A; font-size: 13px; font-weight: 600; text-align: right;">${data.description}</td>
-          </tr>
-          <tr style="border-top: 1px solid #E2E8F0;">
-            <td style="padding: 8px 0; color: #64748B; font-size: 13px; font-weight: 500;">Update Date</td>
-            <td style="padding: 8px 0; color: #0F172A; font-size: 13px; font-weight: 600; text-align: right;">${data.statusDate}</td>
-          </tr>
-        </table>
-      </div>
-
-      <div style="text-align: center;">
-        <a href="${data.portalUrl}" class="btn">View Full 8-Stage Timeline in Portal</a>
-      </div>
-
-      <p style="font-size: 13px; color: #64748B; line-height: 1.5; margin: 0;">
-        You can log in to your LMX8 IMPORTS customer portal at any time to inspect the full timeline, photos, and tracking events for your cargo.
-      </p>
+      <table>
+        <tr>
+          <td class="label">Batch</td>
+          <td class="val">${data.batchDisplay}</td>
+        </tr>
+        <tr>
+          <td class="label">Tracking Number</td>
+          <td class="val" style="color: #141B47; font-weight: 800; font-family: monospace;">${data.trackingNumber}</td>
+        </tr>
+        <tr>
+          <td class="label">Description</td>
+          <td class="val">${data.description}</td>
+        </tr>
+        <tr>
+          <td class="label">Update Date</td>
+          <td class="val">${data.statusDate}</td>
+        </tr>
+      </table>
     </div>
-    <div class="footer">
-      <strong>LMX8 IMPORTS CTRL ROOM</strong><br>
-      Tema Port & Accra, Ghana · Shenzhen & Guangzhou, China<br>
-      This is an automated milestone notification regarding your shipment.
+
+    <div style="text-align: center;">
+      <a href="${data.portalUrl}" class="btn">View Full Timeline in Portal</a>
     </div>
-  </div>
-</body>
-</html>`;
+
+    <p style="font-size: 13px; color: #64748B; line-height: 1.5; margin: 0;">
+      You can log in to your LMX8 IMPORTS customer portal at any time to inspect the full timeline, photos, and tracking events for your cargo.
+    </p>
+  `;
+  return wrapInBrandedLayout("LMX8 IMPORTS Shipment Update", content);
 }
 
+// Retro-compatible reminder generator
 export function generateShippingFeeReminderHtml(data: {
   customerName: string;
   customerIdentifier: string;
@@ -320,81 +509,270 @@ export function generateShippingFeeReminderHtml(data: {
   paymentUrl: string;
   portalUrl: string;
 }): string {
-  const formatGHS = (val: number) => `GH₵ ${val.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatGHS = (val: number) => `GHS ${val.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LMX8 IMPORTS Shipping Fee Notice</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #F8FAFC; color: #172236; }
-    .container { max-width: 600px; margin: 24px auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; }
-    .header { background: #141B47; padding: 28px 32px; text-align: left; }
-    .logo { color: #FFFFFF; font-size: 22px; font-weight: 800; letter-spacing: 0.5px; margin: 0; }
-    .logo span { color: #F2901F; }
-    .body { padding: 32px; }
-    .greeting { font-size: 16px; font-weight: 600; color: #141B47; margin: 0 0 12px 0; }
-    .card { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
-    .btn { display: inline-block; background: #141B47; color: #FFFFFF !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 14px 28px; border-radius: 10px; text-align: center; }
-    .footer { background: #F1F5F9; padding: 20px 32px; font-size: 12px; color: #64748B; border-top: 1px solid #E2E8F0; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1 class="logo">LMX8 <span>IMPORTS</span></h1>
-      <div style="color: #94A3B8; font-size: 12px; font-weight: 500; margin-top: 4px;">Shipping Fee Statement</div>
+  const content = `
+    <p class="greeting">Hello ${data.customerName || "Valued Customer"},</p>
+    <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 20px 0;">
+      This is a statement regarding the shipping fee for your consignment <strong>${data.trackingNumber}</strong> (${data.batchDisplay}).
+    </p>
+
+    <div class="status-card" style="background: #FFFBEB; border-color: #FDE68A;">
+      <div class="status-badge" style="background: #B45309;">Payment Notice</div>
+      <table>
+        <tr>
+          <td class="label">Total Shipping Fee:</td>
+          <td class="val">${formatGHS(data.totalShippingFee)}</td>
+        </tr>
+        <tr>
+          <td class="label">Amount Paid to Date:</td>
+          <td class="val" style="color: #10B981;">${formatGHS(data.amountPaid)}</td>
+        </tr>
+        <tr style="border-top: 2px solid #FDE68A;">
+          <td class="label" style="font-size: 14px; font-weight: 800; color: #92400E; padding-top: 10px;">Outstanding Balance:</td>
+          <td class="val" style="font-size: 15px; font-weight: 800; color: #B45309; padding-top: 10px;">${formatGHS(data.outstandingBalance)}</td>
+        </tr>
+      </table>
     </div>
-    <div class="body">
-      <p class="greeting">Hello ${data.customerName || "Valued Customer"},</p>
-      <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 20px 0;">
-        This is a statement regarding the shipping fee for your consignment <strong>${data.trackingNumber}</strong> (${data.batchDisplay}).
-      </p>
 
-      <div class="card">
-        <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td style="padding: 6px 0; color: #92400E; font-size: 13px;">Total Shipping Fee:</td>
-            <td style="padding: 6px 0; color: #141B47; font-size: 13px; font-weight: 700; text-align: right;">${formatGHS(data.totalShippingFee)}</td>
-          </tr>
-          <tr>
-            <td style="padding: 6px 0; color: #92400E; font-size: 13px;">Amount Paid to Date:</td>
-            <td style="padding: 6px 0; color: #10B981; font-size: 13px; font-weight: 700; text-align: right;">${formatGHS(data.amountPaid)}</td>
-          </tr>
-          <tr style="border-top: 2px solid #FDE68A;">
-            <td style="padding: 10px 0 4px 0; color: #92400E; font-size: 15px; font-weight: 800;">Outstanding Balance:</td>
-            <td style="padding: 10px 0 4px 0; color: #B45309; font-size: 16px; font-weight: 800; text-align: right;">${formatGHS(data.outstandingBalance)}</td>
-          </tr>
-        </table>
-      </div>
-
-      <div style="text-align: center; margin-bottom: 24px;">
-        <a href="${data.paymentUrl}" class="btn">Pay Outstanding Balance (${formatGHS(data.outstandingBalance)})</a>
-      </div>
-
-      <p style="font-size: 13px; color: #64748B; margin: 0;">
-        You can also log in to your <a href="${data.portalUrl}" style="color: #141B47; font-weight: 600;">Customer Portal</a> to view payment receipts and invoice details.
-      </p>
+    <div style="text-align: center; margin-bottom: 24px;">
+      <a href="${data.paymentUrl}" class="btn">Pay Outstanding Balance (${formatGHS(data.outstandingBalance)})</a>
     </div>
-    <div class="footer">
-      <strong>LMX8 IMPORTS CTRL ROOM</strong><br>
-      Secure payment processing powered by Paystack.
-    </div>
-  </div>
-</body>
-</html>`;
+
+    <p style="font-size: 13px; color: #64748B; margin: 0;">
+      You can also log in to your <a href="${data.portalUrl}" style="color: #141B47; font-weight: 600;">Customer Portal</a> to view payment receipts and invoice details.
+    </p>
+  `;
+  return wrapInBrandedLayout("LMX8 IMPORTS Shipping Fee Notice", content);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// High-Level Milestone Dispatcher (With Database Idempotency)
+// High-Level Transactional Event Dispatchers (With Database Idempotency)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// 1. Customer Welcome
+export async function sendCustomerCreatedEmail(customerId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
+  try {
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+
+    if (!customer) return { success: false, error: "Customer not found." };
+    if (!customer.email || !customer.email.trim().includes("@")) {
+      return { success: true, skipped: true, reason: "Customer has no valid email." };
+    }
+
+    const idempotencyKey = `customer-welcome-${customer.id}`;
+    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
+    if (existingLog && existingLog.status === "SENT") {
+      return { success: true, skipped: true, reason: "Welcome email already sent." };
+    }
+
+    const portalBase = getPortalBaseUrl();
+    const portalUrl = `${portalBase}/login`;
+    const htmlContent = generateCustomerWelcomeHtml({
+      customerName: customer.name,
+      customerIdentifier: customer.customerIdentifier,
+      portalUrl,
+    });
+
+    const subject = "Welcome to LMX8 IMPORTS — Your Account Details";
+
+    await prisma.emailLog.upsert({
+      where: { idempotencyKey },
+      update: { status: "PENDING", updatedAt: new Date() },
+      create: {
+        customerId: customer.id,
+        eventType: "CUSTOMER_WELCOME",
+        status: "PENDING",
+        recipient: customer.email.trim(),
+        subject,
+        idempotencyKey,
+      },
+    });
+
+    const result = await sendBrevoEmail({
+      to: [{ email: customer.email.trim(), name: customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    if (result.success) {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "SENT", providerMessageId: result.messageId || null, sentAt: new Date() },
+      });
+      return { success: true };
+    } else {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "FAILED", failedAt: new Date(), errorMessage: result.error || "Failed to send welcome email." },
+      });
+      return { success: false, error: result.error };
+    }
+  } catch (err: any) {
+    console.error("[sendCustomerCreatedEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// 2. Sourcing Request Created
+export async function sendSourcingRequestCreatedEmail(requestId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
+  try {
+    const request = await prisma.sourcingRequest.findUnique({
+      where: { id: requestId },
+      include: { customer: true },
+    });
+
+    if (!request) return { success: false, error: "Sourcing request not found." };
+    const customer = request.customer;
+    if (!customer) return { success: false, error: "Customer not found." };
+    if (!customer.email || !customer.email.trim().includes("@")) {
+      return { success: true, skipped: true, reason: "Customer has no valid email." };
+    }
+
+    const idempotencyKey = `sourcing-created-${request.id}`;
+    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
+    if (existingLog && existingLog.status === "SENT") {
+      return { success: true, skipped: true, reason: "Sourcing created email already sent." };
+    }
+
+    const portalBase = getPortalBaseUrl();
+    const portalUrl = `${portalBase}/portal/sourcing`;
+    const htmlContent = generateSourcingRequestCreatedHtml({
+      customerName: customer.name,
+      requestNumber: request.requestNumber,
+      productDetails: request.productDetails,
+      quantity: request.quantity || 1,
+      preferredSizeColor: request.preferredSizeColor || undefined,
+      additionalInstructions: request.additionalInstructions || undefined,
+      portalUrl,
+    });
+
+    const subject = `LMX8 Sourcing Request ${request.requestNumber} Received`;
+
+    await prisma.emailLog.upsert({
+      where: { idempotencyKey },
+      update: { status: "PENDING", updatedAt: new Date() },
+      create: {
+        customerId: customer.id,
+        eventType: "SOURCING_REQUEST_CREATED",
+        status: "PENDING",
+        recipient: customer.email.trim(),
+        subject,
+        idempotencyKey,
+      },
+    });
+
+    const result = await sendBrevoEmail({
+      to: [{ email: customer.email.trim(), name: customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    if (result.success) {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "SENT", providerMessageId: result.messageId || null, sentAt: new Date() },
+      });
+      return { success: true };
+    } else {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "FAILED", failedAt: new Date(), errorMessage: result.error || "Failed to send sourcing confirmation." },
+      });
+      return { success: false, error: result.error };
+    }
+  } catch (err: any) {
+    console.error("[sendSourcingRequestCreatedEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// 3. Shipment Created
+export async function sendShipmentCreatedEmail(shipmentId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
+  try {
+    const shipment = await prisma.shipment.findUnique({
+      where: { id: shipmentId },
+      include: { customer: true, batch: true },
+    });
+
+    if (!shipment) return { success: false, error: "Shipment not found." };
+    const customer = shipment.customer;
+    if (!customer) return { success: false, error: "Customer not found." };
+    if (!customer.email || !customer.email.trim().includes("@")) {
+      return { success: true, skipped: true, reason: "Customer has no valid email." };
+    }
+
+    const idempotencyKey = `shipment-created-${shipment.id}`;
+    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
+    if (existingLog && existingLog.status === "SENT") {
+      return { success: true, skipped: true, reason: "Shipment created email already sent." };
+    }
+
+    const statusLabel = SHIPMENT_STATUS_ADMIN_LABELS[shipment.status as ShipmentStatus] || shipment.status;
+    const estArrival = shipment.estimatedArrival
+      ? shipment.estimatedArrival.toLocaleDateString("en-GH")
+      : undefined;
+
+    const portalBase = getPortalBaseUrl();
+    const portalUrl = `${portalBase}/portal/shipments/${shipment.trackingNumber}`;
+    const htmlContent = generateShipmentCreatedHtml({
+      customerName: customer.name,
+      trackingNumber: shipment.trackingNumber,
+      description: shipment.description,
+      status: statusLabel,
+      estimatedArrival: estArrival,
+      portalUrl,
+    });
+
+    const subject = `New Shipment Registered: ${shipment.trackingNumber} — LMX8 IMPORTS`;
+
+    await prisma.emailLog.upsert({
+      where: { idempotencyKey },
+      update: { status: "PENDING", updatedAt: new Date() },
+      create: {
+        customerId: customer.id,
+        shipmentId: shipment.id,
+        batchId: shipment.batchId,
+        eventType: "SHIPMENT_CREATED",
+        status: "PENDING",
+        recipient: customer.email.trim(),
+        subject,
+        idempotencyKey,
+      },
+    });
+
+    const result = await sendBrevoEmail({
+      to: [{ email: customer.email.trim(), name: customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    if (result.success) {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "SENT", providerMessageId: result.messageId || null, sentAt: new Date() },
+      });
+      return { success: true };
+    } else {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "FAILED", failedAt: new Date(), errorMessage: result.error || "Failed to send shipment registration email." },
+      });
+      return { success: false, error: result.error };
+    }
+  } catch (err: any) {
+    console.error("[sendShipmentCreatedEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// 4. Milestone/Shipment Status Changed Email
 export async function sendShipmentMilestoneEmail(params: {
   shipmentId: string;
   milestone: ShipmentStatus;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
-  // 1. Strict Milestone Filter: Only 6 stages send emails
   if (!isBrevoEmailMilestone(params.milestone)) {
     return {
       success: true,
@@ -406,40 +784,23 @@ export async function sendShipmentMilestoneEmail(params: {
   const milestone = params.milestone as BrevoMilestone;
 
   try {
-    await ensureEmailLogSchema();
-
-    // 2. Fetch fresh shipment details from database
     const shipment = await prisma.shipment.findUnique({
       where: { id: params.shipmentId },
       include: { customer: true, batch: true },
     });
 
-    if (!shipment) {
-      return { success: false, error: "Shipment not found." };
-    }
-
+    if (!shipment) return { success: false, error: "Shipment not found." };
     const customer = shipment.customer;
-    if (!customer) {
-      return { success: false, error: "Associated customer not found." };
-    }
+    if (!customer) return { success: false, error: "Customer not found." };
 
-    // 3. Dynamic batch name resolution (never hardcode Batch 6)
     const batch = shipment.batch;
     let batchDisplay = "Consignment";
     if (batch) {
-      if (batch.name && batch.batchNumber && batch.name !== batch.batchNumber) {
-        batchDisplay = `${batch.name} (${batch.batchNumber})`;
-      } else {
-        batchDisplay = batch.name || batch.batchNumber || "Consignment";
-      }
+      batchDisplay = batch.name || batch.batchNumber || "Consignment";
     }
 
-    // 4. Idempotency Check: One successful email per shipment milestone
     const idempotencyKey = `milestone-${shipment.id}-${milestone}`;
-    const existingLog = await prisma.emailLog.findUnique({
-      where: { idempotencyKey },
-    });
-
+    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
     if (existingLog && existingLog.status === "SENT") {
       return {
         success: true,
@@ -448,33 +809,26 @@ export async function sendShipmentMilestoneEmail(params: {
       };
     }
 
-    // 5. Customer Email Check
     const recipientEmail = customer.email?.trim();
     if (!recipientEmail || !recipientEmail.includes("@")) {
-      console.warn(`[Brevo] Customer ${customer.customerIdentifier} has no valid email. Skipping.`);
       await prisma.emailLog.upsert({
         where: { idempotencyKey },
-        update: {
-          status: "SKIPPED",
-          errorMessage: "Customer has no valid email address.",
-          updatedAt: new Date(),
-        },
+        update: { status: "SKIPPED", errorMessage: "Customer has no valid email address.", updatedAt: new Date() },
         create: {
           customerId: customer.id,
           shipmentId: shipment.id,
           batchId: batch?.id || null,
           eventType: milestone,
           status: "SKIPPED",
-          recipient: recipientEmail || "NONE",
+          recipient: "NONE",
           subject: getMilestoneEmailSubject(milestone, batchDisplay),
           idempotencyKey,
           errorMessage: "Customer has no valid email address.",
         },
       });
-      return { success: true, skipped: true, reason: "Customer has no valid email address." };
+      return { success: true, skipped: true, reason: "Customer has no valid email." };
     }
 
-    // 6. Build Content
     const subject = getMilestoneEmailSubject(milestone, batchDisplay);
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/shipments/${shipment.trackingNumber}`;
@@ -497,15 +851,9 @@ export async function sendShipmentMilestoneEmail(params: {
 
     const textContent = `LMX8 IMPORTS\n\nHello ${customer.name},\n\nYour shipment status has been updated.\n\nBatch: ${batchDisplay}\nShipment: ${shipment.trackingNumber}\nStatus: ${SHIPMENT_STATUS_ADMIN_LABELS[milestone] || milestone}\nDate: ${statusDate}\n\n${MILESTONE_EMAIL_MESSAGES[milestone]}\n\nView full tracking timeline in portal: ${portalUrl}\n\nRegards,\nLMX8 IMPORTS`;
 
-    // 7. Record Pending EmailLog
     await prisma.emailLog.upsert({
       where: { idempotencyKey },
-      update: {
-        status: "PENDING",
-        recipient: recipientEmail,
-        subject,
-        updatedAt: new Date(),
-      },
+      update: { status: "PENDING", recipient: recipientEmail, subject, updatedAt: new Date() },
       create: {
         customerId: customer.id,
         shipmentId: shipment.id,
@@ -518,7 +866,6 @@ export async function sendShipmentMilestoneEmail(params: {
       },
     });
 
-    // 8. Dispatch through Brevo
     const sendResult = await sendBrevoEmail({
       to: [{ email: recipientEmail, name: customer.name }],
       subject,
@@ -526,45 +873,31 @@ export async function sendShipmentMilestoneEmail(params: {
       textContent,
     });
 
-    // 9. Record Final Status
     if (sendResult.success) {
       await prisma.emailLog.update({
         where: { idempotencyKey },
-        data: {
-          status: "SENT",
-          providerMessageId: sendResult.messageId || null,
-          sentAt: new Date(),
-          errorMessage: null,
-        },
+        data: { status: "SENT", providerMessageId: sendResult.messageId || null, sentAt: new Date() },
       });
       return { success: true };
     } else {
       await prisma.emailLog.update({
         where: { idempotencyKey },
-        data: {
-          status: "FAILED",
-          failedAt: new Date(),
-          errorMessage: sendResult.error || "Failed to send email.",
-        },
+        data: { status: "FAILED", failedAt: new Date(), errorMessage: sendResult.error || "Failed to send email." },
       });
       return { success: false, error: sendResult.error };
     }
   } catch (err: any) {
-    console.error("[sendShipmentMilestoneEmail] Exception caught:", err?.message || err);
-    return { success: false, error: err?.message || "Internal error sending email." };
+    console.error("[sendShipmentMilestoneEmail] Exception caught:", err);
+    return { success: false, error: err?.message || "Internal error sending milestone email." };
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// High-Level Shipping Fee Reminder Dispatcher
-// ─────────────────────────────────────────────────────────────────────────────
+// 5. Shipping Fee Reminder
 export async function sendShippingFeeReminderEmail(params: {
   shipmentId: string;
-  force?: boolean; // bypass 3-day frequency check for explicit manual admin trigger
+  force?: boolean;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {
-    await ensureEmailLogSchema();
-
     const shipment = await prisma.shipment.findUnique({
       where: { id: params.shipmentId },
       include: { customer: true, batch: true, payments: true },
@@ -578,12 +911,10 @@ export async function sendShippingFeeReminderEmail(params: {
     const customer = shipment.customer;
     if (!customer) return { success: false, error: "Customer not found." };
 
-    // Calculate actual outstanding balance
     const successfulPayments = shipment.payments.filter((p) => p.status === "SUCCESS" && p.type === "SHIPPING_FEE");
     const amountPaid = successfulPayments.reduce((acc, p) => acc + p.amount, 0);
     const outstandingBalance = Math.max(0, shipment.fee - amountPaid);
 
-    // If fully paid, STOP all reminders
     if (outstandingBalance <= 0) {
       return { success: true, skipped: true, reason: "Shipping fee is fully paid. No reminder needed." };
     }
@@ -593,11 +924,10 @@ export async function sendShippingFeeReminderEmail(params: {
       return { success: true, skipped: true, reason: "Customer has no valid email." };
     }
 
-    // Dynamic batch
     const batch = shipment.batch;
     const batchDisplay = batch ? (batch.name || batch.batchNumber || "Consignment") : "Consignment";
 
-    // Frequency & Cadence: Allow max 1 reminder every 3 days unless force=true
+    // 3-day frequency check
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const recentReminder = await prisma.emailLog.findFirst({
       where: {
@@ -620,8 +950,8 @@ export async function sendShippingFeeReminderEmail(params: {
     const idempotencyKey = `fee-reminder-${shipment.id}-${Date.now()}`;
     const subject = `LMX8 IMPORTS — Shipping Fee Statement for ${shipment.trackingNumber}`;
     const portalBase = getPortalBaseUrl();
-    const portalUrl = `${portalBase}/portal/shipments/${shipment.trackingNumber}`;
-    const paymentUrl = `${portalBase}/portal/shipments/${shipment.trackingNumber}`;
+    const portalUrl = `${portalBase}/portal/payments`;
+    const paymentUrl = `${portalBase}/portal/payments/${shipment.id}`;
 
     const htmlContent = generateShippingFeeReminderHtml({
       customerName: customer.name,
@@ -681,20 +1011,172 @@ export async function sendShippingFeeReminderEmail(params: {
       return { success: false, error: sendResult.error };
     }
   } catch (err: any) {
-    console.error("[sendShippingFeeReminderEmail] Exception caught:", err?.message || err);
+    console.error("[sendShippingFeeReminderEmail] Exception caught:", err);
     return { success: false, error: err?.message || "Internal error sending reminder." };
   }
 }
 
+// 6. Sourcing Credit Purchase Success
+export async function sendCreditPurchaseSuccessEmail(paymentId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
+  try {
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { customer: true },
+    });
+
+    if (!payment) return { success: false, error: "Payment not found." };
+    const customer = payment.customer;
+    if (!customer) return { success: false, error: "Customer not found." };
+    if (!customer.email || !customer.email.trim().includes("@")) {
+      return { success: true, skipped: true, reason: "Customer has no valid email." };
+    }
+
+    const idempotencyKey = `credit-purchase-success-${payment.reference}`;
+    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
+    if (existingLog && existingLog.status === "SENT") {
+      return { success: true, skipped: true, reason: "Credit purchase success email already sent." };
+    }
+
+    const metadata = payment.metadata as any;
+    const credits = metadata?.credits || 0;
+
+    const portalBase = getPortalBaseUrl();
+    const portalUrl = `${portalBase}/portal/credits`;
+    const htmlContent = generateCreditPurchaseSuccessHtml({
+      customerName: customer.name,
+      reference: payment.reference,
+      amount: payment.amount,
+      credits,
+      date: new Date(payment.createdAt).toLocaleDateString("en-GH"),
+      portalUrl,
+    });
+
+    const subject = `LMX8 Sourcing Credits Purchased — Reference ${payment.reference}`;
+
+    await prisma.emailLog.upsert({
+      where: { idempotencyKey },
+      update: { status: "PENDING", updatedAt: new Date() },
+      create: {
+        customerId: customer.id,
+        eventType: "CREDIT_PURCHASE_SUCCESS",
+        status: "PENDING",
+        recipient: customer.email.trim(),
+        subject,
+        idempotencyKey,
+      },
+    });
+
+    const result = await sendBrevoEmail({
+      to: [{ email: customer.email.trim(), name: customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    if (result.success) {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "SENT", providerMessageId: result.messageId || null, sentAt: new Date() },
+      });
+      return { success: true };
+    } else {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "FAILED", failedAt: new Date(), errorMessage: result.error || "Failed to send credit purchase success email." },
+      });
+      return { success: false, error: result.error };
+    }
+  } catch (err: any) {
+    console.error("[sendCreditPurchaseSuccessEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// 7. Shipping Fee Paid Success
+export async function sendShippingFeePaidSuccessEmail(paymentId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
+  try {
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { customer: true, shipment: true },
+    });
+
+    if (!payment) return { success: false, error: "Payment not found." };
+    const customer = payment.customer;
+    if (!customer) return { success: false, error: "Customer not found." };
+    if (!customer.email || !customer.email.trim().includes("@")) {
+      return { success: true, skipped: true, reason: "Customer has no valid email." };
+    }
+
+    const shipment = payment.shipment;
+    if (!shipment) return { success: false, error: "Shipment not found for payment." };
+
+    const idempotencyKey = `shipping-fee-success-${payment.reference}`;
+    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
+    if (existingLog && existingLog.status === "SENT") {
+      return { success: true, skipped: true, reason: "Shipping fee paid success email already sent." };
+    }
+
+    const portalBase = getPortalBaseUrl();
+    const portalUrl = `${portalBase}/portal/payments`;
+    const htmlContent = generateShippingFeePaidHtml({
+      customerName: customer.name,
+      trackingNumber: shipment.trackingNumber,
+      reference: payment.reference,
+      amount: payment.amount,
+      date: new Date(payment.createdAt).toLocaleDateString("en-GH"),
+      portalUrl,
+    });
+
+    const subject = `LMX8 Shipping Fee Payment Confirmed for ${shipment.trackingNumber}`;
+
+    await prisma.emailLog.upsert({
+      where: { idempotencyKey },
+      update: { status: "PENDING", updatedAt: new Date() },
+      create: {
+        customerId: customer.id,
+        shipmentId: shipment.id,
+        eventType: "SHIPPING_FEE_PAID",
+        status: "PENDING",
+        recipient: customer.email.trim(),
+        subject,
+        idempotencyKey,
+      },
+    });
+
+    const result = await sendBrevoEmail({
+      to: [{ email: customer.email.trim(), name: customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    if (result.success) {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "SENT", providerMessageId: result.messageId || null, sentAt: new Date() },
+      });
+      return { success: true };
+    } else {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "FAILED", failedAt: new Date(), errorMessage: result.error || "Failed to send shipping fee paid email." },
+      });
+      return { success: false, error: result.error };
+    }
+  } catch (err: any) {
+    console.error("[sendShippingFeePaidSuccessEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Diagnostics Endpoint Helper
+// ─────────────────────────────────────────────────────────────────────────────
 export function getBrevoDiagnostics() {
-  const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || DEFAULT_SENDER_EMAIL;
-  const senderName = SENDER_NAME;
+  const envVal = validateEmailEnv();
 
   return {
-    BREVO_API_KEY: apiKey && apiKey.trim().length > 0 ? "configured" : "missing",
-    BREVO_SENDER_EMAIL: senderEmail ? "configured" : "missing",
-    BREVO_SENDER_NAME: senderName ? "configured" : "missing",
-    senderEmailValue: senderEmail,
+    BREVO_API_KEY: envVal.valid ? "configured" : "missing",
+    BREVO_SENDER_EMAIL: envVal.senderEmail ? "configured" : "missing",
+    BREVO_SENDER_NAME: envVal.senderName ? "configured" : "missing",
+    senderEmailValue: envVal.senderEmail || DEFAULT_SENDER_EMAIL,
   };
 }
