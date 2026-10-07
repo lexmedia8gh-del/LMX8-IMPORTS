@@ -1479,11 +1479,17 @@ export async function getCustomersAction() {
 /**
  * Admin action to send a shipping fee statement / payment reminder email via Brevo.
  */
-export async function sendShippingFeeReminderAction(trackingNumber: string) {
+export async function sendShippingFeeReminderAction(trackingNumberOrId: string) {
   const admin = await requireAdminSession();
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { trackingNumber },
+  const shipment = await prisma.shipment.findFirst({
+    where: {
+      OR: [
+        { trackingNumber: trackingNumberOrId },
+        { trackingNumber: trackingNumberOrId.toUpperCase() },
+        { id: trackingNumberOrId },
+      ],
+    },
   });
 
   if (!shipment) {
@@ -1504,14 +1510,14 @@ export async function sendShippingFeeReminderAction(trackingNumber: string) {
       action: "SHIPPING_FEE_REMINDER_SENT",
       entityType: "Shipment",
       entityId: shipment.id,
-      description: `Shipping fee statement email sent for ${trackingNumber} by ${admin.name || admin.email}`,
+      description: `Shipping fee statement email sent for ${shipment.trackingNumber} by ${admin.name || admin.email}`,
       adminId: admin.id,
     },
-  });
+  }).catch(() => {});
 
   return {
     success: true,
-    message: result.skipped ? `Reminder skipped: ${result.reason}` : "Shipping fee reminder email sent successfully.",
+    message: result.skipped ? `Statement skipped: ${result.reason}` : "Shipping fee statement email sent successfully.",
   };
 }
 

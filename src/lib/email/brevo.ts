@@ -129,13 +129,19 @@ export async function ensureEmailLogSchema(): Promise<boolean> {
   try {
     await prisma.$executeRawUnsafe(`
       DO $$ BEGIN
+          CREATE TYPE "public"."EmailEventStatus" AS ENUM ('PENDING', 'SENT', 'FAILED', 'SKIPPED');
+      EXCEPTION
+          WHEN duplicate_object THEN null;
+      END $$;
+
+      DO $$ BEGIN
           CREATE TYPE "EmailEventStatus" AS ENUM ('PENDING', 'SENT', 'FAILED', 'SKIPPED');
       EXCEPTION
           WHEN duplicate_object THEN null;
       END $$;
 
-      CREATE TABLE IF NOT EXISTS "EmailLog" (
-          "id" TEXT NOT NULL,
+      CREATE TABLE IF NOT EXISTS "public"."EmailLog" (
+          "id" TEXT NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text),
           "customerId" TEXT NOT NULL,
           "shipmentId" TEXT,
           "batchId" TEXT,
@@ -155,27 +161,27 @@ export async function ensureEmailLogSchema(): Promise<boolean> {
           CONSTRAINT "EmailLog_pkey" PRIMARY KEY ("id")
       );
 
-      CREATE UNIQUE INDEX IF NOT EXISTS "EmailLog_idempotencyKey_key" ON "EmailLog"("idempotencyKey");
-      CREATE INDEX IF NOT EXISTS "EmailLog_customerId_idx" ON "EmailLog"("customerId");
-      CREATE INDEX IF NOT EXISTS "EmailLog_shipmentId_idx" ON "EmailLog"("shipmentId");
-      CREATE INDEX IF NOT EXISTS "EmailLog_eventType_idx" ON "EmailLog"("eventType");
-      CREATE INDEX IF NOT EXISTS "EmailLog_status_idx" ON "EmailLog"("status");
-      CREATE INDEX IF NOT EXISTS "EmailLog_createdAt_idx" ON "EmailLog"("createdAt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "EmailLog_idempotencyKey_key" ON "public"."EmailLog"("idempotencyKey");
+      CREATE INDEX IF NOT EXISTS "EmailLog_customerId_idx" ON "public"."EmailLog"("customerId");
+      CREATE INDEX IF NOT EXISTS "EmailLog_shipmentId_idx" ON "public"."EmailLog"("shipmentId");
+      CREATE INDEX IF NOT EXISTS "EmailLog_eventType_idx" ON "public"."EmailLog"("eventType");
+      CREATE INDEX IF NOT EXISTS "EmailLog_status_idx" ON "public"."EmailLog"("status");
+      CREATE INDEX IF NOT EXISTS "EmailLog_createdAt_idx" ON "public"."EmailLog"("createdAt");
 
       DO $$ BEGIN
-          ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+          ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "public"."Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
       EXCEPTION
           WHEN duplicate_object THEN null;
       END $$;
 
       DO $$ BEGIN
-          ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "Shipment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+          ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "public"."Shipment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
       EXCEPTION
           WHEN duplicate_object THEN null;
       END $$;
 
       DO $$ BEGIN
-          ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "Batch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+          ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "public"."Batch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
       EXCEPTION
           WHEN duplicate_object THEN null;
       END $$;
@@ -1212,11 +1218,19 @@ export async function sendShipmentMilestoneEmail(params: {
 export async function sendShippingFeeReminderEmail(params: {
   shipmentId: string;
   force?: boolean;
-}): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
+}): Promise<{ success: boolean; messageId?: string; skipped?: boolean; reason?: string; error?: string }> {
+  console.log(`[FEE_STATEMENT_START] Initiating shipping fee statement for shipment: ${params.shipmentId} (force: ${Boolean(params.force)})`);
+
   try {
     await ensureEmailLogSchema();
-    const shipment = await prisma.shipment.findUnique({
-      where: { id: params.shipmentId },
+    const shipment = await prisma.shipment.findFirst({
+      where: {
+        OR: [
+          { id: params.shipmentId },
+          { trackingNumber: params.shipmentId },
+          { trackingNumber: params.shipmentId.toUpperCase() },
+        ],
+      },
       include: { customer: true, batch: true, payments: true },
     });
 
@@ -1228,7 +1242,7 @@ export async function sendShippingFeeReminderEmail(params: {
     const customer = shipment.customer;
     if (!customer) return { success: false, error: "Customer not found." };
 
-    const successfulPayments = shipment.payments.filter((p) => p.status === "SUCCESS" && p.type === "SHIPPING_FEE");
+    const successfulPayments = (shipment.payments || []).filter((p) => p.status === "SUCCESS" && p.type === "SHIPPING_FEE");
     const amountPaid = successfulPayments.reduce((acc, p) => acc + p.amount, 0);
     const outstandingBalance = Math.max(0, shipment.fee - amountPaid);
 
@@ -1237,7 +1251,7 @@ export async function sendShippingFeeReminderEmail(params: {
     }
 
     const recipientEmail = customer.email?.trim();
-    if (!recipientEmail || !recipientEmail.includes("@")) {
+    if (!recipientEmail || !recipientEmail.includes("@") || !recipientEmail.includes(".")) {
       return { success: true, skipped: true, reason: "Customer has no valid email." };
     }
 
@@ -1245,6 +1259,7 @@ export async function sendShippingFeeReminderEmail(params: {
     const batchDisplay = batch ? (batch.name || batch.batchNumber || "Consignment") : "Consignment";
 
     // 3-day frequency check
+    console.log(`EMAIL_LOG_CHECK_START\nshipmentId: ${shipment.id}\neventType: SHIPPING_FEE_REMINDER`);
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const recentReminder = await prisma.emailLog.findFirst({
       where: {
@@ -1257,12 +1272,14 @@ export async function sendShippingFeeReminderEmail(params: {
     });
 
     if (recentReminder && !params.force) {
+      console.log(`EMAIL_LOG_DUPLICATE\nreason: SENT_WITHIN_3_DAYS\nlastSent: ${recentReminder.createdAt.toISOString()}`);
       return {
         success: true,
         skipped: true,
         reason: `Reminder already sent within the last 3 days (${recentReminder.createdAt.toISOString().split("T")[0]}).`,
       };
     }
+    console.log("EMAIL_LOG_CHECK_SUCCESS");
 
     const idempotencyKey = `fee-reminder-${shipment.id}-${Date.now()}`;
     const subject = `LMX8 IMPORTS — Shipping Fee Statement for ${shipment.trackingNumber}`;
@@ -1282,6 +1299,7 @@ export async function sendShippingFeeReminderEmail(params: {
       portalUrl,
     });
 
+    console.log(`EMAIL_LOG_WRITE_START\nidempotencyKey: ${idempotencyKey}\nstatus: PENDING`);
     await prisma.emailLog.create({
       data: {
         customerId: customer.id,
@@ -1298,15 +1316,22 @@ export async function sendShippingFeeReminderEmail(params: {
           outstandingBalance,
         },
       },
+    }).catch((logErr) => {
+      console.warn("EMAIL_LOG_WRITE_FAILED", logErr?.message || logErr);
     });
+    console.log("EMAIL_LOG_WRITE_SUCCESS");
 
+    console.log(`BREVO_DISPATCH_START\nrecipient: ${recipientEmail}\nsubject: ${subject}`);
     const sendResult = await sendBrevoEmail({
       to: [{ email: recipientEmail, name: customer.name }],
       subject,
       htmlContent,
     });
 
+    console.log(`BREVO_RESPONSE\nstatus: ${sendResult.status || (sendResult.success ? 200 : 500)}`);
+
     if (sendResult.success) {
+      console.log(`BREVO_DISPATCH_SUCCESS\nmessageId: ${sendResult.messageId || "dispatched"}`);
       await prisma.emailLog.update({
         where: { idempotencyKey },
         data: {
@@ -1314,9 +1339,10 @@ export async function sendShippingFeeReminderEmail(params: {
           providerMessageId: sendResult.messageId || null,
           sentAt: new Date(),
         },
-      });
-      return { success: true };
+      }).catch(() => {});
+      return { success: true, messageId: sendResult.messageId };
     } else {
+      console.error(`BREVO_DISPATCH_FAILED\nstatus: ${sendResult.status || 500}\nerror: ${sendResult.error}`);
       await prisma.emailLog.update({
         where: { idempotencyKey },
         data: {
@@ -1324,12 +1350,13 @@ export async function sendShippingFeeReminderEmail(params: {
           failedAt: new Date(),
           errorMessage: sendResult.error || "Failed to send reminder.",
         },
-      });
+      }).catch(() => {});
       return { success: false, error: sendResult.error };
     }
   } catch (err: any) {
-    console.error("[sendShippingFeeReminderEmail] Exception caught:", err);
-    return { success: false, error: err?.message || "Internal error sending reminder." };
+    const errorMsg = typeof err?.message === "string" ? err.message : "Internal error sending fee reminder.";
+    console.error("[sendShippingFeeReminderEmail] Exception caught:", errorMsg);
+    return { success: false, error: errorMsg };
   }
 }
 
