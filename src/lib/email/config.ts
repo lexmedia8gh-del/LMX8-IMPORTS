@@ -10,9 +10,9 @@ export interface BrevoServerConfig {
  * Never exposes the raw API key to the client.
  */
 export function getBrevoServerConfig(): BrevoServerConfig {
-  const rawApiKey = process.env.BREVO_API_KEY?.trim() || "";
-  const rawSenderName = process.env.BREVO_SENDER_NAME?.trim() || null;
-  const rawSenderEmail = process.env.BREVO_SENDER_EMAIL?.trim() || null;
+  const rawApiKey = (process.env.BREVO_API_KEY || process.env.BREVO_KEY || "").trim();
+  const rawSenderName = (process.env.BREVO_SENDER_NAME || process.env.BREVO_FROM_NAME || "LMX8 IMPORTS").trim();
+  const rawSenderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.BREVO_FROM_EMAIL || "lexmedia8gh@gmail.com").trim();
 
   const vercelEnv = process.env.VERCEL_ENV;
   const nodeEnv = process.env.NODE_ENV;
@@ -48,7 +48,7 @@ export function validateBrevoConfig(): BrevoValidationResult {
   const config = getBrevoServerConfig();
   const errors: string[] = [];
 
-  const rawApiKey = process.env.BREVO_API_KEY?.trim() || null;
+  const rawApiKey = (process.env.BREVO_API_KEY || process.env.BREVO_KEY || "").trim() || null;
 
   if (!config.apiKeyConfigured) {
     errors.push("BREVO_API_KEY is not configured");

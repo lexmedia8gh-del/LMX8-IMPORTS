@@ -1151,8 +1151,13 @@ export async function updateBatchStatusAction(
     return closeBatchAction(batchNumber);
   }
 
-  const batch = await prisma.batch.findUnique({
-    where: { batchNumber },
+  const batch = await prisma.batch.findFirst({
+    where: {
+      OR: [
+        { batchNumber },
+        { id: batchNumber },
+      ],
+    },
     include: {
       shipments: {
         include: {
@@ -1163,7 +1168,7 @@ export async function updateBatchStatusAction(
   });
 
   if (!batch) {
-    throw new Error("Batch not found.");
+    throw new Error(`Batch '${batchNumber}' not found.`);
   }
 
   const previousStatus = batch.status;
@@ -1172,7 +1177,7 @@ export async function updateBatchStatusAction(
 
   // 1. Update batch status
   const updatedBatch = await prisma.batch.update({
-    where: { batchNumber },
+    where: { id: batch.id },
     data: { status: newStatus },
   });
 

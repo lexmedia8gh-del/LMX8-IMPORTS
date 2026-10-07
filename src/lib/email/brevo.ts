@@ -1031,8 +1031,14 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
 
   try {
     await ensureEmailLogSchema();
-    const shipment = await prisma.shipment.findUnique({
-      where: { id: params.shipmentId },
+    const shipment = await prisma.shipment.findFirst({
+      where: {
+        OR: [
+          { id: params.shipmentId },
+          { trackingNumber: params.shipmentId },
+          { trackingNumber: params.shipmentId.toUpperCase() },
+        ],
+      },
       include: { customer: true, batch: true, payments: true },
     });
 
