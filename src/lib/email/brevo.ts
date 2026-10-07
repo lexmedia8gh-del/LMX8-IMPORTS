@@ -24,36 +24,36 @@ export {
 // ─────────────────────────────────────────────────────────────────────────────
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
-// Milestone definition: All shipment timeline stages trigger automatic Brevo emails:
-export const SHIPMENT_EMAIL_EVENTS: Record<ShipmentStatus, string> = {
+// Milestone definition: Shipment timeline stages trigger automatic Brevo emails:
+// Note: OUT_FOR_DELIVERY and DELIVERED do NOT trigger automatic status update emails, but OUT_FOR_DELIVERY remains eligible for fee reminders if unpaid.
+export const SHIPMENT_EMAIL_EVENTS: Record<ShipmentStatus, string | null> = {
   SHIPMENT_CREATED: "SHIPMENT_ORDER_CONFIRMED",
   PREPARING_SHIPMENT: "SHIPMENT_PREPARING",
   SHIPPED: "SHIPMENT_DEPARTED_CHINA",
   IN_TRANSIT: "SHIPMENT_IN_TRANSIT",
   ARRIVED_AT_DESTINATION: "SHIPMENT_ARRIVED_GHANA",
   CUSTOMS_CLEARANCE: "SHIPMENT_CUSTOMS_CLEARANCE",
-  OUT_FOR_DELIVERY: "SHIPMENT_OUT_FOR_DELIVERY",
-  DELIVERED: "SHIPMENT_DELIVERED",
+  OUT_FOR_DELIVERY: null,
+  DELIVERED: null,
   ON_HOLD: "SHIPMENT_ON_HOLD",
 };
 
 export type ShipmentEmailStatus = keyof typeof SHIPMENT_EMAIL_EVENTS;
+export type BrevoMilestone = ShipmentStatus;
 
-export const BREVO_EMAIL_MILESTONES = [
-  "SHIPMENT_CREATED",
-  "PREPARING_SHIPMENT",
-  "SHIPPED",
+// Fee reminders & payment prompts begin ONLY when shipment reaches ON THE WAY TO GHANA (IN_TRANSIT)
+export const FEE_REMINDER_ELIGIBLE_STATUSES: ShipmentStatus[] = [
   "IN_TRANSIT",
   "ARRIVED_AT_DESTINATION",
   "CUSTOMS_CLEARANCE",
   "OUT_FOR_DELIVERY",
-  "DELIVERED",
-  "ON_HOLD",
-] as const;
+];
 
-export type BrevoMilestone = (typeof BREVO_EMAIL_MILESTONES)[number];
+export function isFeeReminderEligibleStatus(status: ShipmentStatus | string): boolean {
+  return FEE_REMINDER_ELIGIBLE_STATUSES.includes(status as ShipmentStatus);
+}
 
-export function isBrevoEmailMilestone(status: string): status is BrevoMilestone {
+export function isBrevoEmailMilestone(status: string): boolean {
   return Boolean(SHIPMENT_EMAIL_EVENTS[status as ShipmentStatus]);
 }
 
@@ -1253,6 +1253,13 @@ export async function sendShippingFeeReminderEmail(params: {
     if (!shipment) return { success: false, error: "Shipment not found." };
     if (!shipment.fee || shipment.fee <= 0) {
       return { success: true, skipped: true, reason: "No shipping fee assigned to shipment." };
+    }
+    if (!isFeeReminderEligibleStatus(shipment.status) && !params.force) {
+      return {
+        success: true,
+        skipped: true,
+        reason: `Shipment status '${shipment.status}' is not eligible for shipping fee reminders yet. Reminders begin at 'On the Way to Ghana'.`,
+      };
     }
 
     const customer = shipment.customer;
