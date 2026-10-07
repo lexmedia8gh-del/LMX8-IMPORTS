@@ -140,8 +140,11 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
         setNewLocation("");
         setNewNote("");
         showToast("Timeline event posted successfully.");
-        // Refresh email logs in background if notification fired
+        // Refresh email logs in background
         getShipmentEmailLogsAction(id).then(logs => setEmailLogs(logs || [])).catch(() => {});
+        setTimeout(() => {
+          getShipmentEmailLogsAction(id).then(logs => setEmailLogs(logs || [])).catch(() => {});
+        }, 1500);
       }
     } catch (err: any) {
       console.error("[handleUpdateStatus] Error:", err);
@@ -468,6 +471,10 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
                   setNewStatus(updatedShipment.status);
                 }
                 showToast("Checkpoint event posted successfully.");
+                getShipmentEmailLogsAction(id).then(logs => setEmailLogs(logs || [])).catch(() => {});
+                setTimeout(() => {
+                  getShipmentEmailLogsAction(id).then(logs => setEmailLogs(logs || [])).catch(() => {});
+                }, 1500);
               }}
             />
 

@@ -23,24 +23,17 @@ export {
 // ─────────────────────────────────────────────────────────────────────────────
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
-// Milestone definition: ONLY these FIRST SIX shipment stages trigger automatic milestone Brevo emails:
-// 1. Order Confirmed (SHIPMENT_CREATED) -> SHIPMENT_ORDER_CONFIRMED
-// 2. Preparing for Shipment (PREPARING_SHIPMENT) -> SHIPMENT_PREPARING
-// 3. Departed China (SHIPPED) -> SHIPMENT_DEPARTED_CHINA
-// 4. On the Way to Ghana (IN_TRANSIT) -> SHIPMENT_IN_TRANSIT
-// 5. Arrived in Ghana (ARRIVED_AT_DESTINATION) -> SHIPMENT_ARRIVED_GHANA
-// 6. Customs Clearance (CUSTOMS_CLEARANCE) -> SHIPMENT_CUSTOMS_CLEARANCE
-
-export const SHIPMENT_EMAIL_EVENTS: Record<ShipmentStatus, string | null> = {
+// Milestone definition: All shipment timeline stages trigger automatic Brevo emails:
+export const SHIPMENT_EMAIL_EVENTS: Record<ShipmentStatus, string> = {
   SHIPMENT_CREATED: "SHIPMENT_ORDER_CONFIRMED",
   PREPARING_SHIPMENT: "SHIPMENT_PREPARING",
   SHIPPED: "SHIPMENT_DEPARTED_CHINA",
   IN_TRANSIT: "SHIPMENT_IN_TRANSIT",
   ARRIVED_AT_DESTINATION: "SHIPMENT_ARRIVED_GHANA",
   CUSTOMS_CLEARANCE: "SHIPMENT_CUSTOMS_CLEARANCE",
-  OUT_FOR_DELIVERY: null,
-  DELIVERED: null,
-  ON_HOLD: null,
+  OUT_FOR_DELIVERY: "SHIPMENT_OUT_FOR_DELIVERY",
+  DELIVERED: "SHIPMENT_DELIVERED",
+  ON_HOLD: "SHIPMENT_ON_HOLD",
 };
 
 export type ShipmentEmailStatus = keyof typeof SHIPMENT_EMAIL_EVENTS;
@@ -52,6 +45,9 @@ export const BREVO_EMAIL_MILESTONES = [
   "IN_TRANSIT",
   "ARRIVED_AT_DESTINATION",
   "CUSTOMS_CLEARANCE",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+  "ON_HOLD",
 ] as const;
 
 export type BrevoMilestone = (typeof BREVO_EMAIL_MILESTONES)[number];
@@ -61,18 +57,21 @@ export function isBrevoEmailMilestone(status: string): status is BrevoMilestone 
 }
 
 // Milestone-specific descriptions
-export const MILESTONE_EMAIL_MESSAGES: Record<BrevoMilestone, string> = {
+export const MILESTONE_EMAIL_MESSAGES: Record<ShipmentStatus, string> = {
   SHIPMENT_CREATED: "Your order has been confirmed and is being registered in the LMX8 IMPORTS system.",
   PREPARING_SHIPMENT: "Your item is being prepared, quality-checked, and consolidated for international shipment.",
   SHIPPED: "Your shipment has departed China and is now on its way to Ghana.",
   IN_TRANSIT: "Your shipment is currently on the way to Ghana. We will notify you as soon as it arrives.",
   ARRIVED_AT_DESTINATION: "Your shipment has arrived in Ghana and is being processed for clearance.",
   CUSTOMS_CLEARANCE: "Your shipment is currently undergoing customs clearance.",
+  OUT_FOR_DELIVERY: "Your shipment is out for delivery with our dispatch team and will arrive at your destination soon.",
+  DELIVERED: "Your shipment has been successfully delivered. Thank you for choosing LMX8 IMPORTS!",
+  ON_HOLD: "Your shipment has been placed on hold. Please contact our customer support team for more details.",
 };
 
 // Milestone-specific subjects
 export function getMilestoneEmailSubject(
-  milestone: BrevoMilestone,
+  milestone: ShipmentStatus | string,
   batchDisplay: string,
   isShippingFeeUnpaid: boolean = false
 ): string {
@@ -94,6 +93,12 @@ export function getMilestoneEmailSubject(
       return isShippingFeeUnpaid
         ? `Your shipment is undergoing customs clearance — action required`
         : `Your shipment is currently undergoing customs clearance — LMX8 IMPORTS${batchSuffix}`;
+    case "OUT_FOR_DELIVERY":
+      return `Your shipment is out for delivery — LMX8 IMPORTS${batchSuffix}`;
+    case "DELIVERED":
+      return `Your shipment has been delivered — LMX8 IMPORTS${batchSuffix}`;
+    case "ON_HOLD":
+      return `Shipment status update: On hold — LMX8 IMPORTS${batchSuffix}`;
     default:
       return `LMX8 IMPORTS Shipment Update${batchSuffix}`;
   }
@@ -651,7 +656,7 @@ export interface MilestoneEmailData {
   batchDisplay: string;
   trackingNumber: string;
   description: string;
-  milestone: BrevoMilestone;
+  milestone: ShipmentStatus | string;
   statusDate: string;
   portalUrl: string;
   isShippingFeeUnpaid?: boolean;
@@ -662,10 +667,10 @@ export interface MilestoneEmailData {
 }
 
 export function generateMilestoneEmailHtml(data: MilestoneEmailData): string {
-  const milestoneLabel = SHIPMENT_STATUS_ADMIN_LABELS[data.milestone] || data.milestone;
+  const milestoneLabel = (SHIPMENT_STATUS_ADMIN_LABELS as Record<string, string>)[data.milestone] || data.milestone;
   const formatGHS = (val: number) => `GHS ${val.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  let leadMessage = MILESTONE_EMAIL_MESSAGES[data.milestone];
+  let leadMessage = (MILESTONE_EMAIL_MESSAGES as Record<string, string>)[data.milestone] || "Your shipment status has been updated in our logistics system.";
   if (data.isShippingFeeUnpaid) {
     if (data.milestone === "ARRIVED_AT_DESTINATION") {
       leadMessage = `Your shipment has arrived in Ghana. Your shipping fee of ${formatGHS(data.outstandingBalance || 0)} is currently outstanding.`;
@@ -1023,7 +1028,8 @@ export interface SendShipmentStatusEmailParams {
   shipmentId: string;
   customerId?: string;
   status: ShipmentStatus;
-  event: string;
+  event?: string;
+  force?: boolean;
 }
 
 export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailParams): Promise<{
@@ -1033,7 +1039,8 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
   reason?: string;
   error?: string;
 }> {
-  console.log(`SHIPMENT_EMAIL_EVENT_DETECTED\nevent: ${params.event}\nshipmentId: ${params.shipmentId}\nstatus: ${params.status}`);
+  const eventType = params.event || SHIPMENT_EMAIL_EVENTS[params.status] || `SHIPMENT_${params.status}`;
+  console.log(`SHIPMENT_EMAIL_EVENT_DETECTED\nevent: ${eventType}\nshipmentId: ${params.shipmentId}\nstatus: ${params.status}`);
 
   try {
     await ensureEmailLogSchema();
@@ -1071,10 +1078,10 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
           customerId: customer.id,
           shipmentId: shipment.id,
           batchId: shipment.batchId,
-          eventType: params.event,
+          eventType,
           status: "SKIPPED",
           recipient: "NONE",
-          subject: getMilestoneEmailSubject(params.status as any, shipment.batch?.name || "Consignment"),
+          subject: getMilestoneEmailSubject(params.status, shipment.batch?.name || "Consignment"),
           idempotencyKey,
           errorMessage: "CUSTOMER_EMAIL_MISSING",
         },
@@ -1082,16 +1089,21 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
       return { success: true, skipped: true, reason: "CUSTOMER_EMAIL_MISSING" };
     }
 
-    const idempotencyKey = `milestone-${shipment.id}-${params.status}`;
-    console.log(`EMAIL_LOG_CHECK\nidempotencyKey: ${idempotencyKey}`);
-    const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
-    if (existingLog && existingLog.status === "SENT") {
-      console.log("SHIPMENT_EMAIL_SKIPPED\nreason: ALREADY_SENT");
-      return {
-        success: true,
-        skipped: true,
-        reason: "ALREADY_SENT",
-      };
+    const idempotencyKey = params.force
+      ? `milestone-${shipment.id}-${params.status}-${Date.now()}`
+      : `milestone-${shipment.id}-${params.status}`;
+
+    if (!params.force) {
+      console.log(`EMAIL_LOG_CHECK\nidempotencyKey: ${idempotencyKey}`);
+      const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
+      if (existingLog && existingLog.status === "SENT") {
+        console.log("SHIPMENT_EMAIL_SKIPPED\nreason: ALREADY_SENT");
+        return {
+          success: true,
+          skipped: true,
+          reason: "ALREADY_SENT",
+        };
+      }
     }
 
     const batch = shipment.batch;
@@ -1117,7 +1129,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
       day: "numeric",
     });
 
-    const subject = getMilestoneEmailSubject(params.status as any, batchDisplay, isShippingFeeUnpaid);
+    const subject = getMilestoneEmailSubject(params.status, batchDisplay, isShippingFeeUnpaid);
 
     const htmlContent = generateMilestoneEmailHtml({
       customerName: customer.name,
@@ -1125,7 +1137,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
       batchDisplay,
       trackingNumber: shipment.trackingNumber,
       description: shipment.description,
-      milestone: params.status as any,
+      milestone: params.status,
       statusDate,
       portalUrl,
       isShippingFeeUnpaid,
@@ -1135,17 +1147,17 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
       paymentUrl,
     });
 
-    const textContent = `LMX8 IMPORTS\n\nHello ${customer.name},\n\nYour shipment status has been updated.\n\nBatch: ${batchDisplay}\nShipment: ${shipment.trackingNumber}\nStatus: ${SHIPMENT_STATUS_ADMIN_LABELS[params.status] || params.status}\nDate: ${statusDate}\n\n${MILESTONE_EMAIL_MESSAGES[params.status as BrevoMilestone] || ""}\n\nView full tracking timeline in portal: ${portalUrl}\n\nRegards,\nLMX8 IMPORTS`;
+    const textContent = `LMX8 IMPORTS\n\nHello ${customer.name},\n\nYour shipment status has been updated.\n\nBatch: ${batchDisplay}\nShipment: ${shipment.trackingNumber}\nStatus: ${SHIPMENT_STATUS_ADMIN_LABELS[params.status] || params.status}\nDate: ${statusDate}\n\n${MILESTONE_EMAIL_MESSAGES[params.status] || ""}\n\nView full tracking timeline in portal: ${portalUrl}\n\nRegards,\nLMX8 IMPORTS`;
 
     console.log(`EMAIL_LOG_WRITE\nstatus: PENDING\nidempotencyKey: ${idempotencyKey}`);
     await prisma.emailLog.upsert({
       where: { idempotencyKey },
-      update: { status: "PENDING", recipient: recipientEmail, subject, eventType: params.event, updatedAt: new Date() },
+      update: { status: "PENDING", recipient: recipientEmail, subject, eventType, updatedAt: new Date() },
       create: {
         customerId: customer.id,
         shipmentId: shipment.id,
         batchId: shipment.batchId,
-        eventType: params.event,
+        eventType,
         status: "PENDING",
         recipient: recipientEmail,
         subject,
@@ -1153,7 +1165,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
       },
     }).catch(() => {});
 
-    console.log(`BREVO_DISPATCH_START\nrecipient: ${recipientEmail}\nsubject: ${subject}\nevent: ${params.event}`);
+    console.log(`BREVO_DISPATCH_START\nrecipient: ${recipientEmail}\nsubject: ${subject}\nevent: ${eventType}`);
 
     const sendResult = await sendBrevoEmail({
       to: [{ email: recipientEmail, name: customer.name }],
@@ -1198,19 +1210,14 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
 export async function sendShipmentMilestoneEmail(params: {
   shipmentId: string;
   milestone: ShipmentStatus;
+  force?: boolean;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
-  const event = SHIPMENT_EMAIL_EVENTS[params.milestone];
-  if (!event) {
-    return {
-      success: true,
-      skipped: true,
-      reason: `Status '${params.milestone}' is a portal-only stage and does not send emails.`,
-    };
-  }
+  const event = SHIPMENT_EMAIL_EVENTS[params.milestone] || `SHIPMENT_${params.milestone}`;
   return sendShipmentStatusEmail({
     shipmentId: params.shipmentId,
     status: params.milestone,
     event,
+    force: params.force ?? true,
   });
 }
 

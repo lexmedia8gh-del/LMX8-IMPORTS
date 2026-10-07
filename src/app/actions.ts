@@ -471,30 +471,27 @@ export async function updateShipmentStatusAction(
     }).catch(console.error);
   }
 
-  // 4. Brevo Email Milestone Dispatch (Triggered ONLY after DB success and only if status changed)
-  if (isStatusChanged) {
-    const emailEvent = SHIPMENT_EMAIL_EVENTS[status];
-    if (emailEvent) {
-      try {
-        console.log(`[ACTION_EMAIL_TRIGGER] Triggering milestone email for shipment ${shipment.id} -> event: ${emailEvent}`);
-        const emailRes = await sendShipmentStatusEmail({
-          shipmentId: shipment.id,
-          customerId: shipment.customerId,
-          status,
-          event: emailEvent,
-        });
-        if (emailRes.skipped) {
-          console.log(`[ACTION_EMAIL_RESULT] Email skipped for shipment ${shipment.id}: ${emailRes.reason}`);
-        } else if (emailRes.success) {
-          console.log(`[ACTION_EMAIL_RESULT] Email sent successfully for shipment ${shipment.id} (messageId: ${emailRes.messageId})`);
-        } else {
-          console.warn(`[ACTION_EMAIL_RESULT] Email dispatch failed for shipment ${shipment.id}: ${emailRes.error}`);
-        }
-      } catch (err: any) {
-        console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
+  // 4. Brevo Email Milestone Dispatch (Triggered ONLY after DB success)
+  const emailEvent = SHIPMENT_EMAIL_EVENTS[status] || `SHIPMENT_${status}`;
+  if (emailEvent) {
+    try {
+      console.log(`[ACTION_EMAIL_TRIGGER] Triggering milestone email for shipment ${shipment.id} -> event: ${emailEvent}`);
+      const emailRes = await sendShipmentStatusEmail({
+        shipmentId: shipment.id,
+        customerId: shipment.customerId,
+        status,
+        event: emailEvent,
+        force: true,
+      });
+      if (emailRes.skipped) {
+        console.log(`[ACTION_EMAIL_RESULT] Email skipped for shipment ${shipment.id}: ${emailRes.reason}`);
+      } else if (emailRes.success) {
+        console.log(`[ACTION_EMAIL_RESULT] Email sent successfully for shipment ${shipment.id} (messageId: ${emailRes.messageId})`);
+      } else {
+        console.warn(`[ACTION_EMAIL_RESULT] Email dispatch failed for shipment ${shipment.id}: ${emailRes.error}`);
       }
-    } else {
-      console.log(`[ACTION_EMAIL_SKIP] Status '${status}' is a portal-only stage and does not send automatic emails.`);
+    } catch (err: any) {
+      console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
     }
   }
 
@@ -572,11 +569,13 @@ export async function addTrackingEventAction(
     });
 
     // 2. If status changed and we should update the shipment status
-    if (shouldUpdateStatus && isStatusChanged) {
-      await prisma.shipment.update({
-        where: { id: existing.id },
-        data: { status: data.status as any },
-      });
+    if (shouldUpdateStatus) {
+      if (isStatusChanged) {
+        await prisma.shipment.update({
+          where: { id: existing.id },
+          data: { status: data.status as any },
+        });
+      }
 
       console.log("SHIPMENT_STATUS_UPDATE_SUCCESS");
 
@@ -606,8 +605,8 @@ export async function addTrackingEventAction(
         }).catch(console.error);
       }
 
-      // Brevo Email Milestone Dispatch (Triggered ONLY after DB success and only if status changed)
-      const emailEvent = SHIPMENT_EMAIL_EVENTS[data.status];
+      // Brevo Email Milestone Dispatch (Triggered ONLY after DB success)
+      const emailEvent = SHIPMENT_EMAIL_EVENTS[data.status] || `SHIPMENT_${data.status}`;
       if (emailEvent) {
         try {
           console.log(`[ACTION_EMAIL_TRIGGER] Triggering milestone email for shipment ${existing.id} -> event: ${emailEvent}`);
@@ -616,6 +615,7 @@ export async function addTrackingEventAction(
             customerId: existing.customerId,
             status: data.status,
             event: emailEvent,
+            force: isStatusChanged || true,
           });
           if (emailRes.skipped) {
             console.log(`[ACTION_EMAIL_RESULT] Email skipped for shipment ${existing.id}: ${emailRes.reason}`);
@@ -627,8 +627,6 @@ export async function addTrackingEventAction(
         } catch (err: any) {
           console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
         }
-      } else {
-        console.log(`[ACTION_EMAIL_SKIP] Status '${data.status}' is a portal-only stage and does not send automatic emails.`);
       }
     } else {
       console.log("SHIPMENT_STATUS_UPDATE_SUCCESS");
@@ -1237,9 +1235,8 @@ export async function updateBatchStatusAction(
       }).catch(console.error);
 
       // Brevo Email Milestone Dispatch for batch status transition
-      // Only the first 6 milestones trigger emails; OUT_FOR_DELIVERY and DELIVERED do NOT.
-      const emailEvent = SHIPMENT_EMAIL_EVENTS[normalizedStage as ShipmentStatus];
-      if (emailEvent && shipment.status !== normalizedStage) {
+      const emailEvent = SHIPMENT_EMAIL_EVENTS[normalizedStage as ShipmentStatus] || `SHIPMENT_${normalizedStage}`;
+      if (emailEvent) {
         try {
           console.log(`[ACTION_BATCH_EMAIL_TRIGGER] Triggering milestone email for shipment ${shipment.id} (${shipment.trackingNumber}) -> event: ${emailEvent}`);
           const emailRes = await sendShipmentStatusEmail({
@@ -1247,6 +1244,7 @@ export async function updateBatchStatusAction(
             customerId: shipment.customerId,
             status: normalizedStage as ShipmentStatus,
             event: emailEvent,
+            force: true,
           });
           if (emailRes.skipped) {
             console.log(`[ACTION_BATCH_EMAIL_RESULT] Email skipped for shipment ${shipment.id}: ${emailRes.reason}`);
