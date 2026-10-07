@@ -458,7 +458,7 @@ export async function updateShipmentStatusAction(
   }
 
   // 4. Brevo Email Milestone Dispatch
-  // Only the 6 defined milestones trigger Brevo emails (PREPARING_SHIPMENT and IN_TRANSIT do NOT)
+  // Only the first 6 defined milestones trigger Brevo emails (OUT_FOR_DELIVERY and DELIVERED do NOT)
   if (isStatusChanged && isBrevoEmailMilestone(status)) {
     sendShipmentMilestoneEmail({
       shipmentId: shipment.id,
@@ -1180,7 +1180,7 @@ export async function updateBatchStatusAction(
       }).catch(console.error);
 
       // Brevo Email Milestone Dispatch for batch status transition
-      // Only 6 milestones trigger emails; PREPARING_SHIPMENT and IN_TRANSIT do NOT.
+      // Only the first 6 milestones trigger emails; OUT_FOR_DELIVERY and DELIVERED do NOT.
       if (isBrevoEmailMilestone(normalizedStage)) {
         sendShipmentMilestoneEmail({
           shipmentId: shipment.id,

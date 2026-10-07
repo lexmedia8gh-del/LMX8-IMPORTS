@@ -23,14 +23,20 @@ export {
 // ─────────────────────────────────────────────────────────────────────────────
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
-// Milestone definition: ONLY these 6 stages trigger automatic milestone Brevo emails
+// Milestone definition: ONLY these FIRST SIX shipment stages trigger automatic milestone Brevo emails:
+// 1. Order Confirmed (SHIPMENT_CREATED)
+// 2. Preparing for Shipment (PREPARING_SHIPMENT)
+// 3. Departed China (SHIPPED)
+// 4. On the Way to Ghana (IN_TRANSIT)
+// 5. Arrived in Ghana (ARRIVED_AT_DESTINATION)
+// 6. Customs Clearance (CUSTOMS_CLEARANCE)
 export const BREVO_EMAIL_MILESTONES = [
   "SHIPMENT_CREATED",
+  "PREPARING_SHIPMENT",
   "SHIPPED",
+  "IN_TRANSIT",
   "ARRIVED_AT_DESTINATION",
   "CUSTOMS_CLEARANCE",
-  "OUT_FOR_DELIVERY",
-  "DELIVERED",
 ] as const;
 
 export type BrevoMilestone = (typeof BREVO_EMAIL_MILESTONES)[number];
@@ -42,31 +48,39 @@ export function isBrevoEmailMilestone(status: string): status is BrevoMilestone 
 // Milestone-specific descriptions
 export const MILESTONE_EMAIL_MESSAGES: Record<BrevoMilestone, string> = {
   SHIPMENT_CREATED: "Your order has been confirmed and is being registered in the LMX8 IMPORTS system.",
+  PREPARING_SHIPMENT: "Your item is being prepared, quality-checked, and consolidated for international shipment.",
   SHIPPED: "Your shipment has departed China and is now on its way to Ghana.",
-  ARRIVED_AT_DESTINATION: "Your shipment has arrived in Ghana.",
+  IN_TRANSIT: "Your shipment is currently on the way to Ghana. We will notify you as soon as it arrives.",
+  ARRIVED_AT_DESTINATION: "Your shipment has arrived in Ghana and is being processed for clearance.",
   CUSTOMS_CLEARANCE: "Your shipment is currently undergoing customs clearance.",
-  OUT_FOR_DELIVERY: "Your shipment has been released for delivery.",
-  DELIVERED: "Your shipment has been marked as delivered.",
 };
 
 // Milestone-specific subjects
-export function getMilestoneEmailSubject(milestone: BrevoMilestone, batchDisplay: string): string {
-  const batchPrefix = batchDisplay ? ` — ${batchDisplay}` : "";
+export function getMilestoneEmailSubject(
+  milestone: BrevoMilestone,
+  batchDisplay: string,
+  isShippingFeeUnpaid: boolean = false
+): string {
+  const batchSuffix = batchDisplay && batchDisplay !== "Consignment" ? ` — ${batchDisplay}` : "";
   switch (milestone) {
     case "SHIPMENT_CREATED":
-      return `LMX8 IMPORTS${batchPrefix} Order Confirmed`;
+      return `Your LMX8 IMPORTS shipment has been confirmed${batchSuffix}`;
+    case "PREPARING_SHIPMENT":
+      return `Your shipment is being prepared — LMX8 IMPORTS${batchSuffix}`;
     case "SHIPPED":
-      return `LMX8 IMPORTS${batchPrefix} Shipment Has Departed China`;
+      return `Your shipment has departed China — LMX8 IMPORTS${batchSuffix}`;
+    case "IN_TRANSIT":
+      return `Your shipment is on the way to Ghana — LMX8 IMPORTS${batchSuffix}`;
     case "ARRIVED_AT_DESTINATION":
-      return `LMX8 IMPORTS${batchPrefix} Shipment Has Arrived in Ghana`;
+      return isShippingFeeUnpaid
+        ? `Your shipment has arrived in Ghana — shipping fee outstanding`
+        : `Your shipment has arrived in Ghana — LMX8 IMPORTS${batchSuffix}`;
     case "CUSTOMS_CLEARANCE":
-      return `LMX8 IMPORTS${batchPrefix} Shipment Is Under Customs Clearance`;
-    case "OUT_FOR_DELIVERY":
-      return `LMX8 IMPORTS${batchPrefix} Shipment Is Out for Delivery`;
-    case "DELIVERED":
-      return `LMX8 IMPORTS${batchPrefix} Shipment Delivered`;
+      return isShippingFeeUnpaid
+        ? `Your shipment is undergoing customs clearance — action required`
+        : `Your shipment is currently undergoing customs clearance — LMX8 IMPORTS${batchSuffix}`;
     default:
-      return `LMX8 IMPORTS${batchPrefix} Shipment Update`;
+      return `LMX8 IMPORTS Shipment Update${batchSuffix}`;
   }
 }
 
@@ -541,8 +555,7 @@ export function generateShippingFeePaidHtml(data: {
   return wrapInBrandedLayout("Shipping Fee Payment Confirmed - LMX8", content);
 }
 
-// Retro-compatible email body generator
-export function generateMilestoneEmailHtml(data: {
+export interface MilestoneEmailData {
   customerName: string;
   customerIdentifier: string;
   batchDisplay: string;
@@ -551,17 +564,66 @@ export function generateMilestoneEmailHtml(data: {
   milestone: BrevoMilestone;
   statusDate: string;
   portalUrl: string;
-}): string {
+  isShippingFeeUnpaid?: boolean;
+  totalShippingFee?: number;
+  amountPaid?: number;
+  outstandingBalance?: number;
+  paymentUrl?: string;
+}
+
+export function generateMilestoneEmailHtml(data: MilestoneEmailData): string {
   const milestoneLabel = SHIPMENT_STATUS_ADMIN_LABELS[data.milestone] || data.milestone;
-  const message = MILESTONE_EMAIL_MESSAGES[data.milestone];
+  const formatGHS = (val: number) => `GHS ${val.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  let leadMessage = MILESTONE_EMAIL_MESSAGES[data.milestone];
+  if (data.isShippingFeeUnpaid) {
+    if (data.milestone === "ARRIVED_AT_DESTINATION") {
+      leadMessage = `Your shipment has arrived in Ghana. Your shipping fee of ${formatGHS(data.outstandingBalance || 0)} is currently outstanding.`;
+    } else if (data.milestone === "CUSTOMS_CLEARANCE") {
+      leadMessage = `Your shipment is currently undergoing customs clearance. Your shipping fee of ${formatGHS(data.outstandingBalance || 0)} is still outstanding.`;
+    }
+  }
+
+  const paymentCard = data.isShippingFeeUnpaid && data.outstandingBalance && data.outstandingBalance > 0
+    ? `
+      <div class="status-card" style="background: #FFFBEB; border: 1px solid #FDE68A; margin-top: 18px; padding: 18px; border-radius: 12px;">
+        <div class="status-badge" style="background: #D97706; color: #FFFFFF; font-weight: 700; margin-bottom: 12px;">ACTION REQUIRED: SHIPPING FEE DUE</div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td class="label" style="padding: 6px 0; color: #78350F; font-size: 13px;">Total Shipping Fee:</td>
+            <td class="val" style="padding: 6px 0; color: #1E293B; font-weight: 600; text-align: right; font-size: 13px;">${formatGHS(data.totalShippingFee || 0)}</td>
+          </tr>
+          <tr>
+            <td class="label" style="padding: 6px 0; color: #78350F; font-size: 13px;">Amount Paid:</td>
+            <td class="val" style="padding: 6px 0; color: #10B981; font-weight: 600; text-align: right; font-size: 13px;">${formatGHS(data.amountPaid || 0)}</td>
+          </tr>
+          <tr style="border-top: 1px dashed #FCD34D;">
+            <td class="label" style="padding: 10px 0 0 0; font-size: 14px; font-weight: 800; color: #92400E;">Outstanding Balance:</td>
+            <td class="val" style="padding: 10px 0 0 0; font-size: 16px; font-weight: 900; color: #B45309; text-align: right;">${formatGHS(data.outstandingBalance)}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="text-align: center; margin: 24px 0 16px 0;">
+        <a href="${data.paymentUrl || data.portalUrl}" class="btn" style="background: #F2901F; color: #FFFFFF; font-weight: 800; font-size: 15px; padding: 15px 32px; text-decoration: none; border-radius: 10px; display: inline-block; box-shadow: 0 4px 12px rgba(242, 144, 31, 0.35); text-transform: uppercase; letter-spacing: 0.5px;">PAY SHIPPING FEE</a>
+      </div>
+
+      <p style="text-align: center; font-size: 13px; color: #64748B; margin: 0 0 20px 0;">
+        <a href="${data.portalUrl}" style="color: #141B47; text-decoration: underline; font-weight: 600;">View full timeline in portal &rarr;</a>
+      </p>
+    `
+    : `
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${data.portalUrl}" class="btn" style="background: #141B47; color: #FFFFFF; font-weight: 700; font-size: 14px; padding: 14px 28px; text-decoration: none; border-radius: 8px; display: inline-block;">View Full Timeline in Portal</a>
+      </div>
+    `;
 
   const content = `
     <p class="greeting">Hello ${data.customerName || "Valued Customer"},</p>
-    <p class="lead">Your shipment status has been updated. Here are the latest details on your consignment:</p>
+    <p class="lead">${leadMessage}</p>
     
     <div class="status-card">
-      <div class="status-badge ${data.milestone === 'DELIVERED' ? 'delivered' : ''}">${milestoneLabel}</div>
-      <p style="font-size: 14px; font-weight: 600; color: #141B47; margin: 0 0 16px 0; line-height: 1.5;">${message}</p>
+      <div class="status-badge">${milestoneLabel}</div>
       
       <table>
         <tr>
@@ -583,15 +645,13 @@ export function generateMilestoneEmailHtml(data: {
       </table>
     </div>
 
-    <div style="text-align: center;">
-      <a href="${data.portalUrl}" class="btn">View Full Timeline in Portal</a>
-    </div>
+    ${paymentCard}
 
-    <p style="font-size: 13px; color: #64748B; line-height: 1.5; margin: 0;">
+    <p style="font-size: 13px; color: #64748B; line-height: 1.5; margin: 16px 0 0 0;">
       You can log in to your LMX8 IMPORTS customer portal at any time to inspect the full timeline, photos, and tracking events for your cargo.
     </p>
   `;
-  return wrapInBrandedLayout("LMX8 IMPORTS Shipment Update", content);
+  return wrapInBrandedLayout(data.isShippingFeeUnpaid ? "LMX8 IMPORTS Shipment Update — Action Required" : "LMX8 IMPORTS Shipment Update", content);
 }
 
 // Retro-compatible reminder generator
@@ -883,7 +943,7 @@ export async function sendShipmentMilestoneEmail(params: {
   try {
     const shipment = await prisma.shipment.findUnique({
       where: { id: params.shipmentId },
-      include: { customer: true, batch: true },
+      include: { customer: true, batch: true, payments: true },
     });
 
     if (!shipment) return { success: false, error: "Shipment not found." };
@@ -895,6 +955,14 @@ export async function sendShipmentMilestoneEmail(params: {
     if (batch) {
       batchDisplay = batch.name || batch.batchNumber || "Consignment";
     }
+
+    const successfulPayments = (shipment.payments || []).filter(
+      (p) => p.status === "SUCCESS" && p.type === "SHIPPING_FEE"
+    );
+    const amountPaid = successfulPayments.reduce((acc, p) => acc + p.amount, 0);
+    const totalShippingFee = shipment.fee || 0;
+    const outstandingBalance = Math.max(0, totalShippingFee - amountPaid);
+    const isShippingFeeUnpaid = totalShippingFee > 0 && outstandingBalance > 0;
 
     const idempotencyKey = `milestone-${shipment.id}-${milestone}`;
     const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
@@ -918,7 +986,7 @@ export async function sendShipmentMilestoneEmail(params: {
           eventType: milestone,
           status: "SKIPPED",
           recipient: "NONE",
-          subject: getMilestoneEmailSubject(milestone, batchDisplay),
+          subject: getMilestoneEmailSubject(milestone, batchDisplay, isShippingFeeUnpaid),
           idempotencyKey,
           errorMessage: "Customer has no valid email address.",
         },
@@ -926,9 +994,10 @@ export async function sendShipmentMilestoneEmail(params: {
       return { success: true, skipped: true, reason: "Customer has no valid email." };
     }
 
-    const subject = getMilestoneEmailSubject(milestone, batchDisplay);
+    const subject = getMilestoneEmailSubject(milestone, batchDisplay, isShippingFeeUnpaid);
     const portalBase = getPortalBaseUrl();
     const portalUrl = `${portalBase}/portal/shipments/${shipment.trackingNumber}`;
+    const paymentUrl = `${portalBase}/portal/payments/${shipment.id}`;
     const statusDate = new Date().toLocaleDateString("en-GH", {
       year: "numeric",
       month: "short",
@@ -944,6 +1013,11 @@ export async function sendShipmentMilestoneEmail(params: {
       milestone,
       statusDate,
       portalUrl,
+      isShippingFeeUnpaid,
+      totalShippingFee,
+      amountPaid,
+      outstandingBalance,
+      paymentUrl,
     });
 
     const textContent = `LMX8 IMPORTS\n\nHello ${customer.name},\n\nYour shipment status has been updated.\n\nBatch: ${batchDisplay}\nShipment: ${shipment.trackingNumber}\nStatus: ${SHIPMENT_STATUS_ADMIN_LABELS[milestone] || milestone}\nDate: ${statusDate}\n\n${MILESTONE_EMAIL_MESSAGES[milestone]}\n\nView full tracking timeline in portal: ${portalUrl}\n\nRegards,\nLMX8 IMPORTS`;
