@@ -17,6 +17,7 @@ import {
   sendShippingFeeReminderEmail,
   isBrevoEmailMilestone,
 } from "@/lib/email/brevo";
+import { revalidatePath } from "next/cache";
 
 // Helper to map Prisma Shipment to UI Shipment with temporary signed URLs
 async function mapPrismaShipment(s: any): Promise<UIShipment> {
@@ -67,13 +68,18 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
     destination: s.destination || "Accra, Ghana",
     shippingMethod: s.shippingMethod || (s.batch?.description?.toLowerCase().includes("air") ? "Air Freight" : "Sea Freight"),
     estimatedArrival: estimatedArrivalStr,
-    trackingEvents: (s.trackingEvents || []).map((e: any) => ({
-      id: e.id,
-      status: e.status as ShipmentStatus,
-      date: e.timestamp.toISOString().split("T")[0],
-      location: e.location || undefined,
-      note: e.note || undefined,
-    })),
+    trackingEvents: (s.trackingEvents || [])
+      .slice()
+      .sort((a: any, b: any) => new Date(a.timestamp || a.createdAt).getTime() - new Date(b.timestamp || b.createdAt).getTime())
+      .map((e: any) => ({
+        id: e.id,
+        status: e.status as ShipmentStatus,
+        date: e.timestamp ? e.timestamp.toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+        location: e.location || undefined,
+        note: e.note || undefined,
+        timestamp: e.timestamp ? e.timestamp.toISOString() : undefined,
+        createdAt: e.createdAt ? e.createdAt.toISOString() : undefined,
+      })),
     photos: photosWithSignedUrls,
   };
 }
@@ -349,12 +355,19 @@ export async function updateShipmentStatusAction(
   const admin = await requireAdminSession();
 
   // 1. Fetch current status before updating to detect actual status transitions
-  const existing = await prisma.shipment.findUnique({
-    where: { trackingNumber: id },
+  const existing = await prisma.shipment.findFirst({
+    where: {
+      OR: [
+        { id: id },
+        { trackingNumber: id },
+        { trackingNumber: id.toUpperCase() },
+      ],
+    },
+    include: { customer: true, batch: true },
   });
 
   if (!existing) {
-    throw new Error(`Shipment with tracking number ${id} not found.`);
+    throw new Error(`Shipment with tracking number or ID ${id} not found.`);
   }
 
   const previousStatus = existing.status;
@@ -362,31 +375,36 @@ export async function updateShipmentStatusAction(
 
   // 2. Commit shipment update and tracking event to database
   const shipment = await prisma.shipment.update({
-    where: { trackingNumber: id },
+    where: { id: existing.id },
     data: {
       status: status as any,
       trackingEvents: {
         create: {
           status: status as any,
-          note,
-          location,
+          note: note?.trim() || undefined,
+          location: location?.trim() || undefined,
           adminId: admin.id,
         },
       },
     },
-    include: { trackingEvents: true, photos: true, customer: true, batch: true },
+    include: {
+      trackingEvents: { orderBy: { timestamp: "asc" } },
+      photos: true,
+      customer: true,
+      batch: true,
+    },
   });
 
   // 3. Fire in-app customer notification on status change
   const statusMessages: Partial<Record<ShipmentStatus, { title: string; message: string }>> = {
-    PREPARING_SHIPMENT:     { title: "Shipment Update",    message: `Your shipment ${id} is being prepared for international shipping.` },
-    SHIPPED:                { title: "Shipment Departed",  message: `Your shipment ${id} has departed China and is on its way to Ghana.` },
-    IN_TRANSIT:             { title: "In Transit",         message: `Your shipment ${id} is currently in transit to Ghana.` },
-    ARRIVED_AT_DESTINATION: { title: "Shipment Arrived",   message: `Your shipment ${id} has arrived in Ghana and is being processed.` },
-    CUSTOMS_CLEARANCE:      { title: "Customs Clearance",  message: `Your shipment ${id} is going through customs clearance.` },
-    OUT_FOR_DELIVERY:       { title: "Out for Delivery",   message: `Your shipment ${id} is out for delivery. Expect it soon!` },
-    DELIVERED:              { title: "Shipment Delivered", message: `Your shipment ${id} has been successfully delivered. Thank you!` },
-    ON_HOLD:                { title: "Shipment On Hold",   message: `Your shipment ${id} has been placed on hold. Contact us for details.` },
+    PREPARING_SHIPMENT:     { title: "Shipment Update",    message: `Your shipment ${existing.trackingNumber} is being prepared for international shipping.` },
+    SHIPPED:                { title: "Shipment Departed",  message: `Your shipment ${existing.trackingNumber} has departed China and is on its way to Ghana.` },
+    IN_TRANSIT:             { title: "In Transit",         message: `Your shipment ${existing.trackingNumber} is currently in transit to Ghana.` },
+    ARRIVED_AT_DESTINATION: { title: "Shipment Arrived",   message: `Your shipment ${existing.trackingNumber} has arrived in Ghana and is being processed.` },
+    CUSTOMS_CLEARANCE:      { title: "Customs Clearance",  message: `Your shipment ${existing.trackingNumber} is going through customs clearance.` },
+    OUT_FOR_DELIVERY:       { title: "Out for Delivery",   message: `Your shipment ${existing.trackingNumber} is out for delivery. Expect it soon!` },
+    DELIVERED:              { title: "Shipment Delivered", message: `Your shipment ${existing.trackingNumber} has been successfully delivered. Thank you!` },
+    ON_HOLD:                { title: "Shipment On Hold",   message: `Your shipment ${existing.trackingNumber} has been placed on hold. Contact us for details.` },
   };
 
   const notifData = statusMessages[status];
@@ -397,8 +415,8 @@ export async function updateShipmentStatusAction(
       type: "SHIPMENT",
       title: notifData.title,
       message: notifData.message,
-      actionUrl: `/portal/shipments/${id}`,
-      idempotencyKey: `shipment-status-${id}-${status}`,
+      actionUrl: `/portal/shipments/${existing.trackingNumber}`,
+      idempotencyKey: `shipment-status-${existing.trackingNumber}-${status}-${Date.now()}`,
       shipmentId: shipment.id,
     }).catch(console.error);
   }
@@ -410,11 +428,324 @@ export async function updateShipmentStatusAction(
       shipmentId: shipment.id,
       milestone: status,
     }).catch((err) => {
-      console.error(`[Brevo] Error dispatching milestone email for ${id} (${status}):`, err);
+      console.error(`[Brevo] Error dispatching milestone email for ${existing.trackingNumber} (${status}):`, err);
     });
   }
 
+  revalidatePath("/admin/shipments");
+  revalidatePath(`/admin/shipments/${existing.trackingNumber}`);
+  revalidatePath(`/admin/shipments/${existing.id}`);
+  revalidatePath("/portal/shipments");
+  revalidatePath(`/portal/shipments/${existing.trackingNumber}`);
+  revalidatePath(`/portal/shipments/${existing.id}`);
+  revalidatePath("/track");
+
   return mapPrismaShipment(shipment);
+}
+
+/**
+ * Adds a new tracking checkpoint event to a shipment and returns both the created event
+ * and the fresh complete shipment record for instant UI state synchronization.
+ */
+export async function addTrackingEventAction(
+  shipmentIdOrTrackingNumber: string,
+  data: {
+    status: ShipmentStatus;
+    note?: string;
+    location?: string;
+    timestamp?: string;
+    updateShipmentStatus?: boolean;
+  }
+) {
+  try {
+    const admin = await requireAdminSession();
+
+    const existing = await prisma.shipment.findFirst({
+      where: {
+        OR: [
+          { id: shipmentIdOrTrackingNumber },
+          { trackingNumber: shipmentIdOrTrackingNumber },
+          { trackingNumber: shipmentIdOrTrackingNumber.toUpperCase() },
+        ],
+      },
+      include: { customer: true, batch: true },
+    });
+
+    if (!existing) {
+      return { error: `Shipment '${shipmentIdOrTrackingNumber}' not found.` };
+    }
+
+    const shouldUpdateStatus = data.updateShipmentStatus !== false;
+    const previousStatus = existing.status;
+    const isStatusChanged = previousStatus !== data.status;
+    const eventTimestamp = data.timestamp ? new Date(data.timestamp) : new Date();
+
+    // 1. Create real database tracking event
+    const createdEvent = await prisma.trackingEvent.create({
+      data: {
+        shipmentId: existing.id,
+        status: data.status as any,
+        note: data.note?.trim() || null,
+        location: data.location?.trim() || null,
+        timestamp: eventTimestamp,
+        adminId: admin.id,
+      },
+    });
+
+    // 2. If status changed and we should update the shipment status
+    if (shouldUpdateStatus && isStatusChanged) {
+      await prisma.shipment.update({
+        where: { id: existing.id },
+        data: { status: data.status as any },
+      });
+
+      // Fire customer notifications
+      const statusMessages: Partial<Record<ShipmentStatus, { title: string; message: string }>> = {
+        PREPARING_SHIPMENT:     { title: "Shipment Update",    message: `Your shipment ${existing.trackingNumber} is being prepared for international shipping.` },
+        SHIPPED:                { title: "Shipment Departed",  message: `Your shipment ${existing.trackingNumber} has departed China and is on its way to Ghana.` },
+        IN_TRANSIT:             { title: "In Transit",         message: `Your shipment ${existing.trackingNumber} is currently in transit to Ghana.` },
+        ARRIVED_AT_DESTINATION: { title: "Shipment Arrived",   message: `Your shipment ${existing.trackingNumber} has arrived in Ghana and is being processed.` },
+        CUSTOMS_CLEARANCE:      { title: "Customs Clearance",  message: `Your shipment ${existing.trackingNumber} is going through customs clearance.` },
+        OUT_FOR_DELIVERY:       { title: "Out for Delivery",   message: `Your shipment ${existing.trackingNumber} is out for delivery. Expect it soon!` },
+        DELIVERED:              { title: "Shipment Delivered", message: `Your shipment ${existing.trackingNumber} has been successfully delivered. Thank you!` },
+        ON_HOLD:                { title: "Shipment On Hold",   message: `Your shipment ${existing.trackingNumber} has been placed on hold. Contact us for details.` },
+      };
+
+      const notifData = statusMessages[data.status];
+      if (notifData) {
+        const { createNotificationInternal } = await import("@/app/actions/notifications");
+        createNotificationInternal({
+          customerId: existing.customerId,
+          type: "SHIPMENT",
+          title: notifData.title,
+          message: notifData.message,
+          actionUrl: `/portal/shipments/${existing.trackingNumber}`,
+          idempotencyKey: `shipment-status-${existing.trackingNumber}-${data.status}-${Date.now()}`,
+          shipmentId: existing.id,
+        }).catch(console.error);
+      }
+
+      if (isBrevoEmailMilestone(data.status)) {
+        sendShipmentMilestoneEmail({
+          shipmentId: existing.id,
+          milestone: data.status,
+        }).catch((err) => {
+          console.error(`[Brevo] Error dispatching milestone email for ${existing.trackingNumber} (${data.status}):`, err);
+        });
+      }
+    }
+
+    // 3. Audit log
+    await prisma.auditLog.create({
+      data: {
+        action: "TRACKING_EVENT_CREATED",
+        entityType: "TrackingEvent",
+        entityId: createdEvent.id,
+        description: `Added checkpoint event '${data.status}' for shipment ${existing.trackingNumber} by ${admin.name || admin.email}`,
+        adminId: admin.id,
+        metadata: {
+          shipmentTrackingNumber: existing.trackingNumber,
+          status: data.status,
+          location: data.location,
+          note: data.note,
+        },
+      },
+    });
+
+    // 4. Fetch complete updated shipment
+    const updatedShipmentRecord = await prisma.shipment.findUnique({
+      where: { id: existing.id },
+      include: {
+        trackingEvents: { orderBy: { timestamp: "asc" } },
+        photos: true,
+        customer: true,
+        batch: true,
+      },
+    });
+
+    const uiShipment = updatedShipmentRecord ? await mapPrismaShipment(updatedShipmentRecord) : null;
+
+    revalidatePath("/admin/shipments");
+    revalidatePath(`/admin/shipments/${existing.trackingNumber}`);
+    revalidatePath(`/admin/shipments/${existing.id}`);
+    revalidatePath("/portal/shipments");
+    revalidatePath(`/portal/shipments/${existing.trackingNumber}`);
+    revalidatePath(`/portal/shipments/${existing.id}`);
+    revalidatePath("/track");
+
+    return {
+      success: true,
+      event: {
+        id: createdEvent.id,
+        status: createdEvent.status as ShipmentStatus,
+        date: createdEvent.timestamp.toISOString().split("T")[0],
+        location: createdEvent.location || undefined,
+        note: createdEvent.note || undefined,
+        timestamp: createdEvent.timestamp.toISOString(),
+        createdAt: createdEvent.createdAt.toISOString(),
+      },
+      shipment: uiShipment!,
+    };
+  } catch (err: any) {
+    console.error("[addTrackingEventAction] Error:", err);
+    return { error: err?.message || "Failed to add tracking event." };
+  }
+}
+
+/**
+ * Updates an existing tracking event in the database and returns the updated event and shipment.
+ */
+export async function updateTrackingEventAction(
+  eventId: string,
+  data: {
+    status?: ShipmentStatus;
+    note?: string;
+    location?: string;
+    timestamp?: string;
+  }
+) {
+  try {
+    const admin = await requireAdminSession();
+
+    const event = await prisma.trackingEvent.findUnique({
+      where: { id: eventId },
+      include: { shipment: true },
+    });
+
+    if (!event) {
+      return { error: "Tracking event not found." };
+    }
+
+    const updatedData: any = {};
+    if (data.status) updatedData.status = data.status;
+    if (data.note !== undefined) updatedData.note = data.note.trim() || null;
+    if (data.location !== undefined) updatedData.location = data.location.trim() || null;
+    if (data.timestamp) updatedData.timestamp = new Date(data.timestamp);
+
+    const updated = await prisma.trackingEvent.update({
+      where: { id: eventId },
+      data: updatedData,
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        action: "TRACKING_EVENT_UPDATED",
+        entityType: "TrackingEvent",
+        entityId: eventId,
+        description: `Tracking event (${updated.status}) updated for shipment ${event.shipment.trackingNumber} by ${admin.name || admin.email}`,
+        adminId: admin.id,
+        metadata: {
+          shipmentTrackingNumber: event.shipment.trackingNumber,
+          changes: data,
+        },
+      },
+    });
+
+    const updatedShipmentRecord = await prisma.shipment.findUnique({
+      where: { id: event.shipmentId },
+      include: {
+        trackingEvents: { orderBy: { timestamp: "asc" } },
+        photos: true,
+        customer: true,
+        batch: true,
+      },
+    });
+
+    const uiShipment = updatedShipmentRecord ? await mapPrismaShipment(updatedShipmentRecord) : null;
+
+    revalidatePath("/admin/shipments");
+    revalidatePath(`/admin/shipments/${event.shipment.trackingNumber}`);
+    revalidatePath(`/admin/shipments/${event.shipmentId}`);
+    revalidatePath("/portal/shipments");
+    revalidatePath(`/portal/shipments/${event.shipment.trackingNumber}`);
+    revalidatePath(`/portal/shipments/${event.shipmentId}`);
+    revalidatePath("/track");
+
+    return {
+      success: true,
+      event: {
+        id: updated.id,
+        status: updated.status as ShipmentStatus,
+        date: updated.timestamp.toISOString().split("T")[0],
+        location: updated.location || undefined,
+        note: updated.note || undefined,
+        timestamp: updated.timestamp.toISOString(),
+        createdAt: updated.createdAt.toISOString(),
+      },
+      shipment: uiShipment!,
+    };
+  } catch (err: any) {
+    console.error("[updateTrackingEventAction] Error:", err);
+    return { error: err?.message || "Failed to update tracking event." };
+  }
+}
+
+/**
+ * Deletes a tracking event from the database and returns the fresh shipment record.
+ */
+export async function deleteTrackingEventAction(eventId: string) {
+  try {
+    const admin = await requireAdminSession();
+
+    const event = await prisma.trackingEvent.findUnique({
+      where: { id: eventId },
+      include: { shipment: true },
+    });
+
+    if (!event) {
+      return { error: "Tracking event not found." };
+    }
+
+    const shipmentId = event.shipmentId;
+    const trackingNumber = event.shipment.trackingNumber;
+
+    await prisma.trackingEvent.delete({
+      where: { id: eventId },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        action: "TRACKING_EVENT_DELETED",
+        entityType: "TrackingEvent",
+        entityId: eventId,
+        description: `Tracking event (${event.status}) for shipment ${trackingNumber} deleted by ${admin.name || admin.email}`,
+        adminId: admin.id,
+        metadata: {
+          shipmentTrackingNumber: trackingNumber,
+          status: event.status,
+        },
+      },
+    });
+
+    const updatedShipmentRecord = await prisma.shipment.findUnique({
+      where: { id: shipmentId },
+      include: {
+        trackingEvents: { orderBy: { timestamp: "asc" } },
+        photos: true,
+        customer: true,
+        batch: true,
+      },
+    });
+
+    const uiShipment = updatedShipmentRecord ? await mapPrismaShipment(updatedShipmentRecord) : null;
+
+    revalidatePath("/admin/shipments");
+    revalidatePath(`/admin/shipments/${trackingNumber}`);
+    revalidatePath(`/admin/shipments/${shipmentId}`);
+    revalidatePath("/portal/shipments");
+    revalidatePath(`/portal/shipments/${trackingNumber}`);
+    revalidatePath(`/portal/shipments/${shipmentId}`);
+    revalidatePath("/track");
+
+    return {
+      success: true,
+      deletedEventId: eventId,
+      shipment: uiShipment!,
+    };
+  } catch (err: any) {
+    console.error("[deleteTrackingEventAction] Error:", err);
+    return { error: err?.message || "Failed to delete tracking event." };
+  }
 }
 
 

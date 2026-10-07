@@ -122,27 +122,41 @@ export function ShipmentStatusBadge({
 // ─────────────────────────────────────────────────────────────────────────────
 // Timeline event type used for tracking events from the database
 // ─────────────────────────────────────────────────────────────────────────────
-interface TimelineEvent {
+export interface TimelineEvent {
+  id?: string;
   status: ShipmentStatus;
   date?: string;
   note?: string;
   location?: string;
+  timestamp?: string;
+  createdAt?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ShipmentTimeline — professional journey view for the customer portal
+// ShipmentTimeline — professional journey view for the customer portal & admin
 // ─────────────────────────────────────────────────────────────────────────────
 export function ShipmentTimeline({
   currentStatus,
   events = [],
   adminMode = false,
+  onEditEvent,
+  onDeleteEvent,
 }: {
   currentStatus: ShipmentStatus;
   events?: TimelineEvent[];
   adminMode?: boolean;
+  onEditEvent?: (event: TimelineEvent) => void;
+  onDeleteEvent?: (eventId: string) => void;
 }) {
   const currentIndex = STATUS_JOURNEY.indexOf(currentStatus);
   const isOnHold = currentStatus === "ON_HOLD";
+
+  // Sort events chronologically to ensure earliest to latest order
+  const sortedEvents = [...events].sort((a, b) => {
+    const timeA = new Date(a.timestamp || a.createdAt || a.date || "").getTime() || 0;
+    const timeB = new Date(b.timestamp || b.createdAt || b.date || "").getTime() || 0;
+    return timeA - timeB;
+  });
 
   return (
     <div className="space-y-0">
@@ -154,7 +168,7 @@ export function ShipmentTimeline({
           index > currentIndex && currentStatus !== "DELIVERED";
 
         // Find tracking events matching this stage
-        const stageEvents = events.filter((e) => e.status === status);
+        const stageEvents = sortedEvents.filter((e) => e.status === status);
         const latestEvent = stageEvents[stageEvents.length - 1];
 
         const dotColor = isCompleted
@@ -191,20 +205,49 @@ export function ShipmentTimeline({
 
             {/* Content */}
             <div className={`pb-5 flex-1 ${isPending ? "opacity-35" : ""}`}>
-              <p
-                className="text-sm font-semibold"
-                style={{
-                  color: isCurrent
-                    ? isOnHold
-                      ? "#EF4444"
-                      : "#FFB800"
-                    : isCompleted
-                    ? "#172236"
-                    : "#94A3B8",
-                }}
-              >
-                {label}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p
+                  className="text-sm font-semibold"
+                  style={{
+                    color: isCurrent
+                      ? isOnHold
+                        ? "#EF4444"
+                        : "#FFB800"
+                      : isCompleted
+                      ? "#172236"
+                      : "#94A3B8",
+                  }}
+                >
+                  {label}
+                </p>
+
+                {/* Admin actions if available for latest event in this stage */}
+                {adminMode && latestEvent?.id && (onEditEvent || onDeleteEvent) && (
+                  <div className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
+                    {onEditEvent && (
+                      <button
+                        type="button"
+                        onClick={() => onEditEvent(latestEvent)}
+                        className="text-[10px] font-bold text-[#355DAF] hover:underline cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                    )}
+                    {onEditEvent && onDeleteEvent && (
+                      <span className="text-[10px] text-gray-300">·</span>
+                    )}
+                    {onDeleteEvent && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteEvent(latestEvent.id!)}
+                        className="text-[10px] font-bold text-red-500 hover:underline cursor-pointer"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Show description for current stage (customer-facing) */}
               {isCurrent && !adminMode && (
@@ -213,33 +256,39 @@ export function ShipmentTimeline({
                 </p>
               )}
 
-              {/* Show tracking event details when available */}
-              {latestEvent?.date && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Clock size={11} style={{ color: "#94A3B8" }} />
-                  <span className="text-[11px]" style={{ color: "#94A3B8" }}>
-                    {latestEvent.date}
-                  </span>
-                  {latestEvent.location && (
-                    <span className="text-[11px]" style={{ color: "#94A3B8" }}>
-                      · {latestEvent.location}
-                    </span>
-                  )}
-                </div>
-              )}
+              {/* Show all stage events if multiple exist, or just the latest */}
+              {stageEvents.length > 0 ? (
+                stageEvents.map((evt, evtIdx) => (
+                  <div key={evt.id || evtIdx} className={evtIdx > 0 ? "mt-2 pt-2 border-t border-gray-100" : ""}>
+                    {evt.date && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Clock size={11} style={{ color: "#94A3B8" }} />
+                        <span className="text-[11px]" style={{ color: "#94A3B8" }}>
+                          {evt.date}
+                        </span>
+                        {evt.location && (
+                          <span className="text-[11px]" style={{ color: "#94A3B8" }}>
+                            · {evt.location}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
-              {latestEvent?.note && (
-                <div
-                  className="mt-2 text-xs p-2.5 rounded-lg"
-                  style={{
-                    background: "#F7F9FC",
-                    border: "1px solid #E5E7EB",
-                    color: "#667085",
-                  }}
-                >
-                  {latestEvent.note}
-                </div>
-              )}
+                    {evt.note && (
+                      <div
+                        className="mt-1.5 text-xs p-2.5 rounded-lg"
+                        style={{
+                          background: "#F7F9FC",
+                          border: "1px solid #E5E7EB",
+                          color: "#667085",
+                        }}
+                      >
+                        {evt.note}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : null}
             </div>
           </div>
         );

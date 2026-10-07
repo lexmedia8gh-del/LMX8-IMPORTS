@@ -7,6 +7,8 @@ export type TrackingEvent = {
   date: string;
   location?: string;
   note?: string;
+  timestamp?: string;
+  createdAt?: string;
 };
 
 export type ShipmentPhoto = {

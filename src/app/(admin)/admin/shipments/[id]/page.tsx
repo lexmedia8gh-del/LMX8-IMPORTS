@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, use } from "react";
 import {
   getShipmentByIdAction,
   updateShipmentStatusAction,
+  addTrackingEventAction,
+  deleteTrackingEventAction,
   initiateShipmentPhotoUploadAction, confirmShipmentPhotoUploadAction,
   removeShipmentPhotoAction,
   sendShippingFeeReminderAction,
@@ -11,9 +13,10 @@ import {
 } from "@/app/actions";
 import { setShippingFeeAction } from "@/app/actions/admin-payments";
 import { Shipment } from "@/lib/db";
-import { ShipmentStatusBadge, STATUS_ORDER, ShipmentStatus, ShipmentTimeline, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
-import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign, Plus, Mail, Send, CheckCircle2 } from "lucide-react";
+import { ShipmentStatusBadge, STATUS_ORDER, ShipmentStatus, ShipmentTimeline, SHIPMENT_STATUS_ADMIN_LABELS, TimelineEvent } from "@/components/shipment-status";
+import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign, Plus, Mail, Send, CheckCircle2, Trash2, Edit3 } from "lucide-react";
 import { AddTrackingEventDrawer } from "@/components/drawers/add-tracking-event-drawer";
+import { EditTrackingEventDrawer } from "@/components/drawers/edit-tracking-event-drawer";
 import Link from "next/link";
 
 export default function AdminShipmentDetails({ params }: { params: Promise<{ id: string }> }) {
@@ -22,13 +25,16 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEventDrawerOpen, setIsEventDrawerOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Timeline update form
   const [newStatus, setNewStatus] = useState<ShipmentStatus>("SHIPMENT_CREATED");
-
   const [newLocation, setNewLocation] = useState("");
   const [newNote, setNewNote] = useState("");
   const [updatingTimeline, setUpdatingTimeline] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
 
   // Real file upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -45,6 +51,11 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
   const [emailLogs, setEmailLogs] = useState<any[]>([]);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [reminderFeedback, setReminderFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -112,11 +123,49 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
     e.preventDefault();
     if (!shipment) return;
     setUpdatingTimeline(true);
-    await updateShipmentStatusAction(id, newStatus, newNote, newLocation);
-    await loadData();
-    setNewLocation("");
-    setNewNote("");
-    setUpdatingTimeline(false);
+    setTimelineError(null);
+    try {
+      const res = await addTrackingEventAction(id, {
+        status: newStatus,
+        note: newNote.trim() || undefined,
+        location: newLocation.trim() || undefined,
+      });
+
+      if (res?.error) {
+        setTimelineError(res.error);
+      } else if (res?.shipment) {
+        // Immediately update React state with actual returned database record
+        setShipment(res.shipment);
+        setNewStatus(res.shipment.status);
+        setNewLocation("");
+        setNewNote("");
+        showToast("Timeline event posted successfully.");
+        // Refresh email logs in background if notification fired
+        getShipmentEmailLogsAction(id).then(logs => setEmailLogs(logs || [])).catch(() => {});
+      }
+    } catch (err: any) {
+      console.error("[handleUpdateStatus] Error:", err);
+      setTimelineError(err?.message || "Failed to add timeline event.");
+    } finally {
+      setUpdatingTimeline(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm("Are you sure you want to delete this tracking checkpoint?")) return;
+    try {
+      const res = await deleteTrackingEventAction(eventId);
+      if (res?.error) {
+        alert(res.error);
+      } else if (res?.shipment) {
+        setShipment(res.shipment);
+        setNewStatus(res.shipment.status);
+        showToast("Tracking event deleted successfully.");
+      }
+    } catch (err) {
+      console.error("[handleDeleteEvent] Error:", err);
+      alert("Failed to delete tracking event.");
+    }
   };
 
   const handleFileUpload = async (e: React.FormEvent) => {
@@ -382,13 +431,24 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
 
         {/* RIGHT COLUMN: Timeline Management */}
         <div className="space-y-6">
+          {/* Floating Toast Notification */}
+          {toastMessage && (
+            <div className="fixed bottom-6 right-6 z-50 bg-[#141B47] text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3 animate-in slide-in-from-bottom-5">
+              <CheckCircle2 size={18} className="text-[#FFB800]" />
+              <span className="text-xs font-semibold">{toastMessage}</span>
+            </div>
+          )}
+
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB]">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-[#172236]">Update Tracking</h2>
+              <div>
+                <h2 className="text-lg font-bold text-[#172236]">Update Tracking</h2>
+                <p className="text-xs text-[#667085] mt-0.5">Post real-time checkpoint updates to the database.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsEventDrawerOpen(true)}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer shrink-0"
               >
                 <Plus size={13} /> Open Drawer
               </button>
@@ -400,10 +460,40 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
               onClose={() => setIsEventDrawerOpen(false)}
               shipmentId={shipment.id}
               currentStatus={shipment.status}
-              onSuccess={loadData}
+              onSuccess={(createdEvent, updatedShipment) => {
+                if (updatedShipment) {
+                  setShipment(updatedShipment);
+                  setNewStatus(updatedShipment.status);
+                }
+                showToast("Checkpoint event posted successfully.");
+              }}
+            />
+
+            {/* Edit Tracking Event Drawer */}
+            <EditTrackingEventDrawer
+              isOpen={isEditDrawerOpen}
+              onClose={() => {
+                setIsEditDrawerOpen(false);
+                setEditingEvent(null);
+              }}
+              event={editingEvent}
+              onSuccess={(updatedEvent, updatedShipment) => {
+                if (updatedShipment) {
+                  setShipment(updatedShipment);
+                  setNewStatus(updatedShipment.status);
+                }
+                showToast("Checkpoint event updated successfully.");
+              }}
             />
             
             <form onSubmit={handleUpdateStatus} className="space-y-4">
+              {timelineError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{timelineError}</span>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-[#172236]">New Status</label>
                 <select 
@@ -440,17 +530,45 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
               <button 
                 type="submit" 
                 disabled={updatingTimeline}
-                className="w-full h-10 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm bg-[#FFB800] text-[#07182F] disabled:opacity-50"
+                className="w-full h-10 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm bg-[#FFB800] text-[#07182F] disabled:opacity-50 cursor-pointer"
               >
-                <Save size={16} /> {updatingTimeline ? "Saving..." : "Add Event to Timeline"}
+                {updatingTimeline ? (
+                  <>
+                    <Clock size={16} className="animate-spin" />
+                    <span>Saving Checkpoint...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    <span>Add Event to Timeline</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB]">
-            <h2 className="text-lg font-bold text-[#172236] mb-5">Timeline Preview</h2>
-            <div className="max-h-[400px] overflow-y-auto pr-2">
-              <ShipmentTimeline currentStatus={shipment.status} events={shipment.trackingEvents} adminMode />
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-lg font-bold text-[#172236]">Timeline Preview</h2>
+                <p className="text-xs text-[#667085] mt-0.5">Live view synchronized with customer tracking.</p>
+              </div>
+              <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-md bg-[#F1F5F9] text-[#141B47]">
+                {shipment.trackingEvents?.length || 0} checkpoint(s)
+              </span>
+            </div>
+            
+            <div className="max-h-[450px] overflow-y-auto pr-2">
+              <ShipmentTimeline
+                currentStatus={shipment.status}
+                events={shipment.trackingEvents}
+                adminMode
+                onEditEvent={(evt) => {
+                  setEditingEvent(evt);
+                  setIsEditDrawerOpen(true);
+                }}
+                onDeleteEvent={handleDeleteEvent}
+              />
             </div>
           </div>
 
