@@ -18,6 +18,7 @@ import {
   sendShippingFeeReminderEmail,
   isBrevoEmailMilestone,
   SHIPMENT_EMAIL_EVENTS,
+  ensureEmailLogSchema,
 } from "@/lib/email/brevo";
 import { broadcastShipmentUpdate } from "@/lib/supabase-realtime-server";
 import { revalidatePath } from "next/cache";
@@ -1500,6 +1501,7 @@ export async function getShipmentEmailLogsAction(trackingNumber: string) {
   if (!shipment) return [];
 
   try {
+    await ensureEmailLogSchema();
     const logs = await prisma.emailLog.findMany({
       where: { shipmentId: shipment.id },
       orderBy: { createdAt: "desc" },

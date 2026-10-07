@@ -115,9 +115,78 @@ export function validateEmailEnv() {
   };
 }
 
-// Dummy schema ensuring helper for retro-compatibility
+let emailLogSchemaEnsured = false;
+
+/**
+ * Ensures the EmailLog table, EmailEventStatus enum, and indexes exist in PostgreSQL.
+ * This directly prevents the production error:
+ * "The table public.EmailLog does not exist in the current database"
+ * when queries run before or alongside migrations.
+ */
 export async function ensureEmailLogSchema(): Promise<boolean> {
-  return true;
+  if (emailLogSchemaEnsured) return true;
+
+  try {
+    await prisma.$executeRawUnsafe(`
+      DO $$ BEGIN
+          CREATE TYPE "EmailEventStatus" AS ENUM ('PENDING', 'SENT', 'FAILED', 'SKIPPED');
+      EXCEPTION
+          WHEN duplicate_object THEN null;
+      END $$;
+
+      CREATE TABLE IF NOT EXISTS "EmailLog" (
+          "id" TEXT NOT NULL,
+          "customerId" TEXT NOT NULL,
+          "shipmentId" TEXT,
+          "batchId" TEXT,
+          "eventType" TEXT NOT NULL,
+          "status" "EmailEventStatus" NOT NULL DEFAULT 'PENDING',
+          "recipient" TEXT NOT NULL,
+          "subject" TEXT NOT NULL,
+          "providerMessageId" TEXT,
+          "idempotencyKey" TEXT NOT NULL,
+          "sentAt" TIMESTAMP(3),
+          "failedAt" TIMESTAMP(3),
+          "errorMessage" TEXT,
+          "metadata" JSONB,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+          CONSTRAINT "EmailLog_pkey" PRIMARY KEY ("id")
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS "EmailLog_idempotencyKey_key" ON "EmailLog"("idempotencyKey");
+      CREATE INDEX IF NOT EXISTS "EmailLog_customerId_idx" ON "EmailLog"("customerId");
+      CREATE INDEX IF NOT EXISTS "EmailLog_shipmentId_idx" ON "EmailLog"("shipmentId");
+      CREATE INDEX IF NOT EXISTS "EmailLog_eventType_idx" ON "EmailLog"("eventType");
+      CREATE INDEX IF NOT EXISTS "EmailLog_status_idx" ON "EmailLog"("status");
+      CREATE INDEX IF NOT EXISTS "EmailLog_createdAt_idx" ON "EmailLog"("createdAt");
+
+      DO $$ BEGIN
+          ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      EXCEPTION
+          WHEN duplicate_object THEN null;
+      END $$;
+
+      DO $$ BEGIN
+          ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "Shipment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      EXCEPTION
+          WHEN duplicate_object THEN null;
+      END $$;
+
+      DO $$ BEGIN
+          ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "Batch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      EXCEPTION
+          WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    emailLogSchemaEnsured = true;
+    return true;
+  } catch (err: any) {
+    console.warn("[ensureEmailLogSchema] DDL notice:", err?.message || err);
+    return false;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -725,6 +794,7 @@ export function generateShippingFeeReminderHtml(data: {
 // 1. Customer Welcome
 export async function sendCustomerCreatedEmail(customerId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {
+    await ensureEmailLogSchema();
     const customer = await prisma.customer.findUnique({
       where: { id: customerId },
     });
@@ -791,6 +861,7 @@ export async function sendCustomerCreatedEmail(customerId: string): Promise<{ su
 // 2. Sourcing Request Created
 export async function sendSourcingRequestCreatedEmail(requestId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {
+    await ensureEmailLogSchema();
     const request = await prisma.sourcingRequest.findUnique({
       where: { id: requestId },
       include: { customer: true },
@@ -864,6 +935,7 @@ export async function sendSourcingRequestCreatedEmail(requestId: string): Promis
 // 3. Shipment Created
 export async function sendShipmentCreatedEmail(shipmentId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {
+    await ensureEmailLogSchema();
     const shipment = await prisma.shipment.findUnique({
       where: { id: shipmentId },
       include: { customer: true, batch: true },
@@ -958,6 +1030,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
   console.log(`SHIPMENT_EMAIL_EVENT_DETECTED\nevent: ${params.event}`);
 
   try {
+    await ensureEmailLogSchema();
     const shipment = await prisma.shipment.findUnique({
       where: { id: params.shipmentId },
       include: { customer: true, batch: true, payments: true },
@@ -1130,6 +1203,7 @@ export async function sendShippingFeeReminderEmail(params: {
   force?: boolean;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {
+    await ensureEmailLogSchema();
     const shipment = await prisma.shipment.findUnique({
       where: { id: params.shipmentId },
       include: { customer: true, batch: true, payments: true },
@@ -1251,6 +1325,7 @@ export async function sendShippingFeeReminderEmail(params: {
 // 6. Sourcing Credit Purchase Success
 export async function sendCreditPurchaseSuccessEmail(paymentId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {
+    await ensureEmailLogSchema();
     const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
       include: { customer: true },
@@ -1326,6 +1401,7 @@ export async function sendCreditPurchaseSuccessEmail(paymentId: string): Promise
 // 7. Shipping Fee Paid Success
 export async function sendShippingFeePaidSuccessEmail(paymentId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {
+    await ensureEmailLogSchema();
     const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
       include: { customer: true, shipment: true },
