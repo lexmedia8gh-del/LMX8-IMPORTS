@@ -476,15 +476,25 @@ export async function updateShipmentStatusAction(
     const emailEvent = SHIPMENT_EMAIL_EVENTS[status];
     if (emailEvent) {
       try {
-        await sendShipmentStatusEmail({
+        console.log(`[ACTION_EMAIL_TRIGGER] Triggering milestone email for shipment ${shipment.id} -> event: ${emailEvent}`);
+        const emailRes = await sendShipmentStatusEmail({
           shipmentId: shipment.id,
           customerId: shipment.customerId,
           status,
           event: emailEvent,
         });
+        if (emailRes.skipped) {
+          console.log(`[ACTION_EMAIL_RESULT] Email skipped for shipment ${shipment.id}: ${emailRes.reason}`);
+        } else if (emailRes.success) {
+          console.log(`[ACTION_EMAIL_RESULT] Email sent successfully for shipment ${shipment.id} (messageId: ${emailRes.messageId})`);
+        } else {
+          console.warn(`[ACTION_EMAIL_RESULT] Email dispatch failed for shipment ${shipment.id}: ${emailRes.error}`);
+        }
       } catch (err: any) {
         console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
       }
+    } else {
+      console.log(`[ACTION_EMAIL_SKIP] Status '${status}' is a portal-only stage and does not send automatic emails.`);
     }
   }
 
@@ -600,15 +610,25 @@ export async function addTrackingEventAction(
       const emailEvent = SHIPMENT_EMAIL_EVENTS[data.status];
       if (emailEvent) {
         try {
-          await sendShipmentStatusEmail({
+          console.log(`[ACTION_EMAIL_TRIGGER] Triggering milestone email for shipment ${existing.id} -> event: ${emailEvent}`);
+          const emailRes = await sendShipmentStatusEmail({
             shipmentId: existing.id,
             customerId: existing.customerId,
             status: data.status,
             event: emailEvent,
           });
+          if (emailRes.skipped) {
+            console.log(`[ACTION_EMAIL_RESULT] Email skipped for shipment ${existing.id}: ${emailRes.reason}`);
+          } else if (emailRes.success) {
+            console.log(`[ACTION_EMAIL_RESULT] Email sent successfully for shipment ${existing.id} (messageId: ${emailRes.messageId})`);
+          } else {
+            console.warn(`[ACTION_EMAIL_RESULT] Email dispatch failed for shipment ${existing.id}: ${emailRes.error}`);
+          }
         } catch (err: any) {
           console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
         }
+      } else {
+        console.log(`[ACTION_EMAIL_SKIP] Status '${data.status}' is a portal-only stage and does not send automatic emails.`);
       }
     } else {
       console.log("SHIPMENT_STATUS_UPDATE_SUCCESS");
@@ -1221,12 +1241,20 @@ export async function updateBatchStatusAction(
       const emailEvent = SHIPMENT_EMAIL_EVENTS[normalizedStage as ShipmentStatus];
       if (emailEvent && shipment.status !== normalizedStage) {
         try {
-          await sendShipmentStatusEmail({
+          console.log(`[ACTION_BATCH_EMAIL_TRIGGER] Triggering milestone email for shipment ${shipment.id} (${shipment.trackingNumber}) -> event: ${emailEvent}`);
+          const emailRes = await sendShipmentStatusEmail({
             shipmentId: shipment.id,
             customerId: shipment.customerId,
             status: normalizedStage as ShipmentStatus,
             event: emailEvent,
           });
+          if (emailRes.skipped) {
+            console.log(`[ACTION_BATCH_EMAIL_RESULT] Email skipped for shipment ${shipment.id}: ${emailRes.reason}`);
+          } else if (emailRes.success) {
+            console.log(`[ACTION_BATCH_EMAIL_RESULT] Email sent successfully for shipment ${shipment.id} (messageId: ${emailRes.messageId})`);
+          } else {
+            console.warn(`[ACTION_BATCH_EMAIL_RESULT] Email dispatch failed for shipment ${shipment.id}: ${emailRes.error}`);
+          }
         } catch (err: any) {
           console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${err?.message || err}`);
         }
