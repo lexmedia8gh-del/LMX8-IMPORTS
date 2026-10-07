@@ -81,7 +81,7 @@ export async function createCustomerAction(formData: FormData) {
 
     const pinHash = await bcrypt.hash(pin, 10);
 
-    // 6. Execute atomic creation of Customer + CreditAccount + AuditLog in transaction
+    // 6. Execute atomic creation of Customer + CreditAccount + 1 Welcome Credit + AuditLog in transaction
     const createdCustomerId = await prisma.$transaction(async (tx) => {
       const newCustomer = await tx.customer.create({
         data: {
@@ -94,19 +94,23 @@ export async function createCustomerAction(formData: FormData) {
         },
       });
 
-      // Create a credit account automatically (idempotent upsert prevents duplicates)
+      // 1. Create a credit account automatically with 1 initial welcome credit
       try {
         await tx.creditAccount.upsert({
           where: { customerId: newCustomer.id },
-          update: {},
+          update: {
+            balance: 1,
+            creditsRemaining: 1,
+            creditsPurchased: 1,
+          },
           create: {
             customerId: newCustomer.id,
-            balance: 0,
-            selectedPackage: "None",
+            balance: 1,
+            selectedPackage: "Starter",
             packagePrice: 0.0,
-            creditsPurchased: 0,
+            creditsPurchased: 1,
             creditsUsed: 0,
-            creditsRemaining: 0,
+            creditsRemaining: 1,
             lastActivityAt: new Date(),
           },
         });
@@ -116,10 +120,10 @@ export async function createCustomerAction(formData: FormData) {
           console.warn("[createCustomer] Fallback CreditAccount creation without selectedPackage");
           await tx.creditAccount.upsert({
             where: { customerId: newCustomer.id },
-            update: {},
+            update: { balance: 1 },
             create: {
               customerId: newCustomer.id,
-              balance: 0,
+              balance: 1,
             },
           });
         } else {
@@ -127,13 +131,30 @@ export async function createCustomerAction(formData: FormData) {
         }
       }
 
+      // 2. Record initial +1 credit in the CreditTransaction ledger
+      await tx.creditTransaction.create({
+        data: {
+          type: "BONUS",
+          amount: 1,
+          balanceBefore: 0,
+          balanceAfter: 1,
+          reference: `WELCOME_CREDIT:${newCustomer.id}`,
+          description: "Welcome sourcing credit",
+          customerId: newCustomer.id,
+        },
+      });
+
+      // 3. Record AuditLog
       await tx.auditLog.create({
         data: {
           action: "CUSTOMER_CREATED",
           entityType: "Customer",
           entityId: newCustomer.id,
-          description: `Customer ${customerIdentifier} (${name}) created by ${admin.name || admin.email}`,
+          description: `Customer ${customerIdentifier} (${name}) created with 1 welcome sourcing credit by ${admin.name || admin.email}`,
           adminId: admin.id,
+          metadata: {
+            welcomeCreditAwarded: 1,
+          },
         },
       });
 
@@ -142,6 +163,9 @@ export async function createCustomerAction(formData: FormData) {
 
     revalidatePath("/admin/customers");
     revalidatePath("/admin/settings");
+    revalidatePath("/portal");
+    revalidatePath("/portal/credits");
+    revalidatePath("/portal/sourcing");
     return { success: true, customerIdentifier, customerId: createdCustomerId };
   } catch (error: any) {
     console.error("[createCustomerAction] Error creating customer:", error);
