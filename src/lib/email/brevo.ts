@@ -1027,7 +1027,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
   reason?: string;
   error?: string;
 }> {
-  console.log(`SHIPMENT_EMAIL_EVENT_DETECTED\nevent: ${params.event}`);
+  console.log(`SHIPMENT_EMAIL_EVENT_DETECTED\nevent: ${params.event}\nshipmentId: ${params.shipmentId}\nstatus: ${params.status}`);
 
   try {
     await ensureEmailLogSchema();
@@ -1037,20 +1037,21 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
     });
 
     if (!shipment) {
-      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason = SHIPMENT_NOT_FOUND");
+      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason: SHIPMENT_NOT_FOUND");
       return { success: false, skipped: true, reason: "SHIPMENT_NOT_FOUND" };
     }
 
     const customer = shipment.customer;
     if (!customer) {
-      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason = CUSTOMER_NOT_FOUND");
+      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason: CUSTOMER_NOT_FOUND");
       return { success: false, skipped: true, reason: "CUSTOMER_NOT_FOUND" };
     }
 
     const recipientEmail = customer.email?.trim();
     if (!recipientEmail || !recipientEmail.includes("@") || !recipientEmail.includes(".")) {
-      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason = CUSTOMER_EMAIL_MISSING");
+      console.warn("SHIPMENT_EMAIL_SKIPPED\nreason: CUSTOMER_EMAIL_MISSING");
       const idempotencyKey = `milestone-${shipment.id}-${params.status}`;
+      console.log(`EMAIL_LOG_WRITE\nstatus: SKIPPED\nidempotencyKey: ${idempotencyKey}\nreason: CUSTOMER_EMAIL_MISSING`);
       await prisma.emailLog.upsert({
         where: { idempotencyKey },
         update: { status: "SKIPPED", errorMessage: "CUSTOMER_EMAIL_MISSING", updatedAt: new Date() },
@@ -1070,9 +1071,10 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
     }
 
     const idempotencyKey = `milestone-${shipment.id}-${params.status}`;
+    console.log(`EMAIL_LOG_CHECK\nidempotencyKey: ${idempotencyKey}`);
     const existingLog = await prisma.emailLog.findUnique({ where: { idempotencyKey } });
     if (existingLog && existingLog.status === "SENT") {
-      console.log("SHIPMENT_EMAIL_SKIPPED\nreason = ALREADY_SENT");
+      console.log("SHIPMENT_EMAIL_SKIPPED\nreason: ALREADY_SENT");
       return {
         success: true,
         skipped: true,
@@ -1123,6 +1125,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
 
     const textContent = `LMX8 IMPORTS\n\nHello ${customer.name},\n\nYour shipment status has been updated.\n\nBatch: ${batchDisplay}\nShipment: ${shipment.trackingNumber}\nStatus: ${SHIPMENT_STATUS_ADMIN_LABELS[params.status] || params.status}\nDate: ${statusDate}\n\n${MILESTONE_EMAIL_MESSAGES[params.status as BrevoMilestone] || ""}\n\nView full tracking timeline in portal: ${portalUrl}\n\nRegards,\nLMX8 IMPORTS`;
 
+    console.log(`EMAIL_LOG_WRITE\nstatus: PENDING\nidempotencyKey: ${idempotencyKey}`);
     await prisma.emailLog.upsert({
       where: { idempotencyKey },
       update: { status: "PENDING", recipient: recipientEmail, subject, eventType: params.event, updatedAt: new Date() },
@@ -1138,7 +1141,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
       },
     }).catch(() => {});
 
-    console.log("BREVO_SHIPMENT_EMAIL_DISPATCH_START");
+    console.log(`BREVO_DISPATCH_START\nrecipient: ${recipientEmail}\nsubject: ${subject}\nevent: ${params.event}`);
 
     const sendResult = await sendBrevoEmail({
       to: [{ email: recipientEmail, name: customer.name }],
@@ -1148,7 +1151,8 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
     });
 
     if (sendResult.success) {
-      console.log(`BREVO_SHIPMENT_EMAIL_DISPATCH_SUCCESS\nmessageId: ${sendResult.messageId || "dispatched"}`);
+      console.log(`BREVO_DISPATCH_SUCCESS\nmessageId: ${sendResult.messageId || "dispatched"}`);
+      console.log(`EMAIL_LOG_WRITE\nstatus: SENT\nidempotencyKey: ${idempotencyKey}\nmessageId: ${sendResult.messageId || "dispatched"}`);
       await prisma.emailLog.update({
         where: { idempotencyKey },
         data: {
@@ -1160,7 +1164,8 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
       }).catch(() => {});
       return { success: true, messageId: sendResult.messageId };
     } else {
-      console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: ${sendResult.status || 500}\nerror: ${sendResult.error}`);
+      console.error(`BREVO_DISPATCH_FAILED\nstatus: ${sendResult.status || 500}\nerror: ${sendResult.error}`);
+      console.log(`EMAIL_LOG_WRITE\nstatus: FAILED\nidempotencyKey: ${idempotencyKey}`);
       await prisma.emailLog.update({
         where: { idempotencyKey },
         data: {
@@ -1173,7 +1178,7 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
     }
   } catch (err: any) {
     const errorMsg = typeof err?.message === "string" ? err.message : "Internal error sending milestone email.";
-    console.error(`BREVO_SHIPMENT_EMAIL_DISPATCH_FAILED\nstatus: 500\nerror: ${errorMsg}`);
+    console.error(`BREVO_DISPATCH_FAILED\nstatus: 500\nerror: ${errorMsg}`);
     return { success: false, error: errorMsg };
   }
 }
