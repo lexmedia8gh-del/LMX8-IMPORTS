@@ -24,7 +24,7 @@ export function getAppBaseUrl(): string {
 
 export function getPaymentCallbackUrl(reference?: string): string {
   const base = getAppBaseUrl();
-  const url = `${base}/portal/payments/verify`;
+  const url = `${base}/payment/success`;
   if (reference) {
     return `${url}?reference=${encodeURIComponent(reference)}`;
   }

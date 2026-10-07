@@ -257,8 +257,22 @@ export async function verifyPaymentAction(reference: string) {
       console.log(`[PaymentVerify] Payment ${cleanRef} verified by session ${customer.id} (owner: ${payment.customerId})`);
     }
 
+    // Helper to fetch verified credit balance for credit purchases
+    async function getVerifiedCreditBalance(customerId?: string | null) {
+      if (!customerId) return null;
+      try {
+        const creditAccount = await prisma.creditAccount.findUnique({
+          where: { customerId },
+        });
+        return creditAccount?.balance ?? null;
+      } catch {
+        return null;
+      }
+    }
+
     // If already verified and marked SUCCESS (idempotent path - refresh protection)
     if (payment.status === "SUCCESS") {
+      const creditBalance = payment.type === "CREDIT_PURCHASE" ? await getVerifiedCreditBalance(payment.customerId) : null;
       return {
         success: true,
         status: "SUCCESS",
@@ -266,9 +280,11 @@ export async function verifyPaymentAction(reference: string) {
         payment: {
           reference: payment.reference,
           amount: payment.amount,
-          currency: payment.currency,
+          currency: payment.currency || "GHS",
           type: payment.type,
           shipmentTrackingNumber: payment.shipment?.trackingNumber || null,
+          createdAt: payment.createdAt.toISOString(),
+          verifiedCreditBalance: creditBalance,
         },
       };
     }
@@ -282,23 +298,34 @@ export async function verifyPaymentAction(reference: string) {
           shipment: { select: { id: true, trackingNumber: true, description: true } },
         },
       });
+      const creditBalance = payment.type === "CREDIT_PURCHASE" ? await getVerifiedCreditBalance(payment.customerId) : null;
       return {
         success: true,
         status: "SUCCESS",
         payment: {
           reference: updated?.reference || payment.reference,
           amount: updated?.amount || payment.amount,
-          currency: updated?.currency || payment.currency,
+          currency: updated?.currency || payment.currency || "GHS",
           type: updated?.type || payment.type,
           shipmentTrackingNumber: updated?.shipment?.trackingNumber || null,
+          createdAt: (updated?.createdAt || payment.createdAt).toISOString(),
+          verifiedCreditBalance: creditBalance,
         },
       };
     } else {
       const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
+      const currentStatus = updated?.status || payment.status || "FAILED";
       return {
         success: false,
-        status: updated?.status || "FAILED",
+        status: currentStatus,
         error: result.error || "Payment verification could not be confirmed.",
+        payment: {
+          reference: payment.reference,
+          amount: payment.amount,
+          currency: payment.currency || "GHS",
+          type: payment.type,
+          createdAt: payment.createdAt.toISOString(),
+        },
       };
     }
   } catch (error: any) {

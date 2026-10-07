@@ -83,7 +83,7 @@ export async function GET(
         : `${shipment.customer?.customerIdentifier || "customer"}`.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() + "@lmx8imports.com";
 
     const origin = req.nextUrl.origin || getAppBaseUrl();
-    const callbackUrl = `${origin}/payment/verify?reference=${encodeURIComponent(payment.reference)}`;
+    const callbackUrl = `${origin}/payment/success?reference=${encodeURIComponent(payment.reference)}`;
 
     // 6. Initialize Paystack transaction
     const paystackData = await initializePayment({

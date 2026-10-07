@@ -4,7 +4,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const rawRef = searchParams.get("reference") || searchParams.get("trxref") || searchParams.get("ref");
   
-  const targetUrl = new URL("/portal/payments/verify", req.nextUrl.origin);
+  const targetUrl = new URL("/payment/success", req.nextUrl.origin);
   if (rawRef) {
     targetUrl.searchParams.set("reference", rawRef.trim());
   }
