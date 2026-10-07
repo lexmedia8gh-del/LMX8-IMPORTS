@@ -113,8 +113,8 @@ export interface EmailBrandingInfo {
 export async function getBrandingForEmail(): Promise<EmailBrandingInfo> {
   const settings = await getBrandSettings();
   
-  // Directly reads the Main Logo configured in Admin -> Branding (with light/dark fallbacks)
-  const logoPath = settings.mainLogo || settings.lightLogo || settings.darkLogo || null;
+  // Uses the Light Logo (Dark Background variant) configured in Admin -> Branding with fallbacks to main/dark logo
+  const logoPath = settings.lightLogo || settings.mainLogo || settings.darkLogo || null;
   let logoUrl: string | null = null;
 
   if (logoPath) {
