@@ -4,18 +4,41 @@ import { useEffect, useState, use } from "react";
 import { getShipmentByIdAction } from "@/app/actions";
 import { Shipment } from "@/lib/db";
 import Link from "next/link";
-import { ArrowLeft, Camera } from "lucide-react";
+import { ArrowLeft, Camera, Radio, RefreshCw, Clock } from "lucide-react";
 import { ShipmentStatusBadge, ShipmentTimeline } from "@/components/shipment-status";
+import { useShipmentRealtime } from "@/hooks/use-shipment-realtime";
 
-export default function ShipmentDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ShipmentDetailsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
-  const [shipment, setShipment] = useState<Shipment | null>(null);
+  const [initialData, setInitialData] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Hook for Supabase Realtime synchronization
+  const {
+    shipment,
+    isRealtimeConnected,
+    isUpdating,
+    lastUpdated,
+  } = useShipmentRealtime({
+    initialShipment: initialData,
+    shipmentIdOrTrackingNumber: id,
+    enabled: Boolean(id),
+  });
 
   useEffect(() => {
     getShipmentByIdAction(id)
-      .then((res) => { setShipment(res); setLoading(false); })
-      .catch((err) => { console.error(err); setLoading(false); });
+      .then((res) => {
+        setInitialData(res);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoading(false);
+      });
   }, [id]);
 
   if (loading) {
@@ -26,11 +49,18 @@ export default function ShipmentDetailsPage({ params }: { params: Promise<{ id: 
       </div>
     );
   }
+
   if (!shipment) {
     return (
       <div className="py-16 text-center">
-        <p className="font-bold text-lg" style={{ color: "#172236" }}>Shipment not found.</p>
-        <Link href="/portal/shipments" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold" style={{ color: "#FFB800" }}>
+        <p className="font-bold text-lg" style={{ color: "#172236" }}>
+          Shipment not found.
+        </p>
+        <Link
+          href="/portal/shipments"
+          className="mt-4 inline-flex items-center gap-2 text-sm font-semibold"
+          style={{ color: "#FFB800" }}
+        >
           <ArrowLeft size={16} /> Back to Shipments
         </Link>
       </div>
@@ -39,79 +69,180 @@ export default function ShipmentDetailsPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="max-w-3xl space-y-5">
-      {/* Back */}
-      <Link
-        href="/portal/shipments"
-        className="inline-flex items-center gap-2 text-sm font-semibold transition-colors hover:text-black"
-        style={{ color: "#94A3B8" }}
-      >
-        <ArrowLeft size={16} /> Back to Shipments
-      </Link>
+      {/* Back navigation */}
+      <div className="flex items-center justify-between">
+        <Link
+          href="/portal/shipments"
+          className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold transition-colors hover:text-black"
+          style={{ color: "#94A3B8" }}
+        >
+          <ArrowLeft size={16} /> Back to Shipments
+        </Link>
 
-      <div className="bg-white rounded-2xl overflow-hidden shadow-sm" style={{ border: "1px solid #E5E7EB" }}>
+        {isRealtimeConnected && (
+          <span
+            className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"
+            title="Connected to real-time status updates"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Live Sync Active</span>
+          </span>
+        )}
+      </div>
+
+      <div
+        className="bg-white rounded-2xl overflow-hidden shadow-xs"
+        style={{ border: "1px solid #E5E7EB" }}
+      >
         {/* Header */}
-        <div className="px-5 py-4 flex flex-col gap-3" style={{ borderBottom: "1px solid #F1F5F9" }}>
+        <div
+          className="px-5 py-4 flex flex-col gap-3"
+          style={{ borderBottom: "1px solid #F1F5F9" }}
+        >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <h1 className="text-lg font-bold" style={{ color: "#172236" }}>
                 Track Your Shipment
               </h1>
-              <p className="text-sm mt-0.5 break-all font-mono text-[#667085]">{shipment.id}</p>
+              <p className="text-xs sm:text-sm mt-0.5 font-mono font-bold text-[#667085] truncate">
+                {shipment.id}
+              </p>
             </div>
-            <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-lg self-start" style={{ border: "1px solid #E5E7EB" }}>
-              <span className="text-[10px] font-bold uppercase tracking-wider shrink-0" style={{ color: "#667085" }}>Status</span>
-              <ShipmentStatusBadge status={shipment.status} />
+            <div
+              className="flex items-center gap-2 bg-gray-50 px-3.5 py-1.5 rounded-xl self-start sm:self-auto"
+              style={{ border: "1px solid #E5E7EB" }}
+            >
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider shrink-0 text-[#667085]"
+              >
+                Status
+              </span>
+              <ShipmentStatusBadge status={shipment.status} showLivePulse />
             </div>
           </div>
         </div>
 
-        <div className="p-5 md:p-7 space-y-8">
+        {isUpdating && (
+          <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900 text-xs font-semibold flex items-center gap-2">
+            <RefreshCw size={13} className="animate-spin text-amber-600 shrink-0" />
+            <span>Updating timeline from Ctrl Room...</span>
+          </div>
+        )}
 
-          {/* Info grid — 2 cols on all sizes, key info visible immediately */}
+        <div className="p-5 md:p-7 space-y-8">
+          {/* Info grid — 2 cols on all sizes */}
           <div
             className="grid grid-cols-2 gap-4 p-4 rounded-xl"
             style={{ background: "#F7F9FC", border: "1px solid #E5E7EB" }}
           >
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "#667085" }}>Origin</p>
-              <p className="font-semibold text-sm break-words" style={{ color: "#172236" }}>{shipment.origin ?? "—"}</p>
+              <p
+                className="text-[10px] font-bold uppercase tracking-wider mb-1"
+                style={{ color: "#667085" }}
+              >
+                Origin
+              </p>
+              <p
+                className="font-semibold text-xs sm:text-sm break-words"
+                style={{ color: "#172236" }}
+              >
+                {shipment.origin ?? "Guangzhou, China"}
+              </p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "#667085" }}>Destination</p>
-              <p className="font-semibold text-sm break-words" style={{ color: "#172236" }}>{shipment.destination ?? "—"}</p>
+              <p
+                className="text-[10px] font-bold uppercase tracking-wider mb-1"
+                style={{ color: "#667085" }}
+              >
+                Destination
+              </p>
+              <p
+                className="font-semibold text-xs sm:text-sm break-words"
+                style={{ color: "#172236" }}
+              >
+                {shipment.destination ?? "Accra, Ghana"}
+              </p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "#667085" }}>Est. Arrival</p>
-              <p className="font-semibold text-sm" style={{ color: "#10B981" }}>{shipment.estimatedArrival ?? "TBD"}</p>
+              <p
+                className="text-[10px] font-bold uppercase tracking-wider mb-1"
+                style={{ color: "#667085" }}
+              >
+                Est. Arrival
+              </p>
+              <p className="font-semibold text-xs sm:text-sm text-emerald-600">
+                {shipment.estimatedArrival ?? "In Transit"}
+              </p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "#667085" }}>Method</p>
-              <p className="font-semibold text-sm break-words" style={{ color: "#172236" }}>{shipment.shippingMethod ?? "—"}</p>
+              <p
+                className="text-[10px] font-bold uppercase tracking-wider mb-1"
+                style={{ color: "#667085" }}
+              >
+                Method
+              </p>
+              <p
+                className="font-semibold text-xs sm:text-sm break-words"
+                style={{ color: "#172236" }}
+              >
+                {shipment.shippingMethod ?? "Air Cargo"}
+              </p>
             </div>
           </div>
 
-          {/* Photos */}
+          {/* Cargo Photos */}
           {shipment.photos && shipment.photos.length > 0 && (
             <div>
-              <h3 className="font-bold text-base mb-4 flex items-center gap-2" style={{ color: "#172236" }}>
+              <h3
+                className="font-bold text-sm sm:text-base mb-4 flex items-center gap-2"
+                style={{ color: "#172236" }}
+              >
                 <Camera size={18} /> Cargo Photos
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {shipment.photos.map((p) => (
-                  <div key={p.id} className="rounded-xl overflow-hidden border border-[#E5E7EB] aspect-square bg-gray-100">
-                    <img src={p.url} alt="Cargo" className="w-full h-full object-cover" />
+                  <div
+                    key={p.id}
+                    className="rounded-xl overflow-hidden border border-[#E5E7EB] aspect-square bg-gray-100"
+                  >
+                    <img
+                      src={p.url}
+                      alt="Cargo"
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Timeline */}
+          {/* Live Timeline */}
           <div>
-            <h3 className="font-bold text-base mb-5" style={{ color: "#172236" }}>
-              Shipment Timeline
-            </h3>
-            <ShipmentTimeline currentStatus={shipment.status} events={shipment.trackingEvents} />
+            <div className="flex items-center justify-between mb-5">
+              <h3
+                className="font-bold text-sm sm:text-base flex items-center gap-2"
+                style={{ color: "#172236" }}
+              >
+                <Radio size={16} className="text-[#FFB800]" />
+                <span>Shipment Timeline</span>
+              </h3>
+              {lastUpdated && (
+                <span className="text-[10px] text-[#94A3B8] flex items-center gap-1">
+                  <Clock size={10} />
+                  <span>
+                    Synced{" "}
+                    {lastUpdated.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </span>
+              )}
+            </div>
+            <ShipmentTimeline
+              currentStatus={shipment.status}
+              events={shipment.trackingEvents}
+            />
           </div>
         </div>
       </div>

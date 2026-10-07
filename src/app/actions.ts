@@ -17,6 +17,7 @@ import {
   sendShippingFeeReminderEmail,
   isBrevoEmailMilestone,
 } from "@/lib/email/brevo";
+import { broadcastShipmentUpdate } from "@/lib/supabase-realtime-server";
 import { revalidatePath } from "next/cache";
 
 // Helper to map Prisma Shipment to UI Shipment with temporary signed URLs
@@ -342,7 +343,18 @@ export async function assignShipmentToBatchAction(trackingNumber: string, batchN
     },
   });
 
-  return mapPrismaShipment(updated);
+  const mapped = await mapPrismaShipment(updated);
+
+  // Broadcast real-time update
+  broadcastShipmentUpdate({
+    shipmentId: shipment.id,
+    trackingNumber: shipment.trackingNumber,
+    status: mapped.status,
+    shipment: mapped,
+    source: "assignShipmentToBatchAction",
+  }).catch(() => {});
+
+  return mapped;
 }
 
 
@@ -440,7 +452,18 @@ export async function updateShipmentStatusAction(
   revalidatePath(`/portal/shipments/${existing.id}`);
   revalidatePath("/track");
 
-  return mapPrismaShipment(shipment);
+  const mappedShipment = await mapPrismaShipment(shipment);
+
+  // Broadcast real-time update to Supabase channel
+  broadcastShipmentUpdate({
+    shipmentId: existing.id,
+    trackingNumber: existing.trackingNumber,
+    status: shipment.status,
+    shipment: mappedShipment,
+    source: "updateShipmentStatusAction",
+  }).catch(() => {});
+
+  return mappedShipment;
 }
 
 /**
@@ -573,6 +596,15 @@ export async function addTrackingEventAction(
     revalidatePath(`/portal/shipments/${existing.id}`);
     revalidatePath("/track");
 
+    // Broadcast real-time update
+    broadcastShipmentUpdate({
+      shipmentId: existing.id,
+      trackingNumber: existing.trackingNumber,
+      status: data.status,
+      shipment: uiShipment,
+      source: "addTrackingEventAction",
+    }).catch(() => {});
+
     return {
       success: true,
       event: {
@@ -661,6 +693,15 @@ export async function updateTrackingEventAction(
     revalidatePath(`/portal/shipments/${event.shipmentId}`);
     revalidatePath("/track");
 
+    // Broadcast real-time update
+    broadcastShipmentUpdate({
+      shipmentId: event.shipmentId,
+      trackingNumber: event.shipment.trackingNumber,
+      status: updated.status,
+      shipment: uiShipment,
+      source: "updateTrackingEventAction",
+    }).catch(() => {});
+
     return {
       success: true,
       event: {
@@ -736,6 +777,15 @@ export async function deleteTrackingEventAction(eventId: string) {
     revalidatePath(`/portal/shipments/${trackingNumber}`);
     revalidatePath(`/portal/shipments/${shipmentId}`);
     revalidatePath("/track");
+
+    // Broadcast real-time update
+    broadcastShipmentUpdate({
+      shipmentId: shipmentId,
+      trackingNumber: trackingNumber,
+      status: uiShipment?.status || "IN_TRANSIT",
+      shipment: uiShipment,
+      source: "deleteTrackingEventAction",
+    }).catch(() => {});
 
     return {
       success: true,
