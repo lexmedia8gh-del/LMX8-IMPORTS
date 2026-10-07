@@ -685,3 +685,16 @@ export async function sendShippingFeeReminderEmail(params: {
     return { success: false, error: err?.message || "Internal error sending reminder." };
   }
 }
+
+export function getBrevoDiagnostics() {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || DEFAULT_SENDER_EMAIL;
+  const senderName = SENDER_NAME;
+
+  return {
+    BREVO_API_KEY: apiKey && apiKey.trim().length > 0 ? "configured" : "missing",
+    BREVO_SENDER_EMAIL: senderEmail ? "configured" : "missing",
+    BREVO_SENDER_NAME: senderName ? "configured" : "missing",
+    senderEmailValue: senderEmail,
+  };
+}
