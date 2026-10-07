@@ -1,5 +1,3 @@
-import "server-only";
-
 export interface BrevoServerConfig {
   apiKeyConfigured: boolean;
   senderName: string | null;

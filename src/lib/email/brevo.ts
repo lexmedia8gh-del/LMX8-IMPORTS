@@ -1,4 +1,3 @@
-import "server-only";
 import { prisma } from "@/lib/prisma";
 import { ShipmentStatus, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
 import {
@@ -106,23 +105,49 @@ export interface BrevoSendResult {
   success: boolean;
   messageId?: string;
   error?: string;
+  category?: "CONFIGURATION_ERROR" | "AUTHENTICATION_ERROR" | "VALIDATION_ERROR" | "BREVO_API_ERROR" | "NETWORK_ERROR" | "APPLICATION_ERROR";
+  status?: number;
+  provider: "brevo";
 }
 
 export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<BrevoSendResult> {
   const envVal = validateEmailEnv();
   if (!envVal.valid) {
-    console.warn(`[Brevo Validation Warning] ${envVal.error}. Skipping real dispatch.`);
-    return { success: false, error: envVal.error };
+    console.warn(`[BREVO_DISPATCH_FAILED] Config validation failed: ${envVal.error}`);
+    return {
+      success: false,
+      error: envVal.error,
+      category: "CONFIGURATION_ERROR",
+      provider: "brevo",
+    };
   }
 
-  if (!params.to || params.to.length === 0 || !params.to[0].email) {
-    return { success: false, error: "No recipient email provided." };
+  if (!params.to || params.to.length === 0 || !params.to[0]?.email) {
+    return {
+      success: false,
+      error: "No recipient email provided.",
+      category: "VALIDATION_ERROR",
+      provider: "brevo",
+    };
   }
 
   const recipientEmail = params.to[0].email.trim();
   if (!recipientEmail.includes("@") || !recipientEmail.includes(".")) {
-    return { success: false, error: `Invalid recipient email format: ${recipientEmail}` };
+    return {
+      success: false,
+      error: `Invalid recipient email format: ${recipientEmail}`,
+      category: "VALIDATION_ERROR",
+      provider: "brevo",
+    };
   }
+
+  console.log("[BREVO_DISPATCH_START]", JSON.stringify({
+    timestamp: new Date().toISOString(),
+    senderEmail: envVal.senderEmail,
+    senderName: envVal.senderName,
+    recipientEmail,
+    subject: params.subject,
+  }));
 
   try {
     const payload = {
@@ -147,23 +172,84 @@ export async function sendBrevoEmail(params: SendBrevoEmailParams): Promise<Brev
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(12000),
     });
 
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const errorMsg = data?.message || data?.error || `Brevo HTTP ${response.status}: ${response.statusText}`;
-      console.error(`[EMAIL_SEND_FAILURE] Recipient: ${recipientEmail}, Error: ${errorMsg}`);
-      return { success: false, error: errorMsg };
+      let rawMsg = `Brevo HTTP ${response.status}: ${response.statusText}`;
+      if (typeof data?.message === "string") {
+        rawMsg = data.message;
+      } else if (typeof data?.error === "string") {
+        rawMsg = data.error;
+      } else if (data?.errors) {
+        rawMsg = typeof data.errors === "string" ? data.errors : JSON.stringify(data.errors);
+      } else if (typeof data === "string") {
+        rawMsg = data;
+      }
+
+      let category: BrevoSendResult["category"] = "BREVO_API_ERROR";
+      if (response.status === 401 || response.status === 403) {
+        category = "AUTHENTICATION_ERROR";
+      } else if (response.status === 400 || response.status === 422) {
+        category = "VALIDATION_ERROR";
+      }
+
+      console.error("[BREVO_DISPATCH_FAILED]", JSON.stringify({
+        timestamp: new Date().toISOString(),
+        senderEmail: envVal.senderEmail,
+        recipientEmail,
+        status: response.status,
+        error: rawMsg,
+        category,
+      }));
+
+      return {
+        success: false,
+        error: rawMsg,
+        category,
+        status: response.status,
+        provider: "brevo",
+      };
     }
 
-    const messageId = data?.messageId || data?.id || `brevo-${Date.now()}`;
-    return { success: true, messageId: String(messageId) };
+    const messageId = String(data?.messageId || data?.id || `brevo-${Date.now()}`);
+
+    console.log("[BREVO_DISPATCH_SUCCESS]", JSON.stringify({
+      timestamp: new Date().toISOString(),
+      senderEmail: envVal.senderEmail,
+      recipientEmail,
+      status: response.status,
+      messageId,
+    }));
+
+    return {
+      success: true,
+      messageId,
+      status: response.status,
+      provider: "brevo",
+    };
   } catch (err: any) {
-    const errorMsg = err?.message || "Unexpected error dispatching Brevo email.";
-    console.error(`[EMAIL_SEND_FAILURE] Recipient: ${recipientEmail}, Exception: ${errorMsg}`);
-    return { success: false, error: errorMsg };
+    const errorMsg =
+      err?.name === "TimeoutError" || err?.name === "AbortError"
+        ? "Brevo dispatch request timed out after 12s."
+        : err?.message || "Unexpected network failure dispatching Brevo email.";
+
+    console.error("[BREVO_DISPATCH_FAILED]", JSON.stringify({
+      timestamp: new Date().toISOString(),
+      senderEmail: envVal.senderEmail,
+      recipientEmail,
+      error: errorMsg,
+      category: "NETWORK_ERROR",
+    }));
+
+    return {
+      success: false,
+      error: errorMsg,
+      category: "NETWORK_ERROR",
+      provider: "brevo",
+    };
   }
 }
 

@@ -26,16 +26,27 @@ export default function AdminEmailsPage() {
   const [loading, setLoading] = useState(true);
   const [testEmail, setTestEmail] = useState("");
   const [testSending, setTestSending] = useState(false);
-  const [testResult, setTestResult] = useState<{ success?: boolean; messageId?: string; error?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    success?: boolean;
+    messageId?: string;
+    error?: string;
+    category?: string;
+    provider?: string;
+  } | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const loadDiagnostics = async () => {
     setLoading(true);
-    const res = await getEmailDiagnosticsAction();
-    setData(res);
-    setLoading(false);
+    try {
+      const res = await getEmailDiagnosticsAction();
+      setData(res);
+    } catch (err: any) {
+      console.error("[loadDiagnostics] Failed to load diagnostics:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -44,18 +55,37 @@ export default function AdminEmailsPage() {
 
   const handleSendTest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!testEmail.trim()) return;
+    const clean = testEmail.trim();
+    if (!clean) return;
 
     setTestSending(true);
     setTestResult(null);
     try {
-      const res = await sendTestEmailAction(testEmail.trim());
-      setTestResult(res);
-      if (res.success) {
+      const res = await sendTestEmailAction(clean);
+      setTestResult({
+        success: Boolean(res?.success),
+        messageId: res?.messageId ? String(res.messageId) : undefined,
+        error: res?.error ? (typeof res.error === "string" ? res.error : JSON.stringify(res.error)) : undefined,
+        category: res?.category ? String(res.category) : undefined,
+        provider: res?.provider ? String(res.provider) : "brevo",
+      });
+      if (res?.success) {
         loadDiagnostics();
       }
     } catch (err: any) {
-      setTestResult({ error: err?.message || "Failed to dispatch test email." });
+      console.error("[handleSendTest] Unexpected error caught in client:", err);
+      const safeErrorMsg =
+        typeof err?.message === "string"
+          ? err.message
+          : typeof err === "string"
+          ? err
+          : "An unexpected error occurred during dispatch.";
+      setTestResult({
+        success: false,
+        error: safeErrorMsg,
+        category: "APPLICATION_ERROR",
+        provider: "brevo",
+      });
     } finally {
       setTestSending(false);
     }
@@ -63,9 +93,13 @@ export default function AdminEmailsPage() {
 
   const handleRetry = async (logId: string) => {
     startTransition(async () => {
-      const res = await retryEmailLogAction(logId);
-      if (res.error) {
-        alert(res.error);
+      try {
+        const res = await retryEmailLogAction(logId);
+        if (res?.error) {
+          alert(typeof res.error === "string" ? res.error : JSON.stringify(res.error));
+        }
+      } catch (err: any) {
+        alert(typeof err?.message === "string" ? err.message : "Failed to retry email dispatch.");
       }
       loadDiagnostics();
     });
@@ -243,17 +277,30 @@ export default function AdminEmailsPage() {
             ) : (
               <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
             )}
-            <div className="space-y-1">
-              <p className="font-bold">
-                {testResult.success ? "Test Email Accepted by Brevo" : "Brevo API Dispatch Failed"}
-              </p>
+            <div className="space-y-1.5 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-bold">
+                  {testResult.success
+                    ? "Email Accepted by Brevo"
+                    : testResult.category === "VALIDATION_ERROR"
+                    ? "Validation Notice"
+                    : "Brevo API Dispatch Failed"}
+                </p>
+                {testResult.category && (
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-black/5">
+                    {testResult.category}
+                  </span>
+                )}
+              </div>
               {testResult.success ? (
                 <p className="font-mono text-[11px] text-emerald-700">
-                  Message ID: {testResult.messageId}
+                  Message ID: {testResult.messageId || "Dispatched"}
                 </p>
               ) : (
-                <p className="font-mono text-[11px] text-red-700 bg-red-100/60 p-2 rounded-lg border border-red-200">
-                  {testResult.error}
+                <p className="font-mono text-[11px] text-red-700 bg-red-100/60 p-2 rounded-lg border border-red-200 break-words">
+                  {typeof testResult.error === "string"
+                    ? testResult.error
+                    : JSON.stringify(testResult.error ?? "Dispatch failed.")}
                 </p>
               )}
             </div>
