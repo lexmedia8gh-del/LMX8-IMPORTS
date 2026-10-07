@@ -27,9 +27,9 @@ export function isBrevoEmailMilestone(status: string): status is BrevoMilestone 
 
 // Milestone-specific factual descriptions (Anti-marketing, clear and direct)
 export const MILESTONE_EMAIL_MESSAGES: Record<BrevoMilestone, string> = {
-  SHIPMENT_CREATED: "Your shipment has been registered in the LMX8 IMPORTS system.",
-  SHIPPED: "Your shipment has been shipped and is now on its way.",
-  ARRIVED_AT_DESTINATION: "Your shipment has arrived at its destination.",
+  SHIPMENT_CREATED: "Your order has been confirmed and is being registered in the LMX8 IMPORTS system.",
+  SHIPPED: "Your shipment has departed China and is now on its way to Ghana.",
+  ARRIVED_AT_DESTINATION: "Your shipment has arrived in Ghana.",
   CUSTOMS_CLEARANCE: "Your shipment is currently undergoing customs clearance.",
   OUT_FOR_DELIVERY: "Your shipment has been released for delivery.",
   DELIVERED: "Your shipment has been marked as delivered.",
@@ -40,11 +40,11 @@ export function getMilestoneEmailSubject(milestone: BrevoMilestone, batchDisplay
   const batchPrefix = batchDisplay ? ` — ${batchDisplay}` : "";
   switch (milestone) {
     case "SHIPMENT_CREATED":
-      return `LMX8 IMPORTS${batchPrefix} Shipment Created`;
+      return `LMX8 IMPORTS${batchPrefix} Order Confirmed`;
     case "SHIPPED":
-      return `LMX8 IMPORTS${batchPrefix} Shipment Has Been Shipped`;
+      return `LMX8 IMPORTS${batchPrefix} Shipment Has Departed China`;
     case "ARRIVED_AT_DESTINATION":
-      return `LMX8 IMPORTS${batchPrefix} Shipment Has Arrived at Destination`;
+      return `LMX8 IMPORTS${batchPrefix} Shipment Has Arrived in Ghana`;
     case "CUSTOMS_CLEARANCE":
       return `LMX8 IMPORTS${batchPrefix} Shipment Is Under Customs Clearance`;
     case "OUT_FOR_DELIVERY":

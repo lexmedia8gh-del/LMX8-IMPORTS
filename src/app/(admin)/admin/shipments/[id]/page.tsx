@@ -248,28 +248,30 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
   if (!shipment) return <div className="p-6 sm:p-10 text-center text-sm font-semibold text-[#667085]">Shipment not found.</div>;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <Link href="/admin/shipments" className="inline-flex items-center gap-2 text-sm font-semibold text-[#667085] hover:text-[#172236] transition-colors">
+    <div className="max-w-6xl mx-auto space-y-6 w-full min-w-0 px-2 sm:px-4 md:px-0">
+      <Link href="/admin/shipments" className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#667085] hover:text-[#172236] transition-colors">
         <ArrowLeft size={16} /> Back to Shipments
       </Link>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-[#E5E7EB]">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-[#172236]">{shipment.id}</h1>
-          <p className="text-xs sm:text-sm text-[#667085] mt-1">{shipment.description} · Customer: <span className="font-semibold text-[#172236]">{shipment.customerId}</span></p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-[#E5E7EB] w-full min-w-0">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-[#172236] truncate">{shipment.id}</h1>
+          <p className="text-xs sm:text-sm text-[#667085] mt-1 break-words">
+            {shipment.description} · Customer: <span className="font-semibold text-[#172236]">{shipment.customerId}</span>
+          </p>
         </div>
-        <div className="flex items-center gap-3 bg-[#F7F9FC] px-3 sm:px-4 py-2 rounded-xl border border-[#E5E7EB]">
+        <div className="flex items-center gap-3 bg-[#F7F9FC] px-3 sm:px-4 py-2 rounded-xl border border-[#E5E7EB] shrink-0 self-start sm:self-auto">
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085]">Current Status</span>
           <ShipmentStatusBadge status={shipment.status} adminMode />
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full min-w-0">
         
         {/* LEFT COLUMN: Details & Photos */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 w-full min-w-0">
           
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-[#E5E7EB]">
+          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-[#E5E7EB] w-full min-w-0">
             <h2 className="text-base sm:text-lg font-bold text-[#172236] mb-5">Shipment Details</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-5 gap-x-4">
               <div>

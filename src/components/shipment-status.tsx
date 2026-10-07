@@ -16,8 +16,7 @@ export type ShipmentStatus =
   | "ON_HOLD";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Human-readable customer-facing labels
-// Never show raw enum values to customers.
+// Human-readable customer-facing and admin labels (Canonical 8-stage naming)
 // ─────────────────────────────────────────────────────────────────────────────
 export const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
   SHIPMENT_CREATED:       "Order Confirmed",
@@ -31,22 +30,11 @@ export const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
   ON_HOLD:                "On Hold",
 };
 
-// Admin-facing label (slightly more technical, still readable)
-export const SHIPMENT_STATUS_ADMIN_LABELS: Record<ShipmentStatus, string> = {
-  SHIPMENT_CREATED:       "Shipment Created",
-  PREPARING_SHIPMENT:     "Preparing Shipment",
-  SHIPPED:                "Shipped",
-  IN_TRANSIT:             "In Transit",
-  ARRIVED_AT_DESTINATION: "Arrived at Destination",
-  CUSTOMS_CLEARANCE:      "Customs Clearance",
-  OUT_FOR_DELIVERY:       "Out for Delivery",
-  DELIVERED:              "Delivered",
-  ON_HOLD:                "On Hold",
-};
+// Admin label matches canonical names consistently
+export const SHIPMENT_STATUS_ADMIN_LABELS: Record<ShipmentStatus, string> = SHIPMENT_STATUS_LABELS;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The professional LMX8 journey timeline shown to customers.
-// Uses TrackingEvent notes for the detailed milestones inside each broad stage.
+// The professional LMX8 journey timeline shown to customers and admins.
 // ─────────────────────────────────────────────────────────────────────────────
 export const STATUS_JOURNEY: ShipmentStatus[] = [
   "SHIPMENT_CREATED",
@@ -68,12 +56,12 @@ export const STATUS_ORDER = STATUS_JOURNEY;
 export const SHIPMENT_STATUS_DESCRIPTIONS: Record<ShipmentStatus, string> = {
   SHIPMENT_CREATED:       "Your order has been confirmed and is being registered in our system.",
   PREPARING_SHIPMENT:     "Your item is being prepared, quality-checked, and consolidated for international shipment.",
-  SHIPPED:                "Your shipment has departed China and is headed to Ghana.",
+  SHIPPED:                "Your shipment has departed China and is now on its way to Ghana.",
   IN_TRANSIT:             "Your shipment is currently in transit to Ghana. We'll notify you when it arrives.",
   ARRIVED_AT_DESTINATION: "Your shipment has arrived in Ghana and is being processed for clearance.",
   CUSTOMS_CLEARANCE:      "Your shipment is currently undergoing customs clearance.",
-  OUT_FOR_DELIVERY:       "Your shipment is out for delivery and on its way to you.",
-  DELIVERED:              "Your shipment has been successfully delivered. Thank you for choosing LMX8 Imports!",
+  OUT_FOR_DELIVERY:       "Your shipment has been released for delivery and is on its way to you.",
+  DELIVERED:              "Your shipment has been marked as delivered. Thank you for choosing LMX8 Imports!",
   ON_HOLD:                "Your shipment has been placed on hold. Please contact us for more information.",
 };
 
@@ -94,7 +82,6 @@ const STATUS_STYLE: Record<ShipmentStatus, { bg: string; text: string; dot: stri
 
 // ─────────────────────────────────────────────────────────────────────────────
 // StatusBadge — shows the customer-friendly label by default
-// Pass adminMode={true} in admin views to show the admin label
 // ─────────────────────────────────────────────────────────────────────────────
 export function ShipmentStatusBadge({
   status,
@@ -104,9 +91,7 @@ export function ShipmentStatusBadge({
   adminMode?: boolean;
 }) {
   const s = STATUS_STYLE[status] ?? { bg: "#F1F5F9", text: "#475569", dot: "#94A3B8" };
-  const label = adminMode
-    ? (SHIPMENT_STATUS_ADMIN_LABELS[status] ?? status)
-    : (SHIPMENT_STATUS_LABELS[status] ?? status);
+  const label = SHIPMENT_STATUS_LABELS[status] ?? status;
 
   return (
     <span
@@ -133,7 +118,7 @@ export interface TimelineEvent {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ShipmentTimeline — professional journey view for the customer portal & admin
+// ShipmentTimeline — fully responsive professional journey view
 // ─────────────────────────────────────────────────────────────────────────────
 export function ShipmentTimeline({
   currentStatus,
@@ -159,7 +144,7 @@ export function ShipmentTimeline({
   });
 
   return (
-    <div className="space-y-0">
+    <div className="w-full space-y-0">
       {STATUS_JOURNEY.map((status, index) => {
         const isCompleted =
           index < currentIndex || currentStatus === "DELIVERED";
@@ -180,14 +165,12 @@ export function ShipmentTimeline({
           : "#E5E7EB";
         const lineColor = isCompleted ? "#10B981" : "#E5E7EB";
 
-        const label = adminMode
-          ? (SHIPMENT_STATUS_ADMIN_LABELS[status] ?? status)
-          : (SHIPMENT_STATUS_LABELS[status] ?? status);
+        const label = SHIPMENT_STATUS_LABELS[status] ?? status;
 
         return (
-          <div key={status} className="flex gap-4">
+          <div key={status} className="flex gap-3 sm:gap-4 w-full min-w-0">
             {/* Dot + line column */}
-            <div className="flex flex-col items-center shrink-0 w-6">
+            <div className="flex flex-col items-center shrink-0 w-5 sm:w-6">
               <div
                 className="w-3 h-3 rounded-full shrink-0 mt-1 transition-colors"
                 style={{
@@ -197,17 +180,17 @@ export function ShipmentTimeline({
               />
               {index !== STATUS_JOURNEY.length - 1 && (
                 <div
-                  className="w-0.5 flex-1 my-1 min-h-[24px]"
+                  className="w-0.5 flex-1 my-1 min-h-[20px] sm:min-h-[24px]"
                   style={{ background: lineColor }}
                 />
               )}
             </div>
 
             {/* Content */}
-            <div className={`pb-5 flex-1 ${isPending ? "opacity-35" : ""}`}>
-              <div className="flex items-center justify-between gap-2">
+            <div className={`pb-5 flex-1 min-w-0 ${isPending ? "opacity-40" : ""}`}>
+              <div className="flex flex-wrap items-center justify-between gap-1.5 w-full">
                 <p
-                  className="text-sm font-semibold"
+                  className="text-xs sm:text-sm font-bold truncate"
                   style={{
                     color: isCurrent
                       ? isOnHold
@@ -223,12 +206,13 @@ export function ShipmentTimeline({
 
                 {/* Admin actions if available for latest event in this stage */}
                 {adminMode && latestEvent?.id && (onEditEvent || onDeleteEvent) && (
-                  <div className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-2 shrink-0 opacity-90 hover:opacity-100 transition-opacity">
                     {onEditEvent && (
                       <button
                         type="button"
                         onClick={() => onEditEvent(latestEvent)}
-                        className="text-[10px] font-bold text-[#355DAF] hover:underline cursor-pointer"
+                        className="text-[11px] font-bold text-[#355DAF] hover:underline cursor-pointer"
+                        title="Edit checkpoint"
                       >
                         Edit
                       </button>
@@ -240,7 +224,8 @@ export function ShipmentTimeline({
                       <button
                         type="button"
                         onClick={() => onDeleteEvent(latestEvent.id!)}
-                        className="text-[10px] font-bold text-red-500 hover:underline cursor-pointer"
+                        className="text-[11px] font-bold text-red-500 hover:underline cursor-pointer"
+                        title="Delete checkpoint"
                       >
                         Delete
                       </button>
@@ -249,25 +234,25 @@ export function ShipmentTimeline({
                 )}
               </div>
 
-              {/* Show description for current stage (customer-facing) */}
-              {isCurrent && !adminMode && (
-                <p className="text-xs mt-1" style={{ color: "#667085" }}>
+              {/* Stage Description for current stage (or when active) */}
+              {isCurrent && (
+                <p className="text-[11px] sm:text-xs mt-1 text-[#667085] leading-relaxed break-words">
                   {SHIPMENT_STATUS_DESCRIPTIONS[status]}
                 </p>
               )}
 
-              {/* Show all stage events if multiple exist, or just the latest */}
+              {/* Show dates and checkpoint notes ONLY if recorded */}
               {stageEvents.length > 0 ? (
                 stageEvents.map((evt, evtIdx) => (
-                  <div key={evt.id || evtIdx} className={evtIdx > 0 ? "mt-2 pt-2 border-t border-gray-100" : ""}>
+                  <div key={evt.id || evtIdx} className={`min-w-0 ${evtIdx > 0 ? "mt-2 pt-2 border-t border-gray-100" : ""}`}>
                     {evt.date && (
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <Clock size={11} style={{ color: "#94A3B8" }} />
-                        <span className="text-[11px]" style={{ color: "#94A3B8" }}>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[#94A3B8] text-[10px] sm:text-[11px]">
+                        <Clock size={11} className="shrink-0" />
+                        <span className="font-medium whitespace-nowrap">
                           {evt.date}
                         </span>
                         {evt.location && (
-                          <span className="text-[11px]" style={{ color: "#94A3B8" }}>
+                          <span className="truncate max-w-[200px] sm:max-w-none">
                             · {evt.location}
                           </span>
                         )}
@@ -276,11 +261,11 @@ export function ShipmentTimeline({
 
                     {evt.note && (
                       <div
-                        className="mt-1.5 text-xs p-2.5 rounded-lg"
+                        className="mt-1.5 text-xs p-2.5 rounded-xl break-words whitespace-pre-wrap"
                         style={{
                           background: "#F7F9FC",
                           border: "1px solid #E5E7EB",
-                          color: "#667085",
+                          color: "#475569",
                         }}
                       >
                         {evt.note}
