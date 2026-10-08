@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendShippingFeeReminderEmail, ensureEmailLogSchema } from "@/lib/email/brevo";
+import { getSystemSettings } from "@/lib/system-settings";
 
 /**
  * Server-side Cron Handler for Shipping Fee Reminders (every 3 days cadence)
@@ -24,6 +25,14 @@ async function handleReminders(request: Request) {
 
   try {
     await ensureEmailLogSchema();
+
+    const settings = await getSystemSettings().catch(() => null);
+    if (settings && !settings.feeReminderEnabled) {
+      return NextResponse.json({
+        status: "skipped",
+        message: "Shipping fee reminders are currently disabled in System Settings.",
+      });
+    }
 
     // Find active shipments with shipping fees
     const shipments = await prisma.shipment.findMany({

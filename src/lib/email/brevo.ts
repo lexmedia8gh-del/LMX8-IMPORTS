@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ShipmentStatus, SHIPMENT_STATUS_ADMIN_LABELS } from "@/components/shipment-status";
 import { getBrandingForEmail, EmailBrandingInfo } from "@/lib/branding";
+import { getSystemSettings } from "@/lib/system-settings";
 import {
   getBrevoServerConfig,
   validateBrevoConfig,
@@ -1052,6 +1053,12 @@ export async function sendShipmentStatusEmail(params: SendShipmentStatusEmailPar
   console.log(`SHIPMENT_EMAIL_EVENT_DETECTED\nevent: ${eventType}\nshipmentId: ${params.shipmentId}\nstatus: ${params.status}`);
 
   try {
+    const settings = await getSystemSettings().catch(() => null);
+    if (settings && !settings.shipmentEmailEnabled && !params.force) {
+      console.log(`SHIPMENT_EMAIL_SKIPPED\nreason: DISABLED_IN_SYSTEM_SETTINGS`);
+      return { success: true, skipped: true, reason: "Shipment status emails are disabled in System Settings." };
+    }
+
     await ensureEmailLogSchema();
     const shipment = await prisma.shipment.findFirst({
       where: {
@@ -1238,6 +1245,12 @@ export async function sendShippingFeeReminderEmail(params: {
   console.log(`[FEE_STATEMENT_START] Initiating shipping fee statement for shipment: ${params.shipmentId} (force: ${Boolean(params.force)})`);
 
   try {
+    const settings = await getSystemSettings().catch(() => null);
+    if (settings && !settings.feeReminderEnabled && !params.force) {
+      console.log(`FEE_REMINDER_SKIPPED\nreason: DISABLED_IN_SYSTEM_SETTINGS`);
+      return { success: true, skipped: true, reason: "Shipping fee reminders are disabled in System Settings." };
+    }
+
     await ensureEmailLogSchema();
     const shipment = await prisma.shipment.findFirst({
       where: {
@@ -1281,25 +1294,26 @@ export async function sendShippingFeeReminderEmail(params: {
     const batch = shipment.batch;
     const batchDisplay = batch ? (batch.name || batch.batchNumber || "Consignment") : "Consignment";
 
-    // 3-day frequency check
-    console.log(`EMAIL_LOG_CHECK_START\nshipmentId: ${shipment.id}\neventType: SHIPPING_FEE_REMINDER`);
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    // Dynamic cadence frequency check (default 3 days or configured in settings)
+    const intervalDays = settings?.feeReminderIntervalDays || 3;
+    console.log(`EMAIL_LOG_CHECK_START\nshipmentId: ${shipment.id}\neventType: SHIPPING_FEE_REMINDER\nintervalDays: ${intervalDays}`);
+    const intervalAgo = new Date(Date.now() - intervalDays * 24 * 60 * 60 * 1000);
     const recentReminder = await prisma.emailLog.findFirst({
       where: {
         shipmentId: shipment.id,
         eventType: "SHIPPING_FEE_REMINDER",
         status: "SENT",
-        createdAt: { gte: threeDaysAgo },
+        createdAt: { gte: intervalAgo },
       },
       orderBy: { createdAt: "desc" },
     });
 
     if (recentReminder && !params.force) {
-      console.log(`EMAIL_LOG_DUPLICATE\nreason: SENT_WITHIN_3_DAYS\nlastSent: ${recentReminder.createdAt.toISOString()}`);
+      console.log(`EMAIL_LOG_DUPLICATE\nreason: SENT_WITHIN_${intervalDays}_DAYS\nlastSent: ${recentReminder.createdAt.toISOString()}`);
       return {
         success: true,
         skipped: true,
-        reason: `Reminder already sent within the last 3 days (${recentReminder.createdAt.toISOString().split("T")[0]}).`,
+        reason: `Reminder already sent within the last ${intervalDays} days (${recentReminder.createdAt.toISOString().split("T")[0]}).`,
       };
     }
     console.log("EMAIL_LOG_CHECK_SUCCESS");

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Settings, Globe, Bell, Database, ShieldCheck, Paintbrush, Users } from "lucide-react";
+import AdminSystemSettings from "@/components/admin-system-settings";
 import AdminSecuritySettings from "@/components/admin-security-settings";
 import AdminBrandingSettings from "@/components/admin-branding-settings";
 import AdminCustomerSettings from "@/components/admin-customer-settings";
@@ -18,39 +19,6 @@ export default function AdminSettingsPage() {
       }
     }
   }, []);
-
-  const systemSections = [
-    {
-      icon: <Globe size={20} className="text-[#3B82F6]" />,
-      title: "General Settings",
-      desc: "Business name, country, and operational contact coordinates.",
-      fields: [
-        { label: "Business Name", value: "LMX8 IMPORTS" },
-        { label: "Country", value: "Ghana" },
-        { label: "Support Email", value: "support@lmx8.com" },
-      ]
-    },
-    {
-      icon: <Bell size={20} className="text-[#FFB800]" />,
-      title: "Notification Settings",
-      desc: "Configure standard system trigger communications.",
-      fields: [
-        { label: "Shipment Updates", value: "Enabled" },
-        { label: "Payment Alerts", value: "Enabled" },
-        { label: "Sourcing Updates", value: "Enabled" },
-      ]
-    },
-    {
-      icon: <Database size={20} className="text-[#10B981]" />,
-      title: "Storage & Backend",
-      desc: "Platform datastore status and credentials profile.",
-      fields: [
-        { label: "Database", value: "Supabase PostgreSQL" },
-        { label: "Image Storage", value: "Supabase Private Storage" },
-        { label: "Payments", value: "Paystack (Active)" },
-      ]
-    },
-  ];
 
   return (
     <div className="space-y-7 max-w-5xl mx-auto">
@@ -112,29 +80,7 @@ export default function AdminSettingsPage() {
       {/* Tab Panels */}
       <div className="space-y-6">
         {activeTab === "system" && (
-          <div className="space-y-5 max-w-3xl">
-            {systemSections.map((section) => (
-              <div key={section.title} className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB]">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-xl bg-[#F7F9FC] flex items-center justify-center border border-[#E5E7EB]">
-                    {section.icon}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-base text-[#172236]">{section.title}</h3>
-                    <p className="text-xs text-[#667085]">{section.desc}</p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  {section.fields.map((f) => (
-                    <div key={f.label} className="flex items-start justify-between gap-4">
-                      <label className="text-xs font-semibold text-[#667085] w-40 shrink-0">{f.label}</label>
-                      <p className="text-sm font-medium text-[#172236] text-right">{f.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <AdminSystemSettings />
         )}
 
         {activeTab === "branding" && (

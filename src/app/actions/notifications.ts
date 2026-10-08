@@ -122,3 +122,58 @@ export async function markAllNotificationsReadAction() {
   revalidatePath("/portal/notifications");
   return { success: true };
 }
+
+// ── ADMIN-FACING SERVER ACTIONS ──────────────────────────────────────────────
+
+export async function getAdminNotificationsAndAuditAction() {
+  const { requireAdminSession } = await import("@/lib/auth");
+  await requireAdminSession();
+
+  const [notifications, auditLogs] = await Promise.all([
+    prisma.notification.findMany({
+      include: {
+        customer: {
+          select: { id: true, name: true, customerIdentifier: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 60,
+    }),
+    prisma.auditLog.findMany({
+      include: {
+        admin: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+      orderBy: { timestamp: "desc" },
+      take: 60,
+    }),
+  ]);
+
+  return {
+    notifications: notifications.map((n) => ({
+      id: n.id,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      read: n.read,
+      actionUrl: n.actionUrl,
+      createdAt: n.createdAt.toISOString(),
+      customer: n.customer ? {
+        id: n.customer.id,
+        name: n.customer.name,
+        customerIdentifier: n.customer.customerIdentifier,
+      } : null,
+    })),
+    auditLogs: auditLogs.map((a) => ({
+      id: a.id,
+      action: a.action,
+      entityType: a.entityType,
+      entityId: a.entityId,
+      description: a.description || "",
+      timestamp: a.timestamp.toISOString(),
+      adminName: a.admin?.name || "System Admin",
+      adminRole: a.admin?.role || "ADMIN",
+    })),
+  };
+}

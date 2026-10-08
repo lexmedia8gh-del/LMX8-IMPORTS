@@ -7,7 +7,7 @@ import Link from "next/link";
 import { getShipmentsAction, getCustomersAction } from "@/app/actions";
 import { getAllPaymentsAction } from "@/app/actions/admin-payments";
 import { getAllSourcingRequestsAction } from "@/app/actions/sourcing-credits";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 

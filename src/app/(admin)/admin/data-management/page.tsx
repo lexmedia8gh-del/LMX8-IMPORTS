@@ -21,6 +21,10 @@ import {
   deletePaymentSafeAction,
   cleanupTestDataAction,
   deleteSelectedDataRecordsAction,
+  getOperationalResetPreviewAction,
+  executeOperationalResetAction,
+  getResetAuditHistoryAction,
+  SUPPORTED_RESET_CATEGORIES,
 } from "@/app/actions/data-management";
 import Link from "next/link";
 
@@ -56,6 +60,21 @@ export default function AdminDataManagementPage() {
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
 
+  // Operational Data Reset System State
+  const [resetMode, setResetMode] = useState<"ALL_OPERATIONAL" | "SELECTED_CATEGORIES">("SELECTED_CATEGORIES");
+  const [selectedResetCategories, setSelectedResetCategories] = useState<Set<string>>(
+    new Set(["SHIPMENTS", "SOURCING_REQUESTS", "BATCHES"])
+  );
+  const [resetPreview, setResetPreview] = useState<any>(null);
+  const [loadingResetPreview, setLoadingResetPreview] = useState(false);
+  const [resetConfirmationPhrase, setResetConfirmationPhrase] = useState("");
+  const [resetAdminPin, setResetAdminPin] = useState("");
+  const [isExecutingReset, setIsExecutingReset] = useState(false);
+  const [resetResult, setResetResult] = useState<any>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetHistory, setResetHistory] = useState<any[]>([]);
+  const [loadingResetHistory, setLoadingResetHistory] = useState(false);
+
   // Danger Zone Test Purge State
   const [testPurgeText, setTestPurgeText] = useState<string>("");
   const [testPurgePin, setTestPurgePin] = useState<string>("");
@@ -70,6 +89,30 @@ export default function AdminDataManagementPage() {
     setSuccessToast(msg);
     setTimeout(() => setSuccessToast(null), 5000);
   };
+
+  const loadResetPreview = useCallback(async () => {
+    setLoadingResetPreview(true);
+    try {
+      const data = await getOperationalResetPreviewAction();
+      setResetPreview(data);
+    } catch (err) {
+      console.error("Failed to load reset preview:", err);
+    } finally {
+      setLoadingResetPreview(false);
+    }
+  }, []);
+
+  const loadResetHistory = useCallback(async () => {
+    setLoadingResetHistory(true);
+    try {
+      const data = await getResetAuditHistoryAction();
+      setResetHistory(data);
+    } catch (err) {
+      console.error("Failed to load reset history:", err);
+    } finally {
+      setLoadingResetHistory(false);
+    }
+  }, []);
 
   // Load Overview & Records
   const loadOverview = useCallback(async () => {
@@ -258,7 +301,48 @@ export default function AdminDataManagementPage() {
     });
   };
 
-  // Execute Test Data Purge
+  // Execute Operational Data Reset
+  const handleExecuteReset = async () => {
+    if (resetConfirmationPhrase.trim() !== "RESET LMX8 OPERATIONAL DATA") {
+      setResetError("Confirmation phrase must exactly match 'RESET LMX8 OPERATIONAL DATA'.");
+      return;
+    }
+    if (!resetAdminPin.trim()) {
+      setResetError("Administrator Security PIN is required.");
+      return;
+    }
+
+    setIsExecutingReset(true);
+    setResetError(null);
+    setResetResult(null);
+
+    try {
+      const res = await executeOperationalResetAction({
+        mode: resetMode,
+        categories: resetMode === "ALL_OPERATIONAL"
+          ? ["SHIPMENTS", "SOURCING_REQUESTS", "BATCHES", "CREDIT_LEDGER", "LOCAL_PAYMENTS", "EMAIL_LOGS_NOTIFICATIONS", "OPERATIONAL_AUDIT_LOGS"]
+          : Array.from(selectedResetCategories),
+        confirmationPhrase: resetConfirmationPhrase.trim(),
+        adminPin: resetAdminPin.trim(),
+      });
+
+      if (res?.error) {
+        setResetError(res.error);
+      } else {
+        setResetResult(res);
+        showToast("Operational data reset executed successfully.");
+        setResetConfirmationPhrase("");
+        setResetAdminPin("");
+        await Promise.all([loadOverview(), loadResetPreview(), loadResetHistory()]);
+      }
+    } catch (err: any) {
+      setResetError(err?.message || "Operational reset execution failed.");
+    } finally {
+      setIsExecutingReset(false);
+    }
+  };
+
+  // Execute Test Data Purge (legacy helper)
   const handleRunTestPurge = async () => {
     setTestPurgeError(null);
     setTestPurgeResult(null);
@@ -289,7 +373,7 @@ export default function AdminDataManagementPage() {
     { id: "events" as TabType, label: "Tracking Events", count: overview?.trackingEvents, icon: <Clock size={15} /> },
     { id: "payments" as TabType, label: "Payments", count: overview?.payments, icon: <Shield size={15} /> },
     { id: "notifications" as TabType, label: "Notifications", count: overview?.notifications, icon: <Bell size={15} /> },
-    { id: "danger" as TabType, label: "Danger Zone & Purge", count: null, icon: <ShieldAlert size={15} /> },
+    { id: "danger" as TabType, label: "Operational Reset", count: null, icon: <ShieldAlert size={15} /> },
   ];
 
   return (
@@ -1462,93 +1546,313 @@ export default function AdminDataManagementPage() {
             </div>
           )}
 
-          {/* ════════════ TAB 6: DANGER ZONE & TEST PURGE ════════════ */}
+          {/* ════════════ TAB 6: OPERATIONAL DATA RESET SYSTEM ════════════ */}
           {activeTab === "danger" && (
-            <div className="space-y-6 max-w-2xl">
+            <div className="space-y-7 max-w-4xl">
+              {/* Architecture Protection Banner */}
               <div className="p-5 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs space-y-2">
                 <div className="flex items-center gap-2 font-bold text-sm text-[#141B47]">
                   <Shield size={18} className="text-amber-600" />
-                  Protected Production Architecture
+                  Protected Operational Infrastructure
                 </div>
                 <p className="leading-relaxed text-[#475569]">
-                  LMX8 Ctrl Room prevents accidental database wipes. Financial transaction records, audit logs, and verified accounting events are immutable and cannot be destroyed through the web interface.
+                  This tool safely clears eligible operational data when transitioning between operational cycles.
+                  Critical infrastructure records are <strong>strictly preserved</strong> and cannot be deleted:
                 </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-semibold text-[#141B47]">
+                  <div className="bg-white/80 p-2 rounded-lg border border-amber-200/60">✓ Admin Accounts &amp; PINs</div>
+                  <div className="bg-white/80 p-2 rounded-lg border border-amber-200/60">✓ Customer Accounts &amp; PINs</div>
+                  <div className="bg-white/80 p-2 rounded-lg border border-amber-200/60">✓ Branding &amp; Logo Assets</div>
+                  <div className="bg-white/80 p-2 rounded-lg border border-amber-200/60">✓ System Settings &amp; Schema</div>
+                </div>
               </div>
 
-              <div className="bg-white rounded-2xl p-6 border border-red-200 shadow-xs space-y-5">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                    <Trash2 size={20} />
-                  </div>
+              {/* Mode Selection & Live Preview */}
+              <div className="bg-white rounded-2xl p-6 border border-[#E5E7EB] shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#F1F5F9]">
                   <div>
-                    <h3 className="font-bold text-base text-[#141B47]">Purge Test &amp; Staging Records</h3>
+                    <h3 className="font-bold text-base text-[#141B47]">Operational Reset Controls</h3>
                     <p className="text-xs text-[#667085] mt-0.5">
-                      Cleans up only records explicitly marked as test data (e.g. tracking numbers starting with <code>TEST-</code> or descriptions containing <code>[TEST]</code>).
+                      Select operational scope and preview live database counts before execution.
                     </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadResetPreview}
+                    disabled={loadingResetPreview}
+                    className="px-3 py-1.5 rounded-xl border border-[#E5E7EB] bg-gray-50 hover:bg-gray-100 text-xs font-semibold text-[#141B47] flex items-center gap-1.5 transition-colors cursor-pointer w-fit"
+                  >
+                    <RefreshCw size={12} className={loadingResetPreview ? "animate-spin" : ""} />
+                    Refresh Counts
+                  </button>
+                </div>
+
+                {/* Reset Mode Selector */}
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setResetMode("SELECTED_CATEGORIES")}
+                    className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                      resetMode === "SELECTED_CATEGORIES"
+                        ? "border-brand-navy bg-blue-50/40 ring-1 ring-brand-navy"
+                        : "border-[#E5E7EB] hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-sm text-[#141B47]">Reset Selected Categories</span>
+                      {resetMode === "SELECTED_CATEGORIES" && (
+                        <span className="w-2 h-2 rounded-full bg-brand-navy" />
+                      )}
+                    </div>
+                    <p className="text-xs text-[#667085]">
+                      Choose specific operational models to purge (e.g. shipments or sourcing requests).
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setResetMode("ALL_OPERATIONAL")}
+                    className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                      resetMode === "ALL_OPERATIONAL"
+                        ? "border-red-600 bg-red-50/40 ring-1 ring-red-600"
+                        : "border-[#E5E7EB] hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-sm text-red-700">Reset All Operational Data</span>
+                      {resetMode === "ALL_OPERATIONAL" && (
+                        <span className="w-2 h-2 rounded-full bg-red-600" />
+                      )}
+                    </div>
+                    <p className="text-xs text-[#667085]">
+                      Clear all 7 operational categories while keeping customer accounts and infrastructure intact.
+                    </p>
+                  </button>
+                </div>
+
+                {/* Categories Checkbox List */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#141B47]">
+                    <span>Eligible Operational Categories</span>
+                    {resetMode === "SELECTED_CATEGORIES" && (
+                      <div className="flex gap-2 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedResetCategories(new Set(SUPPORTED_RESET_CATEGORIES.map((c) => c.id)))}
+                          className="text-blue-600 hover:underline cursor-pointer"
+                        >
+                          Select All
+                        </button>
+                        <span>·</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedResetCategories(new Set())}
+                          className="text-gray-500 hover:underline cursor-pointer"
+                        >
+                          Deselect All
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-2.5">
+                    {SUPPORTED_RESET_CATEGORIES.map((cat) => {
+                      const isSelected = resetMode === "ALL_OPERATIONAL" || selectedResetCategories.has(cat.id);
+                      const catPreview = resetPreview?.categories?.[cat.id];
+
+                      return (
+                        <div
+                          key={cat.id}
+                          onClick={() => {
+                            if (resetMode === "ALL_OPERATIONAL") return;
+                            const next = new Set(selectedResetCategories);
+                            if (next.has(cat.id)) next.delete(cat.id);
+                            else next.add(cat.id);
+                            setSelectedResetCategories(next);
+                          }}
+                          className={`p-3 rounded-xl border flex items-start gap-3 transition-colors ${
+                            resetMode === "ALL_OPERATIONAL"
+                              ? "bg-red-50/20 border-red-200 opacity-90 cursor-default"
+                              : isSelected
+                              ? "bg-blue-50/30 border-blue-200 cursor-pointer"
+                              : "bg-white border-[#E5E7EB] hover:bg-gray-50 cursor-pointer"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={resetMode === "ALL_OPERATIONAL"}
+                            onChange={() => {}}
+                            className="mt-0.5 rounded text-brand-navy"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="text-xs font-bold text-[#172236] truncate">{cat.label}</p>
+                              {catPreview && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-800 font-mono">
+                                  {catPreview.count}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[#667085] leading-tight mt-0.5">{cat.desc}</p>
+                            {catPreview?.details && (
+                              <p className="text-[10px] text-brand-navy mt-1 truncate font-medium">
+                                {catPreview.details}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {testPurgeError && (
-                  <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700">
-                    {testPurgeError}
-                  </div>
-                )}
-
-                {testPurgeResult && (
-                  <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 space-y-1">
-                    <p>✓ Test data purge completed successfully!</p>
-                    <p className="text-[11px] font-normal">
-                      Deleted {testPurgeResult.deletedShipmentsCount} test shipment(s) and {testPurgeResult.deletedBatchesCount} test batch(es).
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-4 pt-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#172236]">
-                      Type <strong>DELETE TEST DATA</strong> to confirm:
-                    </label>
-                    <input
-                      type="text"
-                      value={testPurgeText}
-                      onChange={(e) => setTestPurgeText(e.target.value)}
-                      placeholder="DELETE TEST DATA"
-                      className="w-full px-4 h-11 rounded-xl text-xs font-mono font-bold border border-[#E5E7EB] bg-white focus:outline-hidden focus:border-red-500"
-                    />
+                {/* Confirmation Box */}
+                <div className="p-5 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-4">
+                  <div className="flex items-center gap-2 text-xs font-bold text-red-700">
+                    <AlertTriangle size={15} />
+                    <span>Operational Deletion Authorization</span>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#172236] flex items-center gap-1.5">
-                      <Lock size={13} /> Administrator Security PIN
-                    </label>
-                    <input
-                      type="password"
-                      maxLength={8}
-                      value={testPurgePin}
-                      onChange={(e) => setTestPurgePin(e.target.value)}
-                      placeholder="Enter Admin PIN"
-                      className="w-full px-4 h-11 rounded-xl text-xs font-mono tracking-widest border border-[#E5E7EB] bg-white focus:outline-hidden focus:border-red-500"
-                    />
+                  {resetError && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700">
+                      {resetError}
+                    </div>
+                  )}
+
+                  {resetResult && (
+                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1.5">
+                      <p className="font-bold flex items-center gap-1.5 text-sm">
+                        <CheckCircle2 size={16} className="text-emerald-600" />
+                        Operational Data Reset Completed Successfully!
+                      </p>
+                      <p className="font-mono text-[11px] text-emerald-800">
+                        Operation ID: {resetResult.operationId}
+                      </p>
+                      {resetResult.deletedCounts && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                          {Object.entries(resetResult.deletedCounts).map(([k, v]: any) => (
+                            <div key={k} className="bg-white/70 p-1.5 rounded border border-emerald-200">
+                              <span className="capitalize">{k}: </span>
+                              <strong className="tabular-nums">{v}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-[#172236]">
+                        Type <strong>RESET LMX8 OPERATIONAL DATA</strong> to confirm:
+                      </label>
+                      <input
+                        type="text"
+                        value={resetConfirmationPhrase}
+                        onChange={(e) => setResetConfirmationPhrase(e.target.value)}
+                        placeholder="RESET LMX8 OPERATIONAL DATA"
+                        className="w-full px-3.5 h-10 rounded-xl text-xs font-mono font-bold border border-[#E5E7EB] bg-white focus:outline-hidden focus:border-red-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-[#172236] flex items-center gap-1.5">
+                        <Lock size={13} /> Administrator Security PIN
+                      </label>
+                      <input
+                        type="password"
+                        maxLength={8}
+                        value={resetAdminPin}
+                        onChange={(e) => setResetAdminPin(e.target.value)}
+                        placeholder="Enter 6-8 digit Admin PIN"
+                        className="w-full px-3.5 h-10 rounded-xl text-xs font-mono tracking-widest border border-[#E5E7EB] bg-white focus:outline-hidden focus:border-red-500"
+                      />
+                    </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={handleRunTestPurge}
-                    disabled={testPurgeText !== "DELETE TEST DATA" || !testPurgePin || isPurging}
+                    onClick={handleExecuteReset}
+                    disabled={
+                      resetConfirmationPhrase.trim() !== "RESET LMX8 OPERATIONAL DATA" ||
+                      !resetAdminPin.trim() ||
+                      isExecutingReset ||
+                      (resetMode === "SELECTED_CATEGORIES" && selectedResetCategories.size === 0)
+                    }
                     className="w-full h-11 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                   >
-                    {isPurging ? (
+                    {isExecutingReset ? (
                       <>
                         <RefreshCw size={14} className="animate-spin" />
-                        <span>Purging Test Records...</span>
+                        <span>Executing Operational Data Reset...</span>
                       </>
                     ) : (
                       <>
                         <Trash2 size={14} />
-                        <span>Execute Test Data Purge</span>
+                        <span>Execute Operational Reset ({resetMode === "ALL_OPERATIONAL" ? "All Operational Data" : `${selectedResetCategories.size} Categories`})</span>
                       </>
                     )}
                   </button>
+                </div>
+              </div>
+
+              {/* Permanent Reset Audit History Table */}
+              <div className="bg-white rounded-2xl overflow-hidden border border-[#E5E7EB] shadow-xs">
+                <div className="px-6 py-4 border-b border-[#F1F5F9] flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-sm text-[#141B47]">Permanent Reset Audit History</h3>
+                    <p className="text-xs text-[#667085]">
+                      Immutable forensic log of all past operational data reset executions.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadResetHistory}
+                    disabled={loadingResetHistory}
+                    className="text-xs font-semibold text-brand-navy hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw size={12} className={loadingResetHistory ? "animate-spin" : ""} /> Refresh Log
+                  </button>
+                </div>
+
+                <div className="divide-y divide-[#F1F5F9] max-h-72 overflow-y-auto">
+                  {resetHistory.length === 0 ? (
+                    <div className="p-8 text-center text-[#667085] text-xs">
+                      No operational data resets have been executed yet.
+                    </div>
+                  ) : (
+                    resetHistory.map((audit) => (
+                      <div key={audit.id} className="p-4 hover:bg-gray-50/50 transition-colors space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono font-bold text-[#141B47]">{audit.operationId}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              audit.status === "SUCCESS"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {audit.status}
+                          </span>
+                        </div>
+                        <div className="text-[#64748B] flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                          <span>Admin: <strong>{audit.adminName}</strong> ({audit.adminEmail})</span>
+                          <span>·</span>
+                          <span>Mode: <strong className="font-mono">{audit.resetMode}</strong></span>
+                          <span>·</span>
+                          <span>Timestamp: <strong className="font-mono">{new Date(audit.startedAt).toLocaleString()}</strong></span>
+                        </div>
+                        <div className="text-[11px] text-[#475569] flex flex-wrap gap-1 pt-1">
+                          {audit.selectedCategories?.map((c: string) => (
+                            <span key={c} className="px-1.5 py-0.5 rounded bg-gray-100 font-mono text-[10px]">
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>

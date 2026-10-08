@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { UploadCloud, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/currency";
 import { createSourcingRequestAction, getCustomerCreditAccountAction } from "@/app/actions/sourcing-credits";
 import { CREDIT_PACKAGES } from "@/lib/credit-packages";
 

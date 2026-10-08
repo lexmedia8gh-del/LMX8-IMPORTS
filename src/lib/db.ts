@@ -1,4 +1,3 @@
-import { MOCK_SHIPMENTS, MOCK_BATCHES, MOCK_CUSTOMERS } from "./mock-data";
 import { ShipmentStatus } from "@/components/shipment-status";
 
 export type TrackingEvent = {
@@ -62,26 +61,9 @@ const globalForDb = globalThis as unknown as {
 };
 
 export const db = globalForDb.db || {
-  shipments: MOCK_SHIPMENTS.map(s => ({
-    ...s,
-    // Map any legacy human-readable status values to Prisma enum values
-    status: "SHIPMENT_CREATED" as ShipmentStatus,
-    origin: "Shenzhen, China",
-    destination: "Accra, Ghana",
-    shippingMethod: "Sea Freight",
-    estimatedArrival: "2026-10-25",
-    trackingEvents: [
-      { id: "EVT-1", status: "SHIPMENT_CREATED" as ShipmentStatus, date: s.registeredDate, note: "Package received and registered." },
-    ],
-    photos: []
-  })),
-  batches: MOCK_BATCHES.map(b => ({
-    ...b,
-    name: b.id,
-    createdAt: "2026-09-01"
-  }))
+  shipments: [] as Shipment[],
+  batches: [] as Batch[],
 };
-
 
 if (process.env.NODE_ENV !== "production") {
   globalForDb.db = db;

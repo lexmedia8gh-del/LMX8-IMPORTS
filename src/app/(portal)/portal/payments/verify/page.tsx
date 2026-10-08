@@ -1,7 +1,7 @@
 import { verifyPaymentAction } from "@/app/actions/payments";
 import Link from "next/link";
 import { CheckCircle2, XCircle, Loader2, ArrowRight, ShieldAlert, LogIn, Receipt } from "lucide-react";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 

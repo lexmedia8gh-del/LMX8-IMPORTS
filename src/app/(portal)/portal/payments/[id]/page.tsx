@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Lock, CheckCircle2 } from "lucide-react";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/currency";
 import { getShipmentForCheckoutAction } from "@/app/actions/customer-payments";
 import { ShippingPayNowButton } from "@/components/shipping-pay-now-button";
 import { BrandLogo } from "@/components/brand-logo";

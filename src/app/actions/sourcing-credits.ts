@@ -184,9 +184,67 @@ export async function getAllSourcingRequestsAction() {
     status: r.status,
     customerId: r.customer.customerIdentifier,
     customerName: r.customer.name,
+    customerEmail: r.customer.email,
+    customerPhone: r.customer.phone,
     creditsUsed: r.creditsUsed,
+    preferredSizeColor: r.preferredSizeColor,
+    additionalInstructions: r.additionalInstructions,
+    adminNotes: r.adminNotes,
     createdAt: r.createdAt.toISOString().split("T")[0],
   }));
+}
+
+export async function updateSourcingRequestStatusAction(params: {
+  requestId: string;
+  status: "PENDING" | "QUOTED" | "APPROVED" | "REJECTED" | "PURCHASED" | "SHIPPED";
+  adminNotes?: string;
+}) {
+  const admin = await requireAdminSession();
+  const { requestId, status, adminNotes } = params;
+
+  if (!requestId) return { error: "Request ID is required." };
+
+  const request = await prisma.sourcingRequest.findUnique({
+    where: { id: requestId },
+    include: { customer: true },
+  });
+
+  if (!request) return { error: "Sourcing request not found." };
+
+  const updated = await prisma.sourcingRequest.update({
+    where: { id: requestId },
+    data: {
+      status,
+      adminNotes: adminNotes ?? request.adminNotes,
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: "SOURCING_STATUS_UPDATE",
+      entityType: "SourcingRequest",
+      entityId: request.id,
+      description: `Sourcing request ${request.requestNumber} status changed to ${status} by ${admin.name}`,
+      adminId: admin.id,
+      metadata: { requestId, oldStatus: request.status, newStatus: status, adminNotes },
+    },
+  });
+
+  try {
+    const { createNotificationInternal } = await import("@/app/actions/notifications");
+    await createNotificationInternal({
+      customerId: request.customerId,
+      type: "SYSTEM",
+      title: `Sourcing Request Update: ${request.requestNumber}`,
+      message: `Your sourcing request for "${request.productDetails.slice(0, 40)}" has been updated to ${status}.`,
+      actionUrl: `/portal/sourcing`,
+      idempotencyKey: `sourcing-notif-${request.id}-${status}`,
+    });
+  } catch (err) {
+    console.error("Sourcing notification error:", err);
+  }
+
+  return { success: true, request: updated };
 }
 
 // ── CREDITS ───────────────────────────────────────────────────────────────────
@@ -478,4 +536,133 @@ export async function getCustomerRecentActivitiesAction() {
       timestamp: a.timestamp.toISOString(),
       icon: a.icon,
     }));
+}
+
+// ── Admin: Credit overview & adjustments ─────────────────────────────────────
+
+export async function getAdminCreditsOverviewAction() {
+  await requireAdminSession();
+  await ensureCreditAccountSchema();
+
+  const customers = await prisma.customer.findMany({
+    select: {
+      id: true,
+      customerIdentifier: true,
+      name: true,
+      phone: true,
+      email: true,
+      creditAccount: {
+        select: {
+          id: true,
+          balance: true,
+          creditsPurchased: true,
+          creditsUsed: true,
+          lastActivityAt: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const { CREDIT_PACKAGES } = await import("@/lib/credit-packages");
+  const packagesList = Object.entries(CREDIT_PACKAGES).map(([key, pkg]) => ({
+    id: key,
+    name: pkg.name,
+    credits: pkg.credits,
+    price: pkg.price,
+  }));
+
+  return {
+    packages: packagesList,
+    customers: customers.map((c) => ({
+      id: c.id,
+      customerIdentifier: c.customerIdentifier,
+      name: c.name,
+      phone: c.phone || "N/A",
+      email: c.email || "N/A",
+      credits: c.creditAccount?.balance ?? 0,
+      creditsPurchased: c.creditAccount?.creditsPurchased ?? 0,
+      creditsUsed: c.creditAccount?.creditsUsed ?? 0,
+      lastActivityAt: c.creditAccount?.lastActivityAt?.toISOString() ?? null,
+    })),
+  };
+}
+
+export async function adminAdjustCustomerCreditsAction(params: {
+  customerId: string;
+  amount: number;
+  note: string;
+}) {
+  const admin = await requireAdminSession();
+  await ensureCreditAccountSchema();
+
+  const { customerId, amount, note } = params;
+
+  if (!customerId) return { error: "Customer ID is required." };
+  if (!amount || isNaN(amount) || amount === 0) return { error: "Valid non-zero credit adjustment is required." };
+
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    include: { creditAccount: true },
+  });
+
+  if (!customer) return { error: "Customer not found." };
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      let account = customer.creditAccount;
+      if (!account) {
+        account = await tx.creditAccount.create({
+          data: {
+            customerId: customer.id,
+            balance: 0,
+            creditsRemaining: 0,
+          },
+        });
+      }
+
+      const balanceBefore = account.balance;
+      const balanceAfter = Math.max(0, balanceBefore + amount);
+
+      const updatedAccount = await tx.creditAccount.update({
+        where: { id: account.id },
+        data: {
+          balance: balanceAfter,
+          creditsRemaining: balanceAfter,
+          creditsPurchased: amount > 0 ? (account.creditsPurchased || 0) + amount : account.creditsPurchased,
+          lastActivityAt: new Date(),
+        },
+      });
+
+      await tx.creditTransaction.create({
+        data: {
+          type: "ADMIN_ADJUSTMENT",
+          amount,
+          balanceBefore,
+          balanceAfter,
+          reference: `ADJ-${Date.now()}`,
+          description: note || `Admin credit adjustment by ${admin.name}`,
+          customerId: customer.id,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: "ADMIN_CREDIT_ADJUSTMENT",
+          entityType: "Customer",
+          entityId: customer.id,
+          description: `Adjusted credits for ${customer.name} (${customer.customerIdentifier}) by ${amount > 0 ? "+" : ""}${amount} credits (New balance: ${balanceAfter}). Note: ${note || "None"}`,
+          adminId: admin.id,
+          metadata: { customerId: customer.id, amount, balanceBefore, balanceAfter, note },
+        },
+      });
+
+      return updatedAccount;
+    });
+
+    return { success: true, balance: updated.balance };
+  } catch (err: any) {
+    console.error("[adminAdjustCustomerCreditsAction] Error:", err);
+    return { error: err?.message || "Failed to adjust credits." };
+  }
 }

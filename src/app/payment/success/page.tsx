@@ -7,7 +7,7 @@ import {
   ShieldAlert,
   AlertCircle,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/currency";
 import { verifyPaymentAction } from "@/app/actions/payments";
 import { getBrandSettingsAction } from "@/app/actions/branding";
 import { BrandLogo } from "@/components/brand-logo";

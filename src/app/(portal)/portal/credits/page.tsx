@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/currency";
 import { CheckCircle2, History, ArrowRightLeft } from "lucide-react";
 import { getCustomerCreditAccountAction } from "@/app/actions/sourcing-credits";
 import { CreditPurchaseButton } from "@/components/credit-purchase-button";

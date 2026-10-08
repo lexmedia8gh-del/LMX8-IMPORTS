@@ -365,3 +365,46 @@ model EmailLog {
   @@index([createdAt])
 }
 
+model ResetAudit {
+  id                 String    @id @default(uuid())
+  operationId        String    @unique
+  adminId            String
+  adminName          String
+  adminEmail         String
+  resetMode          String    // "ALL_OPERATIONAL" | "SELECTED_CATEGORIES"
+  selectedCategories String[]  // e.g. ["SHIPMENTS", "SOURCING_REQUESTS", "BATCHES", "CREDIT_LEDGER", "LOCAL_PAYMENTS", "EMAIL_LOGS_NOTIFICATIONS", "OPERATIONAL_AUDIT_LOGS"]
+  countsBefore       Json      // snapshot of counts
+  countsAfter        Json      // snapshot of counts
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  status             String    // "SUCCESS" | "FAILED" | "IN_PROGRESS"
+  pendingCleanup     Json?     // list of storage files pending cleanup
+  errorMessage       String?
+  metadata           Json?
+  createdAt          DateTime  @default(now())
+
+  @@index([adminId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SystemSettings {
+  id                      String   @id @default("singleton")
+  // General
+  defaultTimezone         String   @default("Africa/Accra")
+  dateTimeFormat          String   @default("DD/MM/YYYY")
+  defaultCurrency         String   @default("GHS")
+  // Notifications
+  shipmentEmailEnabled    Boolean  @default(true)
+  feeReminderEnabled      Boolean  @default(true)
+  feeReminderIntervalDays Int      @default(3)
+  failedEmailRetryMax     Int      @default(3)
+  // Security
+  sessionTimeoutMinutes   Int      @default(60)
+  maxLoginAttempts        Int      @default(5)
+  lockoutDurationMinutes  Int      @default(15)
+  updatedAt               DateTime @updatedAt
+  updatedBy               String?  // Admin User ID
+}
+
+

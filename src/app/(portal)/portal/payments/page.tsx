@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getOutstandingShipmentsAction, getCustomerPaymentsAction } from "@/app/actions/customer-payments";
 import { CheckCircle2, AlertCircle, ArrowRight, Receipt } from "lucide-react";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 

@@ -1273,3 +1273,423 @@ export async function deleteSelectedDataRecordsAction(
       return { error: "Invalid entity type for bulk deletion." };
   }
 }
+
+// ── OPERATIONAL DATA RESET SYSTEM ──────────────────────────────────────────
+
+let isResetInProgress = false;
+
+export const SUPPORTED_RESET_CATEGORIES = [
+  { id: "SHIPMENTS", label: "Shipments & Tracking History", desc: "All shipments, tracking events, and cargo photos" },
+  { id: "SOURCING_REQUESTS", label: "Sourcing Requests", desc: "Customer product sourcing requests and quotations" },
+  { id: "BATCHES", label: "Batch Operational Records", desc: "Shipping consignments and batch schedules" },
+  { id: "CREDIT_LEDGER", label: "Credit Ledger & Balances", desc: "Credit transactions (resets balances to 0)" },
+  { id: "LOCAL_PAYMENTS", label: "Local Payment Records", desc: "Local database payment history (does not affect external Paystack)" },
+  { id: "EMAIL_LOGS_NOTIFICATIONS", label: "Email Logs & Notifications", desc: "Notification history and Brevo email delivery logs" },
+  { id: "OPERATIONAL_AUDIT_LOGS", label: "Operational Audit Logs", desc: "General activity audit records (preserves Reset Audits)" },
+] as const;
+
+export type ResetCategoryId = typeof SUPPORTED_RESET_CATEGORIES[number]["id"];
+
+/**
+ * 1. Generate live operational reset preview with real database counts
+ */
+export async function getOperationalResetPreviewAction() {
+  await requireAdminSession();
+  const { ensureResetAuditSchema } = await import("@/lib/reset-audit");
+  await ensureResetAuditSchema();
+
+  const [
+    shipmentsCount,
+    trackingEventsCount,
+    photosCount,
+    sourcingRequestsCount,
+    batchesCount,
+    creditTransactionsCount,
+    creditAccountsCount,
+    paymentsCount,
+    emailLogsCount,
+    notificationsCount,
+    auditLogsCount,
+    // Protected records
+    adminUsersCount,
+    customersCount,
+    brandSettingsCount,
+    systemSettingsCount,
+  ] = await Promise.all([
+    prisma.shipment.count(),
+    prisma.trackingEvent.count(),
+    prisma.shipmentPhoto.count(),
+    prisma.sourcingRequest.count(),
+    prisma.batch.count(),
+    prisma.creditTransaction.count(),
+    prisma.creditAccount.count(),
+    prisma.payment.count(),
+    prisma.emailLog.count().catch(() => 0),
+    prisma.notification.count(),
+    prisma.auditLog.count(),
+    prisma.adminUser.count(),
+    prisma.customer.count(),
+    prisma.brandSettings.count().catch(() => 1),
+    prisma.systemSettings.count().catch(() => 1),
+  ]);
+
+  return {
+    categories: {
+      SHIPMENTS: {
+        count: shipmentsCount,
+        details: `${shipmentsCount} shipments, ${trackingEventsCount} tracking events, ${photosCount} photos`,
+      },
+      SOURCING_REQUESTS: {
+        count: sourcingRequestsCount,
+        details: `${sourcingRequestsCount} customer sourcing applications`,
+      },
+      BATCHES: {
+        count: batchesCount,
+        details: `${batchesCount} shipping batches`,
+      },
+      CREDIT_LEDGER: {
+        count: creditTransactionsCount,
+        details: `${creditTransactionsCount} transactions across ${creditAccountsCount} accounts`,
+      },
+      LOCAL_PAYMENTS: {
+        count: paymentsCount,
+        details: `${paymentsCount} local payment ledger records`,
+      },
+      EMAIL_LOGS_NOTIFICATIONS: {
+        count: emailLogsCount + notificationsCount,
+        details: `${emailLogsCount} email logs, ${notificationsCount} notifications`,
+      },
+      OPERATIONAL_AUDIT_LOGS: {
+        count: auditLogsCount,
+        details: `${auditLogsCount} administrative audit entries`,
+      },
+    },
+    totalOperationalRecords:
+      shipmentsCount +
+      trackingEventsCount +
+      photosCount +
+      sourcingRequestsCount +
+      batchesCount +
+      creditTransactionsCount +
+      paymentsCount +
+      emailLogsCount +
+      notificationsCount +
+      auditLogsCount,
+    protectedInfrastructure: {
+      adminAccounts: adminUsersCount,
+      customerAccounts: customersCount,
+      brandSettings: brandSettingsCount,
+      systemSettings: systemSettingsCount,
+    },
+  };
+}
+
+/**
+ * 2. Execute Operational Data Reset
+ */
+export async function executeOperationalResetAction(params: {
+  mode: "ALL_OPERATIONAL" | "SELECTED_CATEGORIES";
+  categories: string[];
+  confirmationPhrase: string;
+  adminPin: string;
+}): Promise<{
+  success: boolean;
+  operationId?: string;
+  deletedCounts?: Record<string, number>;
+  pendingCleanup?: string[];
+  error?: string;
+}> {
+  const admin = await requireAdminSession();
+  const { ensureResetAuditSchema } = await import("@/lib/reset-audit");
+  await ensureResetAuditSchema();
+
+  const { mode, categories, confirmationPhrase, adminPin } = params;
+
+  // Strict confirmation phrase
+  if (confirmationPhrase.trim() !== "RESET LMX8 OPERATIONAL DATA") {
+    return { success: false, error: "Confirmation phrase must exactly match 'RESET LMX8 OPERATIONAL DATA'." };
+  }
+
+  // Admin PIN is strictly required for operational resets
+  if (!adminPin || adminPin.trim().length === 0) {
+    return { success: false, error: "Admin PIN is required to authorize an operational data reset." };
+  }
+
+  const isPinValid = await verifyAdminPinInternal(admin.id, adminPin.trim());
+  if (!isPinValid) {
+    return { success: false, error: "Authentication failed. Invalid Admin PIN." };
+  }
+
+  // Prevent concurrent resets
+  if (isResetInProgress) {
+    return { success: false, error: "Another operational reset is currently in progress. Please wait." };
+  }
+
+  isResetInProgress = true;
+  const operationId = `RESET-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  const startedAt = new Date();
+
+  const activeCategories = mode === "ALL_OPERATIONAL"
+    ? ["SHIPMENTS", "SOURCING_REQUESTS", "BATCHES", "CREDIT_LEDGER", "LOCAL_PAYMENTS", "EMAIL_LOGS_NOTIFICATIONS", "OPERATIONAL_AUDIT_LOGS"]
+    : categories.filter((c) =>
+        ["SHIPMENTS", "SOURCING_REQUESTS", "BATCHES", "CREDIT_LEDGER", "LOCAL_PAYMENTS", "EMAIL_LOGS_NOTIFICATIONS", "OPERATIONAL_AUDIT_LOGS"].includes(c)
+      );
+
+  if (activeCategories.length === 0) {
+    isResetInProgress = false;
+    return { success: false, error: "At least one valid operational category must be selected." };
+  }
+
+  try {
+    // 1. Snapshot counts before
+    const [
+      bShipments,
+      bTracking,
+      bPhotos,
+      bSourcing,
+      bBatches,
+      bCredits,
+      bPayments,
+      bEmails,
+      bNotifications,
+      bAudits,
+    ] = await Promise.all([
+      prisma.shipment.count(),
+      prisma.trackingEvent.count(),
+      prisma.shipmentPhoto.count(),
+      prisma.sourcingRequest.count(),
+      prisma.batch.count(),
+      prisma.creditTransaction.count(),
+      prisma.payment.count(),
+      prisma.emailLog.count().catch(() => 0),
+      prisma.notification.count(),
+      prisma.auditLog.count(),
+    ]);
+
+    const countsBefore: Record<string, number> = {
+      shipments: bShipments,
+      trackingEvents: bTracking,
+      photos: bPhotos,
+      sourcingRequests: bSourcing,
+      batches: bBatches,
+      creditTransactions: bCredits,
+      payments: bPayments,
+      emailLogs: bEmails,
+      notifications: bNotifications,
+      auditLogs: bAudits,
+    };
+
+    const pendingCleanup: string[] = [];
+
+    // 2. Storage Cleanup for Shipment Photos if Shipments selected
+    if (activeCategories.includes("SHIPMENTS")) {
+      const photos = await prisma.shipmentPhoto.findMany({
+        where: { status: { not: "DELETED" } },
+        select: { objectPath: true, bucket: true },
+      });
+
+      for (const p of photos) {
+        if (p.objectPath && !p.objectPath.startsWith("http")) {
+          try {
+            await deleteFileFromStorage(p.objectPath, p.bucket);
+          } catch {
+            pendingCleanup.push(p.objectPath);
+          }
+        }
+      }
+    }
+
+    // 3. Foreign-key safe database deletions
+    await prisma.$transaction(async (tx) => {
+      // Step A: Email logs & notifications
+      if (activeCategories.includes("EMAIL_LOGS_NOTIFICATIONS")) {
+        await tx.emailLog.deleteMany({});
+        await tx.notification.deleteMany({});
+      }
+
+      // Step B: Sourcing Requests
+      if (activeCategories.includes("SOURCING_REQUESTS")) {
+        await tx.sourcingRequest.deleteMany({});
+      }
+
+      // Step C: Credit Ledger
+      if (activeCategories.includes("CREDIT_LEDGER")) {
+        await tx.creditTransaction.deleteMany({});
+        await tx.creditAccount.updateMany({
+          data: {
+            balance: 0,
+            creditsRemaining: 0,
+            creditsUsed: 0,
+            creditsPurchased: 0,
+            lastActivityAt: new Date(),
+          },
+        });
+      }
+
+      // Step D: Local Payments
+      if (activeCategories.includes("LOCAL_PAYMENTS")) {
+        // Disconnect relations before deleting payments
+        await tx.creditTransaction.updateMany({
+          where: { paymentId: { not: null } },
+          data: { paymentId: null },
+        });
+        await tx.notification.updateMany({
+          where: { paymentId: { not: null } },
+          data: { paymentId: null },
+        });
+        await tx.payment.deleteMany({});
+      }
+
+      // Step E: Shipments & dependent tracking events/photos
+      if (activeCategories.includes("SHIPMENTS")) {
+        // Unlink payments if payments category wasn't wiped
+        await tx.payment.updateMany({
+          where: { shipmentId: { not: null } },
+          data: { shipmentId: null },
+        });
+        await tx.emailLog.updateMany({
+          where: { shipmentId: { not: null } },
+          data: { shipmentId: null },
+        });
+        await tx.notification.updateMany({
+          where: { shipmentId: { not: null } },
+          data: { shipmentId: null },
+        });
+        await tx.trackingEvent.deleteMany({});
+        await tx.shipmentPhoto.deleteMany({});
+        await tx.shipment.deleteMany({});
+      }
+
+      // Step F: Batches
+      if (activeCategories.includes("BATCHES")) {
+        await tx.shipment.updateMany({
+          where: { batchId: { not: null } },
+          data: { batchId: null },
+        });
+        await tx.emailLog.updateMany({
+          where: { batchId: { not: null } },
+          data: { batchId: null },
+        });
+        await tx.batch.deleteMany({});
+      }
+
+      // Step G: General Audit Logs (preserving ResetAudit)
+      if (activeCategories.includes("OPERATIONAL_AUDIT_LOGS")) {
+        await tx.auditLog.deleteMany({});
+      }
+    });
+
+    // 4. Snapshot counts after
+    const [
+      aShipments,
+      aTracking,
+      aPhotos,
+      aSourcing,
+      aBatches,
+      aCredits,
+      aPayments,
+      aEmails,
+      aNotifications,
+      aAudits,
+    ] = await Promise.all([
+      prisma.shipment.count(),
+      prisma.trackingEvent.count(),
+      prisma.shipmentPhoto.count(),
+      prisma.sourcingRequest.count(),
+      prisma.batch.count(),
+      prisma.creditTransaction.count(),
+      prisma.payment.count(),
+      prisma.emailLog.count().catch(() => 0),
+      prisma.notification.count(),
+      prisma.auditLog.count(),
+    ]);
+
+    const countsAfter: Record<string, number> = {
+      shipments: aShipments,
+      trackingEvents: aTracking,
+      photos: aPhotos,
+      sourcingRequests: aSourcing,
+      batches: aBatches,
+      creditTransactions: aCredits,
+      payments: aPayments,
+      emailLogs: aEmails,
+      notifications: aNotifications,
+      auditLogs: aAudits,
+    };
+
+    // 5. Persist permanent ResetAudit record (survives any reset)
+    await prisma.resetAudit.create({
+      data: {
+        operationId,
+        adminId: admin.id,
+        adminName: admin.name,
+        adminEmail: admin.email,
+        resetMode: mode,
+        selectedCategories: activeCategories,
+        countsBefore,
+        countsAfter,
+        startedAt,
+        completedAt: new Date(),
+        status: "SUCCESS",
+        pendingCleanup: pendingCleanup.length > 0 ? (pendingCleanup as unknown as import("@prisma/client").Prisma.InputJsonValue) : undefined,
+      },
+    });
+
+    isResetInProgress = false;
+
+    return {
+      success: true,
+      operationId,
+      deletedCounts: {
+        shipments: Math.max(0, bShipments - aShipments),
+        trackingEvents: Math.max(0, bTracking - aTracking),
+        sourcingRequests: Math.max(0, bSourcing - aSourcing),
+        batches: Math.max(0, bBatches - aBatches),
+        creditTransactions: Math.max(0, bCredits - aCredits),
+        payments: Math.max(0, bPayments - aPayments),
+        emailLogs: Math.max(0, bEmails - aEmails),
+        notifications: Math.max(0, bNotifications - aNotifications),
+        auditLogs: Math.max(0, bAudits - aAudits),
+      },
+      pendingCleanup,
+    };
+  } catch (err: any) {
+    isResetInProgress = false;
+    console.error("[executeOperationalResetAction] Error:", err);
+
+    // Record failure in ResetAudit
+    try {
+      await prisma.resetAudit.create({
+        data: {
+          operationId,
+          adminId: admin.id,
+          adminName: admin.name,
+          adminEmail: admin.email,
+          resetMode: mode,
+          selectedCategories: activeCategories,
+          countsBefore: {},
+          countsAfter: {},
+          startedAt,
+          completedAt: new Date(),
+          status: "FAILED",
+          errorMessage: err?.message || String(err),
+        },
+      });
+    } catch {}
+
+    return {
+      success: false,
+      error: `Reset failed: ${err?.message || "Internal database transaction error."}`,
+    };
+  }
+}
+
+/**
+ * 3. Fetch past operational reset audits
+ */
+export async function getResetAuditHistoryAction() {
+  await requireAdminSession();
+  const { getResetAuditHistory } = await import("@/lib/reset-audit");
+  return getResetAuditHistory();
+}
+

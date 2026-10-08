@@ -1,5 +1,5 @@
 import { getAllPaymentsAction } from "@/app/actions/admin-payments";
-import { formatCurrency } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/currency";
 import { CheckCircle2, AlertCircle, XCircle, Clock } from "lucide-react";
 
 function statusBadge(status: string) {
