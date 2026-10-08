@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 import { initializeCreditPurchaseAction } from "@/app/actions/payments";
 import type { CreditPackageId } from "@/lib/credit-packages";
+import { useBrandSettings } from "@/components/brand-provider";
 
 export function CreditPurchaseButton({
   packageId,
@@ -16,6 +17,8 @@ export function CreditPurchaseButton({
 }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
 
   async function handlePurchase() {
     setLoading(true);
@@ -36,6 +39,10 @@ export function CreditPurchaseButton({
     }
   }
 
+  const bgBtn = popular
+    ? (branding?.accentColor || "var(--accent)")
+    : (branding?.primaryColor || "var(--primary)");
+
   return (
     <div className="space-y-3">
       {errorMessage && (
@@ -48,7 +55,7 @@ export function CreditPurchaseButton({
         onClick={handlePurchase}
         disabled={loading}
         className="w-full py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer text-white"
-        style={{ background: popular ? "#F2901F" : "#141B47" }}
+        style={{ background: bgBtn }}
       >
         {loading ? (
           <>

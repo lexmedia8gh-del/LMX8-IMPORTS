@@ -6,6 +6,7 @@ import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
 import { createSourcingRequestAction, getCustomerCreditAccountAction } from "@/app/actions/sourcing-credits";
 import { CREDIT_PACKAGES } from "@/lib/credit-packages";
+import { useBrandSettings } from "@/components/brand-provider";
 
 // Generate a new UUID using the Web Crypto API (available in all modern browsers)
 function newUUID(): string {
@@ -16,6 +17,11 @@ export default function SourcingPage() {
   const [drag, setDrag] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
+  const accentColor = branding?.accentColor || "var(--accent)";
+  const primaryColor = branding?.primaryColor || "var(--primary)";
 
   // The idempotency key is stable for the lifetime of this form session.
   // It only resets after a successful submission, ensuring retries reuse the same key.
@@ -69,7 +75,7 @@ export default function SourcingPage() {
             <p className="font-bold text-base" style={{ color: "#10B981" }}>1 Credit</p>
           </div>
           <Link href="/portal/credits">
-            <button className="px-4 py-1.5 text-xs font-bold rounded-lg transition-colors hover:opacity-90" style={{ background: "#FFB800", color: "#07182F" }}>
+            <button className="px-4 py-1.5 text-xs font-bold rounded-lg transition-colors hover:opacity-90 cursor-pointer" style={{ background: accentColor, color: "#FFFFFF" }}>
               Buy Credits
             </button>
           </Link>
@@ -84,12 +90,12 @@ export default function SourcingPage() {
             <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
               {/* Upload area */}
               <div 
-                className={`w-full flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-10 transition-colors ${drag ? "bg-yellow-50/50 border-yellow-400" : "bg-gray-50/50 border-gray-300 hover:border-gray-400 hover:bg-gray-50"}`}
+                className={`w-full flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-10 transition-colors ${drag ? "bg-amber-50/50 border-amber-400" : "bg-gray-50/50 border-gray-300 hover:border-gray-400 hover:bg-gray-50"}`}
                 onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
                 onDragLeave={() => setDrag(false)}
                 onDrop={(e) => { e.preventDefault(); setDrag(false); }}
               >
-                <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(11,31,68,0.05)", color: "#0B1F44" }}>
+                <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ background: `${primaryColor}10`, color: primaryColor }}>
                   <UploadCloud size={24} />
                 </div>
                 <p className="font-semibold text-sm mb-1" style={{ color: "#172236" }}>Upload product image</p>
@@ -104,7 +110,7 @@ export default function SourcingPage() {
                   rows={3}
                   required
                   placeholder="Describe the product you want to source..."
-                  className="w-full p-4 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 transition-colors bg-white resize-none"
+                  className="w-full p-4 rounded-xl text-sm border focus:outline-none transition-colors bg-white resize-none"
                   style={{ borderColor: "#E5E7EB" }}
                 />
               </div>
@@ -113,17 +119,17 @@ export default function SourcingPage() {
               <div className="grid md:grid-cols-2 gap-5">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold" style={{ color: "#172236" }}>Quantity</label>
-                  <input name="quantity" type="number" min={1} placeholder="Enter quantity" className="w-full px-4 h-12 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 transition-colors bg-white" style={{ borderColor: "#E5E7EB" }} />
+                  <input name="quantity" type="number" min={1} placeholder="Enter quantity" className="w-full px-4 h-12 rounded-xl text-sm border focus:outline-none transition-colors bg-white" style={{ borderColor: "#E5E7EB" }} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold" style={{ color: "#172236" }}>Preferred size / colour</label>
-                  <input name="preferredSizeColor" type="text" placeholder="e.g. Large / Black" className="w-full px-4 h-12 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 transition-colors bg-white" style={{ borderColor: "#E5E7EB" }} />
+                  <input name="preferredSizeColor" type="text" placeholder="e.g. Large / Black" className="w-full px-4 h-12 rounded-xl text-sm border focus:outline-none transition-colors bg-white" style={{ borderColor: "#E5E7EB" }} />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold" style={{ color: "#172236" }}>Additional instructions</label>
-                <textarea name="additionalInstructions" rows={3} placeholder="Any special requirements..." className="w-full p-4 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 transition-colors bg-white resize-none" style={{ borderColor: "#E5E7EB" }} />
+                <textarea name="additionalInstructions" rows={3} placeholder="Any special requirements..." className="w-full p-4 rounded-xl text-sm border focus:outline-none transition-colors bg-white resize-none" style={{ borderColor: "#E5E7EB" }} />
               </div>
 
               {/* Status messages */}
@@ -136,8 +142,8 @@ export default function SourcingPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{ background: "#FFB800", color: "#07182F" }}
+                className="w-full h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer text-white"
+                style={{ background: accentColor }}
               >
                 {submitting ? <><Loader2 size={16} className="animate-spin" /> Processing...</> : <>Submit Request (1 Credit) <ArrowRight size={16} /></>}
               </button>
@@ -152,7 +158,7 @@ export default function SourcingPage() {
           <div className="bg-white rounded-2xl p-6" style={{ border: "1px solid #E5E7EB" }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-base" style={{ color: "#172236" }}>Sourcing Credit Packages</h3>
-              <Link href="/portal/credits" className="text-xs font-bold text-[#F2901F] hover:underline">
+              <Link href="/portal/credits" className="text-xs font-bold hover:underline" style={{ color: accentColor }}>
                 View All →
               </Link>
             </div>
@@ -167,14 +173,14 @@ export default function SourcingPage() {
                   href="/portal/credits"
                   className={`flex items-center justify-between p-4 rounded-xl transition-all block ${pkg.highlight ? "shadow-md scale-[1.02]" : "hover:bg-gray-50"}`}
                   style={{
-                    border: pkg.highlight ? "2px solid #FFB800" : "1px solid #E5E7EB",
-                    background: pkg.highlight ? "#FFFCF2" : "#FFFFFF"
+                    border: pkg.highlight ? `2px solid ${accentColor}` : "1px solid #E5E7EB",
+                    background: pkg.highlight ? `${accentColor}0D` : "#FFFFFF"
                   }}
                 >
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-bold text-sm" style={{ color: "#172236" }}>{pkg.name}</p>
-                      {pkg.highlight && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "#0B1F44", color: "#FFB800" }}>Most Popular</span>}
+                      {pkg.highlight && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: primaryColor }}>Most Popular</span>}
                     </div>
                     <p className="text-xs font-medium mt-0.5" style={{ color: "#10B981" }}>{pkg.credits} Credit{pkg.credits > 1 ? 's' : ''}</p>
                   </div>
@@ -184,8 +190,8 @@ export default function SourcingPage() {
             </div>
             <Link
               href="/portal/credits"
-              className="mt-4 block w-full py-2.5 rounded-xl text-center text-xs font-bold transition-all hover:opacity-90"
-              style={{ background: "#FFB800", color: "#07182F" }}
+              className="mt-4 block w-full py-2.5 rounded-xl text-center text-xs font-bold transition-all hover:opacity-90 text-white"
+              style={{ background: accentColor }}
             >
               Buy Sourcing Credits
             </Link>
@@ -203,7 +209,7 @@ export default function SourcingPage() {
                 "Your item is purchased and shipped."
               ].map((step, i) => (
                 <div key={i} className="flex gap-3">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5" style={{ background: "#0B1F44", color: "#FFB800" }}>
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5 text-white" style={{ background: primaryColor }}>
                     {i + 1}
                   </div>
                   <p className="text-xs font-medium leading-relaxed" style={{ color: "#667085" }}>{step}</p>

@@ -9,6 +9,7 @@ import {
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { getCurrentCustomerAction } from "@/app/actions";
 import { BrandLogo } from "@/components/brand-logo";
+import { useBrandSettings } from "@/components/brand-provider";
 import {
   getNotificationsAction,
   getUnreadCountAction,
@@ -64,23 +65,11 @@ function SidebarContent({
   onClose?: () => void;
 }) {
   const pathname = usePathname();
-  const [branding, setBranding] = useState<any>(null);
-
-  useEffect(() => {
-    import("@/app/actions/branding").then((m) => {
-      m.getBrandSettingsAction().then(setBranding).catch(console.error);
-    });
-    const reload = () => {
-      import("@/app/actions/branding").then((m) => {
-        m.getBrandSettingsAction().then(setBranding).catch(console.error);
-      });
-    };
-    window.addEventListener("lmx8-branding-updated", reload);
-    return () => window.removeEventListener("lmx8-branding-updated", reload);
-  }, []);
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
 
   return (
-    <div className="flex flex-col h-full" style={{ background: branding?.primaryColor || "#07182F" }}>
+    <div className="flex flex-col h-full" style={{ background: branding?.primaryColor || "var(--primary)" }}>
       {/* Logo */}
       <div className="h-16 md:h-20 flex items-center px-5 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
         <Link href="/" onClick={onClose}>
@@ -104,15 +93,15 @@ function SidebarContent({
               title={collapsed ? label : undefined}
               onClick={onClose}
               className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-150 ${
-                active ? "text-white shadow-sm" : "text-gray-400 hover:text-white hover:bg-white/5"
+                active ? "text-white shadow-sm" : "text-gray-300 hover:text-white hover:bg-white/10"
               } ${collapsed ? "justify-center" : ""}`}
               style={active ? { 
-                background: branding?.secondaryColor || "#122B4F", 
-                borderLeft: `3px solid ${branding?.accentColor || "#FFB800"}`, 
+                background: branding?.secondaryColor || "var(--secondary)", 
+                borderLeft: `3px solid ${branding?.accentColor || "var(--accent)"}`, 
                 paddingLeft: collapsed ? "12px" : "10px" 
               } : {}}
             >
-              <Icon className={`shrink-0 ${active ? "text-yellow-400" : ""}`} size={18} style={active ? { color: branding?.accentColor || undefined } : {}} />
+              <Icon className="shrink-0" size={18} style={active ? { color: branding?.accentColor || "var(--accent)" } : {}} />
               {!collapsed && <span>{label}</span>}
             </Link>
           );
@@ -133,7 +122,7 @@ function SidebarContent({
         )}
         <button
           onClick={() => { import("@/app/actions/auth").then((m) => m.logoutAction("/login")); }}
-          className={`flex items-center gap-3 px-3 py-3 w-full rounded-xl text-sm font-medium text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all ${collapsed ? "justify-center" : ""}`}
+          className={`flex items-center gap-3 px-3 py-3 w-full rounded-xl text-sm font-medium text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all ${collapsed ? "justify-center" : ""}`}
           title={collapsed ? "Logout" : undefined}
         >
           <LogOut size={18} className="shrink-0" />
@@ -201,8 +190,8 @@ function NotificationPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#F1F5F9] bg-gray-50/80 shrink-0">
         <div className="flex items-center gap-2">
-          <Bell size={16} className="text-[#0B1F44]" />
-          <span className="text-sm font-bold text-[#0B1F44]">Notifications</span>
+          <Bell size={16} style={{ color: "var(--primary)" }} />
+          <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>Notifications</span>
           {unreadCount > 0 && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">{unreadCount}</span>
           )}
@@ -211,12 +200,12 @@ function NotificationPanel({
           {unreadCount > 0 && (
             <button
               onClick={onMarkAllRead}
-              className="text-[11px] font-semibold text-[#10B981] hover:opacity-80 transition-opacity flex items-center gap-1"
+              className="text-[11px] font-semibold text-[#10B981] hover:opacity-80 transition-opacity flex items-center gap-1 cursor-pointer"
             >
               <Check size={12} /> Mark all read
             </button>
           )}
-          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
             <X size={16} />
           </button>
         </div>
@@ -237,22 +226,25 @@ function NotificationPanel({
             <button
               key={n.id}
               onClick={() => onMarkRead(n.id, n.actionUrl)}
-              className={`w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors ${!n.read ? "bg-blue-50/40" : ""}`}
+              className={`w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${!n.read ? "bg-blue-50/40" : ""}`}
             >
               <div
                 className="w-2.5 h-2.5 rounded-full shrink-0 mt-1"
-                style={{ background: n.read ? "#E5E7EB" : (typeColors[n.type] ?? "#667085") }}
+                style={{ background: n.read ? "#E5E7EB" : (typeColors[n.type] ?? "var(--accent)") }}
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
-                  <p className={`text-sm font-semibold leading-tight ${n.read ? "text-[#475569]" : "text-[#0B1F44]"}`}>
+                  <p
+                    className={`text-sm font-semibold leading-tight ${n.read ? "text-[#475569]" : ""}`}
+                    style={!n.read ? { color: "var(--primary)" } : {}}
+                  >
                     {n.title}
                   </p>
                   <span className="text-[10px] text-[#94A3B8] shrink-0 mt-0.5">{timeAgo(n.createdAt)}</span>
                 </div>
                 <p className="text-xs text-[#667085] mt-0.5 leading-relaxed line-clamp-2">{n.message}</p>
                 {n.actionUrl && (
-                  <span className="text-[10px] font-semibold text-[#FFB800] mt-1 flex items-center gap-0.5">
+                  <span className="text-[10px] font-semibold mt-1 flex items-center gap-0.5" style={{ color: "var(--accent)" }}>
                     View details <ChevronRight size={10} />
                   </span>
                 )}
@@ -267,7 +259,8 @@ function NotificationPanel({
         <Link
           href="/portal/notifications"
           onClick={onClose}
-          className="text-xs font-semibold text-[#0B1F44] hover:text-[#FFB800] transition-colors"
+          className="text-xs font-semibold hover:opacity-80 transition-colors"
+          style={{ color: "var(--primary)" }}
         >
           View all notifications →
         </Link>
@@ -284,6 +277,8 @@ function ProfileDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
 
   useEffect(() => {
     if (!open) return;
@@ -307,8 +302,11 @@ function ProfileDropdown({
         onClick={() => setOpen((v) => !v)}
         aria-label="Open profile menu"
         aria-expanded={open}
-        className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shadow hover:ring-2 ring-yellow-400/50 transition-all"
-        style={{ background: "#122B4F", border: "2px solid rgba(255,184,0,0.3)" }}
+        className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shadow hover:ring-2 transition-all cursor-pointer"
+        style={{
+          background: branding?.secondaryColor || "var(--secondary)",
+          border: `2px solid ${branding?.accentColor ? `${branding.accentColor}55` : "rgba(255,184,0,0.3)"}`,
+        }}
       >
         {(customerInfo?.name || customerInfo?.id || "C").trim().charAt(0).toUpperCase() || "C"}
       </button>
@@ -332,7 +330,7 @@ function ProfileDropdown({
           <div className="p-1.5 border-t border-[#E2E8F0]">
             <button
               onClick={() => { import("@/app/actions/auth").then((m) => m.logoutAction("/login")); }}
-              className="flex items-center w-full px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-colors"
+              className="flex items-center w-full px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-colors cursor-pointer"
             >
               Logout
             </button>
@@ -350,7 +348,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [collapsed, setCollapsed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [customerInfo, setCustomerInfo] = useState<{ id: string; name: string } | null>(null);
-  const [branding, setBranding] = useState<any>(null);
+  
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
 
   // Notifications state
   const [notifOpen, setNotifOpen] = useState(false);
@@ -358,12 +358,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
-
-  const loadBranding = () => {
-    import("@/app/actions/branding").then((m) => {
-      m.getBrandSettingsAction().then(setBranding).catch(console.error);
-    });
-  };
 
   useEffect(() => {
     getCurrentCustomerAction()
@@ -377,9 +371,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       .catch(() => setCustomerInfo(null));
     // Initial unread count
     getUnreadCountAction().then(setUnreadCount).catch(() => {});
-    loadBranding();
-    window.addEventListener("lmx8-branding-updated", loadBranding);
-    return () => window.removeEventListener("lmx8-branding-updated", loadBranding);
   }, []);
 
   // Refresh unread count on route changes
@@ -432,14 +423,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       {/* Desktop Sidebar */}
       <aside
         className={`hidden md:flex flex-col shrink-0 transition-all duration-300 ${collapsed ? "w-20" : "w-64"}`}
-        style={{ background: branding?.primaryColor || "#07182F" }}
+        style={{ background: branding?.primaryColor || "var(--primary)" }}
       >
         <SidebarContent collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
       </aside>
 
       {/* Mobile Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="left" className="p-0 w-72 border-none">
+        <SheetContent side="left" className="p-0 w-72 border-none" style={{ background: branding?.primaryColor || "var(--primary)" }}>
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <SidebarContent onClose={() => setSheetOpen(false)} />
         </SheetContent>
@@ -450,13 +441,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         {/* Topbar */}
         <header
           className="h-16 md:h-20 flex items-center justify-between px-4 md:px-6 shrink-0 sticky top-0 z-30"
-          style={{ background: branding?.primaryColor || "#141B47", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+          style={{ background: branding?.primaryColor || "var(--primary)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
         >
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setSheetOpen(true)}
               aria-label="Open navigation menu"
-              className="md:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+              className="md:hidden p-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
             >
               <Menu size={20} />
             </button>
@@ -478,7 +469,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <button
                 onClick={handleBellClick}
                 aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
-                className="relative p-2 rounded-lg text-gray-400 hover:text-[#FFB800] hover:bg-white/10 transition-colors"
+                className="relative p-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
               >
                 <Bell size={20} />
                 {unreadCount > 0 && (
@@ -511,19 +502,20 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         {/* Mobile bottom nav */}
         <nav
           className="md:hidden flex items-center justify-around py-2 fixed bottom-0 left-0 right-0 z-20 shadow-[0_-1px_0_rgba(0,0,0,0.08)]"
-          style={{ background: "#07182F" }}
+          style={{ background: branding?.primaryColor || "var(--primary)" }}
         >
           {BOTTOM_NAV.map(({ href, icon: Icon, label }) => {
             const exact = href === "/portal";
             const active = exact ? pathname === href : pathname.startsWith(href);
+            const activeColor = branding?.accentColor || "var(--accent)";
             return (
               <Link
                 key={href}
                 href={href}
                 className="flex flex-col items-center gap-0.5 px-3 py-1 min-w-[48px]"
               >
-                <Icon size={20} style={{ color: active ? "#FFB800" : "#667085" }} />
-                <span className="text-[10px] font-medium" style={{ color: active ? "#FFB800" : "#667085" }}>
+                <Icon size={20} style={{ color: active ? activeColor : "#94A3B8" }} />
+                <span className="text-[10px] font-medium" style={{ color: active ? activeColor : "#94A3B8" }}>
                   {label}
                 </span>
               </Link>
@@ -532,8 +524,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </nav>
 
         <footer className="hidden md:block py-3 text-center text-xs border-t" style={{ color: "#94A3B8", borderColor: "#E5E7EB", background: "#FFFFFF" }}>
-          © {new Date().getFullYear()} LMX8 IMPORTS · Powered by{" "}
-          <span className="font-semibold" style={{ color: "#0B1F44" }}>LEXMEDIA.GH</span>
+          © {new Date().getFullYear()} {branding?.businessName || "LMX8 IMPORTS"} · Powered by{" "}
+          <span className="font-semibold" style={{ color: branding?.primaryColor || "var(--primary)" }}>LEXMEDIA.GH</span>
         </footer>
       </main>
     </div>

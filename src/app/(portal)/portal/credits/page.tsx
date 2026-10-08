@@ -32,14 +32,14 @@ export default async function AdminCreditsPortalPage() {
         {packagesList.map(pkg => (
           <div
             key={pkg.name}
-            className={`bg-white rounded-2xl p-6 border transition-all ${pkg.popular ? "border-[#FFB800] shadow-lg ring-2 ring-[#FFB800]/20 scale-[1.02]" : "border-[#E5E7EB] hover:shadow-md"}`}
+            className={`bg-white rounded-2xl p-6 border transition-all ${pkg.popular ? "border-[var(--accent)] shadow-lg ring-2 ring-[var(--accent)]/20 scale-[1.02]" : "border-[#E5E7EB] hover:shadow-md"}`}
           >
             {pkg.popular && (
-              <span className="inline-flex mb-3 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#0B1F44] text-[#FFB800]">Most Popular</span>
+              <span className="inline-flex mb-3 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[var(--primary)] text-[var(--accent)]">Most Popular</span>
             )}
             <h3 className="text-lg font-bold text-[#172236]">{pkg.name}</h3>
             <p className="text-4xl font-black text-[#172236] my-4">{pkg.credits}<span className="text-lg font-semibold text-[#667085] ml-1">credit{pkg.credits > 1 ? "s" : ""}</span></p>
-            <p className="text-2xl font-bold text-[#0B1F44] mb-6">{formatCurrency(pkg.price)}</p>
+            <p className="text-2xl font-bold mb-6" style={{ color: "var(--primary)" }}>{formatCurrency(pkg.price)}</p>
 
             <div className="space-y-2.5 mb-6">
               {[

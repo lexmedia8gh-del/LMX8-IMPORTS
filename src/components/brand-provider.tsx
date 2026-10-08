@@ -51,7 +51,7 @@ export function BrandProvider({
     return () => window.removeEventListener("lmx8-branding-updated", handleUpdate);
   }, [initialBranding, refreshBranding]);
 
-  // Dynamically update document title and favicon when branding changes
+  // Dynamically update document title, favicon, and CSS custom properties when branding changes
   useEffect(() => {
     if (typeof document === "undefined" || !branding) return;
 
@@ -63,6 +63,25 @@ export function BrandProvider({
         document.head.appendChild(link);
       }
       link.href = branding.faviconUrl;
+    }
+
+    // Apply active Admin -> Branding colors as dynamic CSS variables on :root
+    const root = document.documentElement;
+    if (branding.primaryColor) {
+      root.style.setProperty("--primary", branding.primaryColor);
+      root.style.setProperty("--color-brand-navy", branding.primaryColor);
+      root.style.setProperty("--color-lmx-navy", branding.primaryColor);
+    }
+    if (branding.secondaryColor) {
+      root.style.setProperty("--secondary", branding.secondaryColor);
+      root.style.setProperty("--color-brand-secondary", branding.secondaryColor);
+      root.style.setProperty("--color-lmx-mid", branding.secondaryColor);
+    }
+    if (branding.accentColor) {
+      root.style.setProperty("--accent", branding.accentColor);
+      root.style.setProperty("--ring", branding.accentColor);
+      root.style.setProperty("--color-brand-gold", branding.accentColor);
+      root.style.setProperty("--color-lmx-gold", branding.accentColor);
     }
   }, [branding]);
 

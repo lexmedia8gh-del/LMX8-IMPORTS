@@ -1,3 +1,4 @@
+import "server-only";
 import { PrismaClient } from "@prisma/client";
 
 // Ensure DATABASE_URL and DIRECT_URL are initialized in process.env so Prisma never crashes

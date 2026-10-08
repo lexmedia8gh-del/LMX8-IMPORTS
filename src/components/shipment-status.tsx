@@ -195,21 +195,21 @@ export function ShipmentTimeline({
                 <div className="relative flex items-center justify-center w-6 h-6 shrink-0 mt-0.5">
                   <span
                     className="absolute w-6 h-6 rounded-full animate-ping opacity-35"
-                    style={{ backgroundColor: isOnHold ? "#EF4444" : "#FFB800" }}
+                    style={{ backgroundColor: isOnHold ? "#EF4444" : "var(--accent)" }}
                   />
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm transition-all"
                     style={{
-                      background: isOnHold ? "#EF4444" : "#FFB800",
+                      background: isOnHold ? "#EF4444" : "var(--accent)",
                       boxShadow: isOnHold
                         ? "0 0 0 3px rgba(239, 68, 68, 0.25)"
-                        : "0 0 0 3px rgba(255, 184, 0, 0.25)",
+                        : "0 0 0 3px rgba(242, 144, 31, 0.25)",
                     }}
                   >
                     {isOnHold ? (
                       <AlertTriangle size={11} strokeWidth={3} />
                     ) : (
-                      <div className="w-2 h-2 rounded-full bg-[#07182F]" />
+                      <div className="w-2 h-2 rounded-full" style={{ background: "var(--primary)" }} />
                     )}
                   </div>
                 </div>
@@ -262,7 +262,7 @@ export function ShipmentTimeline({
                     >
                       <span
                         className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0"
-                        style={{ background: isOnHold ? "#EF4444" : "#FFB800" }}
+                        style={{ background: isOnHold ? "#EF4444" : "var(--accent)" }}
                       />
                       {isOnHold ? "On Hold" : "Current Status"}
                     </span>

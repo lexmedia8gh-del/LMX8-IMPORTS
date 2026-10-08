@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Shipment } from "@/lib/db";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useBrandSettings } from "@/components/brand-provider";
 
 // 100% deterministic currency formatter to prevent locale hydration issues
 function formatCurrencyDeterministic(amount: number) {
@@ -207,7 +208,7 @@ export default function CustomerDashboard() {
 
       {/* Welcome Section */}
       <div className="space-y-1">
-        <h1 className="text-2xl md:text-3xl font-bold" style={{ color: "#0B1F44" }}>
+        <h1 className="text-2xl md:text-3xl font-bold" style={{ color: "var(--primary)" }}>
           {welcomeHeadline}
         </h1>
         <p className="text-sm" style={{ color: "#667085" }}>
@@ -223,7 +224,7 @@ export default function CustomerDashboard() {
             <div className="p-5 md:p-6 border-b border-[#F1F5F9] flex flex-col sm:flex-row justify-between sm:items-center gap-4">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#F1F5F9" }}>
-                  <Truck size={24} style={{ color: "#0B1F44" }} />
+                  <Truck size={24} style={{ color: "var(--primary)" }} />
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#667085" }}>{primaryShipment.id}</p>
@@ -237,14 +238,14 @@ export default function CustomerDashboard() {
             <div className="p-5 md:p-6 bg-[#F7F9FC] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "#667085" }}>Estimated Arrival</p>
-                <p className="font-semibold" style={{ color: "#0B1F44" }}>
+                <p className="font-semibold" style={{ color: "var(--primary)" }}>
                   {formatDateUTC(primaryShipment.estimatedArrival, true)}
                 </p>
               </div>
               <Link
                 href={`/portal/shipments/${primaryShipment.id}`}
                 className="px-5 py-2.5 rounded-lg text-sm font-bold transition-all hover:bg-[#F1F5F9] border border-[#E5E7EB] w-full md:w-auto text-center"
-                style={{ color: "#0B1F44", background: "white" }}
+                style={{ color: "var(--primary)", background: "white" }}
               >
                 View Tracking
               </Link>
@@ -258,7 +259,7 @@ export default function CustomerDashboard() {
              <PackageX size={32} className="mx-auto mb-3 text-gray-300" />
              <p className="text-sm font-semibold" style={{ color: "#172236" }}>No active shipments</p>
              <p className="text-sm mt-1 mb-4" style={{ color: "#667085" }}>Your shipments will appear here once an order has been registered.</p>
-             <Link href="/portal/sourcing" className="inline-block px-5 py-2.5 rounded-lg text-sm font-bold transition-colors hover:opacity-90" style={{ background: "#FFB800", color: "#07182F" }}>
+             <Link href="/portal/sourcing" className="inline-block px-5 py-2.5 rounded-lg text-sm font-bold transition-colors hover:opacity-90 cursor-pointer text-white" style={{ background: "var(--accent)" }}>
                Request Sourcing
              </Link>
           </div>
@@ -280,7 +281,8 @@ export default function CustomerDashboard() {
                 </div>
                 <Link
                   href="/portal/credits"
-                  className="px-3 py-1.5 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-xs font-bold rounded-lg text-[#0B1F44] transition-colors flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
+                  style={{ color: "var(--primary)" }}
                 >
                   <PlusCircle size={14} /> Buy Credits
                 </Link>
@@ -289,7 +291,7 @@ export default function CustomerDashboard() {
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-[#667085]">Current Credit Balance</p>
                 <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-3xl font-black text-[#0B1F44]">{creditAccount?.balance ?? 0}</span>
+                  <span className="text-3xl font-black" style={{ color: "var(--primary)" }}>{creditAccount?.balance ?? 0}</span>
                   <span className="text-xs font-bold text-[#10B981] bg-[#F0FDF4] px-2 py-0.5 rounded">Credits</span>
                 </div>
               </div>
@@ -299,7 +301,7 @@ export default function CustomerDashboard() {
                 <div>
                   <p className="text-[10px] font-bold text-[#94A3B8] uppercase">Active Package</p>
                   <div className="flex items-center gap-1 mt-0.5">
-                    <Award size={14} className="text-[#F2901F]" />
+                    <Award size={14} style={{ color: "var(--accent)" }} />
                     <span className="text-sm font-bold text-[#172236]">{creditAccount?.selectedPackage || "None"}</span>
                   </div>
                 </div>
@@ -332,11 +334,11 @@ export default function CustomerDashboard() {
                 </div>
               </div>
               <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#667085" }}>Outstanding Balance</p>
-              <p className="text-2xl md:text-3xl font-black mt-1 mb-4" style={{ color: "#0B1F44" }}>
+              <p className="text-2xl md:text-3xl font-black mt-1 mb-4" style={{ color: "var(--primary)" }}>
                 {formatCurrencyDeterministic(pendingTotal)}
               </p>
               {pendingTotal > 0 ? (
-                 <Link href="/portal/payments" className="w-full text-center block px-4 py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 shadow-sm" style={{ background: "#EF4444", color: "white" }}>
+                 <Link href="/portal/payments" className="w-full text-center block px-4 py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 shadow-sm text-white" style={{ background: "#EF4444" }}>
                    Make Payment
                  </Link>
               ) : (
@@ -366,7 +368,7 @@ export default function CustomerDashboard() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex justify-between items-start gap-2">
-                          <p className="text-sm font-bold text-[#0B1F44] truncate">{item.title}</p>
+                          <p className="text-sm font-bold truncate" style={{ color: "var(--primary)" }}>{item.title}</p>
                           <span className="text-[10px] font-medium text-[#94A3B8] shrink-0 whitespace-nowrap font-sans mt-0.5">
                             {dateStr}
                           </span>
@@ -380,7 +382,7 @@ export default function CustomerDashboard() {
             </div>
             {activities.length > 0 && (
               <div className="p-3.5 border-t border-[#F1F5F9] bg-[#F7F9FC]">
-                <Link href="/portal/notifications" className="block text-center text-xs font-bold text-[#0B1F44] hover:text-[#F2901F] transition-colors">
+                <Link href="/portal/notifications" className="block text-center text-xs font-bold hover:opacity-80 transition-colors" style={{ color: "var(--primary)" }}>
                   View Notification Center
                 </Link>
               </div>
@@ -404,7 +406,7 @@ export default function CustomerDashboard() {
               href={a.href}
               className="flex items-center gap-3 p-4 rounded-xl transition-all hover:bg-gray-50 border border-[#E5E7EB] bg-white"
             >
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#F1F5F9", color: "#0B1F44" }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#F1F5F9", color: "var(--primary)" }}>
                 {a.icon}
               </div>
               <span className="text-sm font-semibold" style={{ color: "#172236" }}>

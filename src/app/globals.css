@@ -29,12 +29,12 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
-  /* ── LMX8 Brand Tokens ── */
-  --color-lmx-navy:      #141B47;
+  /* ── LMX8 Brand Tokens (Dynamically linked to root brand variables) ── */
+  --color-lmx-navy:      var(--primary, #141B47);
   --color-lmx-deep:      #0C102B;
   --color-lmx-card-navy: #1D265A;
-  --color-lmx-mid:       #355DAF;
-  --color-lmx-gold:      #F2901F;
+  --color-lmx-mid:       var(--secondary, #355DAF);
+  --color-lmx-gold:      var(--accent, #F2901F);
   --color-lmx-yellow:    #FAB763;
   --color-lmx-success:   #10B981;
   --color-lmx-error:     #EF4444;
@@ -45,10 +45,10 @@
   --color-lmx-meta:      #667085;
 
   /* ── Brand Alias Tokens for standard Tailwind classes ── */
-  --color-brand-navy:      #141B47;
+  --color-brand-navy:      var(--primary, #141B47);
   --color-brand-deep:      #0C102B;
-  --color-brand-secondary: #355DAF;
-  --color-brand-gold:      #F2901F;
+  --color-brand-secondary: var(--secondary, #355DAF);
+  --color-brand-gold:      var(--accent, #F2901F);
   --color-brand-light:     #F1F5F9;
   --color-brand-error:     #EF4444;
   --color-brand-surface:   #F7F9FC;
@@ -108,27 +108,27 @@
 }
 
 /* ── Utility helpers ── */
-.lmx-sidebar    { background: #0C102B; }
-.lmx-topbar     { background: #141B47; }
-.lmx-card-dark  { background: #1D265A; border: 1px solid rgba(255,255,255,0.08); }
+.lmx-sidebar    { background: var(--primary, #141B47); }
+.lmx-topbar     { background: var(--primary, #141B47); }
+.lmx-card-dark  { background: var(--primary, #141B47); border: 1px solid rgba(255,255,255,0.08); }
 .lmx-card-light { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; }
 
-/* ── Brand alias classes (used by admin layout) ── */
-.bg-brand-navy      { background-color: #141B47; }
-.bg-brand-secondary { background-color: #355DAF; }
-.bg-brand-gold      { background-color: #F2901F; }
+/* ── Brand alias classes (used by admin and portal layouts) ── */
+.bg-brand-navy      { background-color: var(--primary, #141B47); }
+.bg-brand-secondary { background-color: var(--secondary, #355DAF); }
+.bg-brand-gold      { background-color: var(--accent, #F2901F); }
 .bg-brand-light     { background-color: #F1F5F9; }
 .bg-brand-error     { background-color: #EF4444; }
-.text-brand-navy    { color: #141B47; }
-.text-brand-gold    { color: #F2901F; }
+.text-brand-navy    { color: var(--primary, #141B47); }
+.text-brand-gold    { color: var(--accent, #F2901F); }
 .text-brand-error   { color: #EF4444; }
-.hover\:bg-brand-secondary:hover { background-color: #355DAF; }
+.hover\:bg-brand-secondary:hover { background-color: var(--secondary, #355DAF); }
 .hover\:bg-brand-light:hover     { background-color: #F1F5F9; }
-.hover\:text-brand-navy:hover    { color: #141B47; }
-.hover\:bg-brand-secondary\/50:hover { background-color: rgba(53,93,175,0.5); }
-.hover\:bg-brand-gold\/20:hover  { background-color: rgba(242,144,31,0.2); }
-.bg-brand-gold\/10               { background-color: rgba(242,144,31,0.1); }
-.ring-brand-gold                 { --tw-ring-color: #F2901F; }
+.hover\:text-brand-navy:hover    { color: var(--primary, #141B47); }
+.hover\:bg-brand-secondary\/50:hover { background-color: var(--secondary, #355DAF); opacity: 0.8; }
+.hover\:bg-brand-gold\/20:hover  { background-color: var(--accent, #F2901F); opacity: 0.2; }
+.bg-brand-gold\/10               { background-color: var(--accent, #F2901F); opacity: 0.15; }
+.ring-brand-gold                 { --tw-ring-color: var(--accent, #F2901F); }
 
 /* Cinematic hero overlay */
 .hero-overlay {

@@ -44,7 +44,7 @@ export default function ShipmentDetailsPage({
   if (loading) {
     return (
       <div className="py-16 flex flex-col items-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-[#FFB800] border-t-transparent animate-spin" />
+        <div className="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
         <p className="text-sm text-[#667085]">Loading shipment…</p>
       </div>
     );
@@ -59,7 +59,7 @@ export default function ShipmentDetailsPage({
         <Link
           href="/portal/shipments"
           className="mt-4 inline-flex items-center gap-2 text-sm font-semibold"
-          style={{ color: "#FFB800" }}
+          style={{ color: "var(--accent)" }}
         >
           <ArrowLeft size={16} /> Back to Shipments
         </Link>
@@ -223,7 +223,7 @@ export default function ShipmentDetailsPage({
                 className="font-bold text-sm sm:text-base flex items-center gap-2"
                 style={{ color: "#172236" }}
               >
-                <Radio size={16} className="text-[#FFB800]" />
+                <Radio size={16} style={{ color: "var(--accent)" }} />
                 <span>Shipment Timeline</span>
               </h3>
               {lastUpdated && (

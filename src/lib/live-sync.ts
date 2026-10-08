@@ -1,26 +1,10 @@
+import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getBrevoServerConfig } from "@/lib/email/config";
 import { STORAGE_BUCKET } from "@/lib/storage";
+import { HealthStatus, IntegrationCheckResult, LiveSyncReport } from "./live-sync-types";
 
-export type HealthStatus = "OPERATIONAL" | "DEGRADED" | "DOWN" | "NOT_CONFIGURED" | "UNKNOWN";
-
-export interface IntegrationCheckResult {
-  id: string;
-  name: string;
-  category: "database" | "storage" | "payment" | "email" | "cron";
-  status: HealthStatus;
-  latencyMs: number | null;
-  lastChecked: string;
-  lastSuccessfulCheck: string | null;
-  message: string;
-  details?: Record<string, any>;
-}
-
-export interface LiveSyncReport {
-  overallStatus: HealthStatus;
-  timestamp: string;
-  checks: IntegrationCheckResult[];
-}
+export * from "./live-sync-types";
 
 // In-memory cache for last successful check timestamps
 const lastSuccessCache: Record<string, string> = {};

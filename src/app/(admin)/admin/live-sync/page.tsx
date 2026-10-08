@@ -10,7 +10,7 @@ import {
   getLiveSyncReportAction,
   checkSingleIntegrationAction,
 } from "@/app/actions/live-sync";
-import { LiveSyncReport, IntegrationCheckResult, HealthStatus } from "@/lib/live-sync";
+import type { LiveSyncReport, IntegrationCheckResult, HealthStatus } from "@/lib/live-sync-types";
 import Link from "next/link";
 
 const STATUS_CONFIG: Record<

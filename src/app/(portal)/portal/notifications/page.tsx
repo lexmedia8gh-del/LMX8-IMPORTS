@@ -119,10 +119,10 @@ export default function NotificationsPage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className="px-4 py-3 text-sm font-semibold whitespace-nowrap transition-colors shrink-0 border-b-2"
+              className="px-4 py-3 text-sm font-semibold whitespace-nowrap transition-colors shrink-0 border-b-2 cursor-pointer"
               style={{
-                color: activeTab === tab ? "#0B1F44" : "#667085",
-                borderColor: activeTab === tab ? "#FFB800" : "transparent",
+                color: activeTab === tab ? "var(--primary)" : "#667085",
+                borderColor: activeTab === tab ? "var(--accent)" : "transparent",
               }}
             >
               {tab}
@@ -133,7 +133,7 @@ export default function NotificationsPage() {
         <div className="flex-1 divide-y divide-[#F1F5F9]">
           {loading ? (
             <div className="py-16 flex flex-col items-center gap-3 text-center">
-              <div className="w-8 h-8 rounded-full border-2 border-[#FFB800] border-t-transparent animate-spin" />
+              <div className="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
               <p className="text-sm text-[#667085]">Loading notifications…</p>
             </div>
           ) : filtered.length === 0 ? (
@@ -154,7 +154,7 @@ export default function NotificationsPage() {
                 <button
                   key={notif.id}
                   onClick={() => handleMarkRead(notif)}
-                  className={`w-full flex items-start gap-4 p-4 md:p-5 text-left transition-colors hover:bg-gray-50/70 ${
+                  className={`w-full flex items-start gap-4 p-4 md:p-5 text-left transition-colors hover:bg-gray-50/70 cursor-pointer ${
                     !notif.read ? "bg-blue-50/30" : ""
                   }`}
                 >
@@ -171,8 +171,9 @@ export default function NotificationsPage() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
                       <h4
                         className={`font-semibold text-sm leading-tight ${
-                          !notif.read ? "text-[#0B1F44]" : "text-[#475569]"
+                          !notif.read ? "" : "text-[#475569]"
                         }`}
+                        style={!notif.read ? { color: "var(--primary)" } : {}}
                       >
                         {notif.title}
                       </h4>
@@ -190,7 +191,7 @@ export default function NotificationsPage() {
                       {notif.message}
                     </p>
                     {notif.actionUrl && (
-                      <span className="text-[11px] font-semibold mt-1 block" style={{ color: "#FFB800" }}>
+                      <span className="text-[11px] font-semibold mt-1 block" style={{ color: "var(--accent)" }}>
                         View details →
                       </span>
                     )}
@@ -200,7 +201,7 @@ export default function NotificationsPage() {
                   {!notif.read && (
                     <div
                       className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5"
-                      style={{ background: "#FFB800" }}
+                      style={{ background: "var(--accent)" }}
                     />
                   )}
                 </button>

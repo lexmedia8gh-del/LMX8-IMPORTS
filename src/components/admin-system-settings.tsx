@@ -9,7 +9,7 @@ import {
   getSystemSettingsAction,
   updateSystemSettingsAction,
 } from "@/app/actions/system-settings";
-import { SystemSettingsType, DEFAULT_SYSTEM_SETTINGS } from "@/lib/system-settings";
+import { SystemSettingsType, DEFAULT_SYSTEM_SETTINGS } from "@/lib/system-settings-types";
 import Link from "next/link";
 
 export default function AdminSystemSettings() {

@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 import { initializeShippingPaymentAction } from "@/app/actions/payments";
+import { useBrandSettings } from "@/components/brand-provider";
 
 export function ShippingPayNowButton({ shipmentId }: { shipmentId: string }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
 
   async function handlePay() {
     setLoading(true);
@@ -39,7 +42,7 @@ export function ShippingPayNowButton({ shipmentId }: { shipmentId: string }) {
         onClick={handlePay}
         disabled={loading}
         className="w-full py-4 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-md disabled:opacity-60 disabled:cursor-not-allowed text-white cursor-pointer"
-        style={{ background: "#F2901F" }}
+        style={{ background: branding?.accentColor || "var(--accent)" }}
       >
         {loading ? (
           <>
