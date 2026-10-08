@@ -357,7 +357,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [notifications, setNotifications] = useState<NotifItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
-  const bellRef = useRef<HTMLDivElement>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     getCurrentCustomerAction()
@@ -465,7 +472,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
             {/* Notification Bell */}
-            <div ref={bellRef} className="relative">
+            <div className="relative">
               <button
                 onClick={handleBellClick}
                 aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
@@ -478,15 +485,33 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                   </span>
                 )}
               </button>
-              <NotificationPanel
-                open={notifOpen}
-                onClose={() => setNotifOpen(false)}
-                notifications={notifications}
-                unreadCount={unreadCount}
-                onMarkRead={handleMarkRead}
-                onMarkAllRead={handleMarkAllRead}
-                loading={notifLoading}
-              />
+
+              {isMobile ? (
+                <Sheet open={notifOpen} onOpenChange={setNotifOpen}>
+                  <SheetContent side="right" className="p-0 w-full max-w-sm">
+                    <SheetTitle className="sr-only">Notifications</SheetTitle>
+                    <NotificationPanel
+                      open={true}
+                      onClose={() => setNotifOpen(false)}
+                      notifications={notifications}
+                      unreadCount={unreadCount}
+                      onMarkRead={handleMarkRead}
+                      onMarkAllRead={handleMarkAllRead}
+                      loading={notifLoading}
+                    />
+                  </SheetContent>
+                </Sheet>
+              ) : (
+                <NotificationPanel
+                  open={notifOpen}
+                  onClose={() => setNotifOpen(false)}
+                  notifications={notifications}
+                  unreadCount={unreadCount}
+                  onMarkRead={handleMarkRead}
+                  onMarkAllRead={handleMarkAllRead}
+                  loading={notifLoading}
+                />
+              )}
             </div>
 
             {/* Profile Dropdown */}
