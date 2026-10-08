@@ -276,7 +276,8 @@ export function ShipmentTimeline({
                       <button
                         type="button"
                         onClick={() => onEditEvent(latestEvent)}
-                        className="text-[#141B47] hover:text-[#FFB800] hover:underline cursor-pointer"
+                        className="hover:underline cursor-pointer transition-colors"
+                        style={{ color: "var(--primary)" }}
                         title="Edit stage checkpoint"
                       >
                         Edit

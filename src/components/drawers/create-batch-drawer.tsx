@@ -114,7 +114,8 @@ export function CreateBatchDrawer({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="px-6 py-2.5 rounded-xl text-xs font-bold text-[#07182F] bg-[#F2901F] hover:bg-[#E08215] transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            className="px-6 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50 hover:opacity-90"
+            style={{ background: "var(--accent)" }}
           >
             {isSubmitting ? (
               <>

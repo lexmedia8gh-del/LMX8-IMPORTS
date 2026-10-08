@@ -94,7 +94,7 @@ export default function AdminSecuritySettings() {
           type="submit"
           disabled={isPending}
           className="w-full h-11 rounded-xl text-sm font-bold transition-all hover:opacity-90 shadow-sm disabled:opacity-50"
-          style={{ background: "#0B1F44", color: "white" }}
+          style={{ background: "var(--primary)", color: "white" }}
         >
           {isPending ? "Updating..." : "Update PIN"}
         </button>
