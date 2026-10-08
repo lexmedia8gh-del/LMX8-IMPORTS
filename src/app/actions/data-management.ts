@@ -9,204 +9,228 @@ import { deleteFileFromStorage } from "@/lib/storage";
  * Overview statistics for Admin Data Management dashboard
  */
 export async function getDatabaseOverviewAction() {
-  await requireAdminSession();
+  try {
+    await requireAdminSession();
 
-  const [
-    customersCount,
-    batchesCount,
-    shipmentsCount,
-    trackingEventsCount,
-    paymentsCount,
-    notificationsCount,
-    sourcingRequestsCount,
-    photosCount,
-    auditLogsCount,
-  ] = await Promise.all([
-    prisma.customer.count(),
-    prisma.batch.count(),
-    prisma.shipment.count(),
-    prisma.trackingEvent.count(),
-    prisma.payment.count(),
-    prisma.notification.count(),
-    prisma.sourcingRequest.count(),
-    prisma.shipmentPhoto.count(),
-    prisma.auditLog.count(),
-  ]);
+    const [
+      customersCount,
+      batchesCount,
+      shipmentsCount,
+      trackingEventsCount,
+      paymentsCount,
+      notificationsCount,
+      sourcingRequestsCount,
+      photosCount,
+      auditLogsCount,
+    ] = await Promise.all([
+      prisma.customer.count().catch(() => 0),
+      prisma.batch.count().catch(() => 0),
+      prisma.shipment.count().catch(() => 0),
+      prisma.trackingEvent.count().catch(() => 0),
+      prisma.payment.count().catch(() => 0),
+      prisma.notification.count().catch(() => 0),
+      prisma.sourcingRequest.count().catch(() => 0),
+      prisma.shipmentPhoto.count().catch(() => 0),
+      prisma.auditLog.count().catch(() => 0),
+    ]);
 
-  return {
-    customers: customersCount,
-    batches: batchesCount,
-    shipments: shipmentsCount,
-    trackingEvents: trackingEventsCount,
-    payments: paymentsCount,
-    notifications: notificationsCount,
-    sourcingRequests: sourcingRequestsCount,
-    photos: photosCount,
-    auditLogs: auditLogsCount,
-  };
+    return {
+      customers: customersCount,
+      batches: batchesCount,
+      shipments: shipmentsCount,
+      trackingEvents: trackingEventsCount,
+      payments: paymentsCount,
+      notifications: notificationsCount,
+      sourcingRequests: sourcingRequestsCount,
+      photos: photosCount,
+      auditLogs: auditLogsCount,
+    };
+  } catch (err: any) {
+    console.error("[getDatabaseOverviewAction] Error:", err);
+    return {
+      customers: 0,
+      batches: 0,
+      shipments: 0,
+      trackingEvents: 0,
+      payments: 0,
+      notifications: 0,
+      sourcingRequests: 0,
+      photos: 0,
+      auditLogs: 0,
+      error: err?.message || "Failed to load database overview",
+    };
+  }
 }
 
 /**
  * Fetch records for Data Management tabular explorer
  */
 export async function getDataRecordsAction(entityType: "shipments" | "batches" | "customers" | "events" | "notifications" | "payments") {
-  await requireAdminSession();
+  try {
+    await requireAdminSession();
 
-  switch (entityType) {
-    case "shipments": {
-      const records = await prisma.shipment.findMany({
-        include: {
-          customer: { select: { id: true, customerIdentifier: true, name: true } },
-          batch: { select: { id: true, batchNumber: true, name: true, status: true } },
-          trackingEvents: { select: { id: true } },
-          photos: { select: { id: true } },
-          payments: { select: { id: true, status: true, amount: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
+    switch (entityType) {
+      case "shipments": {
+        const records = await prisma.shipment.findMany({
+          include: {
+            customer: { select: { id: true, customerIdentifier: true, name: true } },
+            batch: { select: { id: true, batchNumber: true, name: true, status: true } },
+            trackingEvents: { select: { id: true } },
+            photos: { select: { id: true } },
+            payments: { select: { id: true, status: true, amount: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        });
 
-      return records.map((s) => ({
-        id: s.id,
-        trackingNumber: s.trackingNumber,
-        description: s.description,
-        status: s.status,
-        createdAt: s.createdAt.toISOString(),
-        customer: s.customer ? `${s.customer.name} (${s.customer.customerIdentifier})` : "N/A",
-        customerId: s.customerId,
-        customerIdentifier: s.customer?.customerIdentifier || s.customerId,
-        batch: s.batch ? `${s.batch.name} (${s.batch.batchNumber})` : "Unassigned",
-        batchId: s.batchId,
-        eventsCount: s.trackingEvents.length,
-        photosCount: s.photos.length,
-        paymentsCount: s.payments.length,
-        hasPaidPayments: s.payments.some((p) => p.status === "SUCCESS"),
-      }));
+        return (records || []).map((s) => ({
+          id: s.id,
+          trackingNumber: s.trackingNumber || "N/A",
+          description: s.description || "N/A",
+          status: s.status || "SHIPMENT_CREATED",
+          fee: s.fee ?? 0,
+          weight: s.weight ?? null,
+          quantity: s.quantity ?? null,
+          createdAt: s.createdAt ? s.createdAt.toISOString() : new Date().toISOString(),
+          customer: s.customer ? `${s.customer.name} (${s.customer.customerIdentifier})` : "N/A",
+          customerId: s.customerId,
+          customerIdentifier: s.customer?.customerIdentifier || s.customerId,
+          batch: s.batch ? `${s.batch.name} (${s.batch.batchNumber})` : "Unassigned",
+          batchId: s.batchId,
+          eventsCount: (s.trackingEvents || []).length,
+          photosCount: (s.photos || []).length,
+          paymentsCount: (s.payments || []).length,
+          hasPaidPayments: (s.payments || []).some((p) => p.status === "SUCCESS"),
+        }));
+      }
+
+      case "batches": {
+        const records = await prisma.batch.findMany({
+          include: {
+            shipments: { select: { id: true, trackingNumber: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        });
+
+        return (records || []).map((b) => ({
+          id: b.id,
+          batchNumber: b.batchNumber || "N/A",
+          name: b.name || "N/A",
+          description: b.description || "",
+          status: b.status || "OPEN",
+          shipmentsCount: (b.shipments || []).length,
+          departure: b.departure ? b.departure.toISOString().split("T")[0] : null,
+          arrival: b.arrival ? b.arrival.toISOString().split("T")[0] : null,
+          closedAt: b.closedAt ? b.closedAt.toISOString() : null,
+          fileDeletionAt: b.fileDeletionAt ? b.fileDeletionAt.toISOString() : null,
+          createdAt: b.createdAt ? b.createdAt.toISOString() : new Date().toISOString(),
+        }));
+      }
+
+      case "customers": {
+        const records = await prisma.customer.findMany({
+          include: {
+            shipments: { select: { id: true } },
+            payments: { select: { id: true, status: true } },
+            sourcingRequests: { select: { id: true } },
+            creditAccount: { select: { balance: true } },
+            notifications: { select: { id: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        });
+
+        return (records || []).map((c) => ({
+          id: c.id,
+          customerIdentifier: c.customerIdentifier || "N/A",
+          name: c.name || "N/A",
+          phone: c.phone || "N/A",
+          email: c.email || "N/A",
+          status: c.status || "ACTIVE",
+          credits: c.creditAccount?.balance || 0,
+          shipmentsCount: (c.shipments || []).length,
+          paymentsCount: (c.payments || []).length,
+          sourcingCount: (c.sourcingRequests || []).length,
+          notificationsCount: (c.notifications || []).length,
+          createdAt: c.createdAt ? c.createdAt.toISOString() : new Date().toISOString(),
+        }));
+      }
+
+      case "events": {
+        const records = await prisma.trackingEvent.findMany({
+          include: {
+            shipment: { select: { id: true, trackingNumber: true, description: true } },
+            admin: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { timestamp: "desc" },
+          take: 100,
+        });
+
+        return (records || []).map((e) => ({
+          id: e.id,
+          status: e.status || "SHIPMENT_CREATED",
+          location: e.location || "N/A",
+          note: e.note || "N/A",
+          timestamp: e.timestamp ? e.timestamp.toISOString() : new Date().toISOString(),
+          shipmentTrackingNumber: e.shipment?.trackingNumber || "N/A",
+          shipmentDescription: e.shipment?.description || "N/A",
+          adminName: e.admin?.name || e.admin?.email || "System",
+        }));
+      }
+
+      case "notifications": {
+        const records = await prisma.notification.findMany({
+          include: {
+            customer: { select: { id: true, customerIdentifier: true, name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        });
+
+        return (records || []).map((n) => ({
+          id: n.id,
+          type: n.type || "SYSTEM",
+          title: n.title || "N/A",
+          message: n.message || "N/A",
+          read: Boolean(n.read),
+          customerName: n.customer?.name || "N/A",
+          customerIdentifier: n.customer?.customerIdentifier || "N/A",
+          createdAt: n.createdAt ? n.createdAt.toISOString() : new Date().toISOString(),
+        }));
+      }
+
+      case "payments": {
+        const records = await prisma.payment.findMany({
+          include: {
+            customer: { select: { id: true, customerIdentifier: true, name: true } },
+            shipment: { select: { id: true, trackingNumber: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        });
+
+        return (records || []).map((p) => ({
+          id: p.id,
+          reference: p.reference || "N/A",
+          amount: p.amount ?? 0,
+          currency: p.currency || "GHS",
+          status: p.status || "PENDING",
+          type: p.type || "CREDIT_PURCHASE",
+          provider: p.provider || "PAYSTACK",
+          createdAt: p.createdAt ? p.createdAt.toISOString() : new Date().toISOString(),
+          customerName: p.customer?.name || "N/A",
+          customerIdentifier: p.customer?.customerIdentifier || "N/A",
+          shipmentTrackingNumber: p.shipment?.trackingNumber || "N/A",
+        }));
+      }
+
+      default:
+        return [];
     }
-
-    case "batches": {
-      const records = await prisma.batch.findMany({
-        include: {
-          shipments: { select: { id: true, trackingNumber: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
-
-      return records.map((b) => ({
-        id: b.id,
-        batchNumber: b.batchNumber,
-        name: b.name,
-        description: b.description || "",
-        status: b.status,
-        shipmentsCount: b.shipments.length,
-        departure: b.departure ? b.departure.toISOString().split("T")[0] : null,
-        arrival: b.arrival ? b.arrival.toISOString().split("T")[0] : null,
-        closedAt: b.closedAt ? b.closedAt.toISOString() : null,
-        fileDeletionAt: b.fileDeletionAt ? b.fileDeletionAt.toISOString() : null,
-        createdAt: b.createdAt.toISOString(),
-      }));
-    }
-
-    case "customers": {
-      const records = await prisma.customer.findMany({
-        include: {
-          shipments: { select: { id: true } },
-          payments: { select: { id: true, status: true } },
-          sourcingRequests: { select: { id: true } },
-          creditAccount: { select: { balance: true } },
-          notifications: { select: { id: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
-
-      return records.map((c) => ({
-        id: c.id,
-        customerIdentifier: c.customerIdentifier,
-        name: c.name,
-        phone: c.phone || "N/A",
-        email: c.email || "N/A",
-        status: c.status,
-        credits: c.creditAccount?.balance || 0,
-        shipmentsCount: c.shipments.length,
-        paymentsCount: c.payments.length,
-        sourcingCount: c.sourcingRequests.length,
-        notificationsCount: c.notifications.length,
-        createdAt: c.createdAt.toISOString(),
-      }));
-    }
-
-    case "events": {
-      const records = await prisma.trackingEvent.findMany({
-        include: {
-          shipment: { select: { id: true, trackingNumber: true, description: true } },
-          admin: { select: { id: true, name: true, email: true } },
-        },
-        orderBy: { timestamp: "desc" },
-        take: 100,
-      });
-
-      return records.map((e) => ({
-        id: e.id,
-        status: e.status,
-        location: e.location || "N/A",
-        note: e.note || "N/A",
-        timestamp: e.timestamp.toISOString(),
-        shipmentTrackingNumber: e.shipment?.trackingNumber || "N/A",
-        shipmentDescription: e.shipment?.description || "N/A",
-        adminName: e.admin?.name || e.admin?.email || "System",
-      }));
-    }
-
-    case "notifications": {
-      const records = await prisma.notification.findMany({
-        include: {
-          customer: { select: { id: true, customerIdentifier: true, name: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
-
-      return records.map((n) => ({
-        id: n.id,
-        type: n.type,
-        title: n.title,
-        message: n.message,
-        read: n.read,
-        customerName: n.customer?.name || "N/A",
-        customerIdentifier: n.customer?.customerIdentifier || "N/A",
-        createdAt: n.createdAt.toISOString(),
-      }));
-    }
-
-    case "payments": {
-      const records = await prisma.payment.findMany({
-        include: {
-          customer: { select: { id: true, customerIdentifier: true, name: true } },
-          shipment: { select: { id: true, trackingNumber: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
-
-      return records.map((p) => ({
-        id: p.id,
-        reference: p.reference,
-        amount: p.amount,
-        currency: p.currency || "GHS",
-        status: p.status,
-        type: p.type,
-        provider: p.provider || "PAYSTACK",
-        createdAt: p.createdAt.toISOString(),
-        customerName: p.customer?.name || "N/A",
-        customerIdentifier: p.customer?.customerIdentifier || "N/A",
-        shipmentTrackingNumber: p.shipment?.trackingNumber || "N/A",
-      }));
-    }
-
-    default:
-      return [];
+  } catch (err: any) {
+    console.error("[getDataRecordsAction] Error:", err);
+    return [];
   }
 }
 
@@ -214,182 +238,398 @@ export async function getDataRecordsAction(entityType: "shipments" | "batches" |
  * Deep inspection of a record's dependencies and relationships before deletion
  */
 export async function getRecordRelationshipsAction(entityType: string, recordId: string) {
-  await requireAdminSession();
+  try {
+    await requireAdminSession();
 
-  switch (entityType) {
-    case "Shipment": {
-      const shipment = await prisma.shipment.findFirst({
-        where: {
-          OR: [{ id: recordId }, { trackingNumber: recordId }],
-        },
-        include: {
-          customer: true,
-          batch: true,
-          trackingEvents: true,
-          photos: true,
-          payments: true,
-        },
-      });
+    switch (entityType) {
+      case "Shipment": {
+        const shipment = await prisma.shipment.findFirst({
+          where: {
+            OR: [{ id: recordId }, { trackingNumber: recordId }],
+          },
+          include: {
+            customer: true,
+            batch: true,
+            trackingEvents: true,
+            photos: true,
+            payments: true,
+          },
+        });
 
-      if (!shipment) return null;
+        if (!shipment) return null;
 
-      const notifsCount = await prisma.notification.count({
-        where: { shipmentId: shipment.id },
-      });
+        const notifsCount = await prisma.notification.count({
+          where: { shipmentId: shipment.id },
+        }).catch(() => 0);
 
-      return {
-        id: shipment.id,
-        trackingNumber: shipment.trackingNumber,
-        description: shipment.description,
-        customer: {
-          id: shipment.customer.id,
-          name: shipment.customer.name,
-          identifier: shipment.customer.customerIdentifier,
-        },
-        batch: shipment.batch
-          ? {
-              id: shipment.batch.id,
-              batchNumber: shipment.batch.batchNumber,
-              name: shipment.batch.name,
-            }
-          : null,
-        relationships: {
-          trackingEventsCount: shipment.trackingEvents.length,
-          photosCount: shipment.photos.length,
-          paymentsCount: shipment.payments.length,
-          notificationsCount: notifsCount,
-        },
-        warnings: shipment.payments.some((p) => p.status === "SUCCESS")
-          ? ["This shipment has verified financial payments. Payment history is protected and will be preserved."]
-          : [],
-        canDelete: true,
-      };
-    }
+        return {
+          id: shipment.id,
+          trackingNumber: shipment.trackingNumber,
+          description: shipment.description,
+          fee: shipment.fee,
+          weight: shipment.weight,
+          quantity: shipment.quantity,
+          status: shipment.status,
+          customer: shipment.customer ? {
+            id: shipment.customer.id,
+            name: shipment.customer.name,
+            identifier: shipment.customer.customerIdentifier,
+          } : null,
+          batch: shipment.batch
+            ? {
+                id: shipment.batch.id,
+                batchNumber: shipment.batch.batchNumber,
+                name: shipment.batch.name,
+              }
+            : null,
+          relationships: {
+            trackingEventsCount: (shipment.trackingEvents || []).length,
+            photosCount: (shipment.photos || []).length,
+            paymentsCount: (shipment.payments || []).length,
+            notificationsCount: notifsCount,
+          },
+          warnings: (shipment.payments || []).some((p) => p.status === "SUCCESS")
+            ? ["This shipment has verified financial payments. Payment history is protected and will be preserved."]
+            : [],
+          canDelete: true,
+        };
+      }
 
-    case "Batch": {
-      const batch = await prisma.batch.findFirst({
-        where: {
-          OR: [{ id: recordId }, { batchNumber: recordId }],
-        },
-        include: {
-          shipments: { select: { id: true, trackingNumber: true, description: true } },
-        },
-      });
+      case "Batch": {
+        const batch = await prisma.batch.findFirst({
+          where: {
+            OR: [{ id: recordId }, { batchNumber: recordId }],
+          },
+          include: {
+            shipments: { select: { id: true, trackingNumber: true, description: true } },
+          },
+        });
 
-      if (!batch) return null;
+        if (!batch) return null;
 
-      const photosCount = await prisma.shipmentPhoto.count({
-        where: { batchId: batch.id },
-      });
+        const photosCount = await prisma.shipmentPhoto.count({
+          where: { batchId: batch.id },
+        }).catch(() => 0);
 
-      const canDelete = batch.shipments.length === 0;
+        const canDelete = (batch.shipments || []).length === 0;
 
-      return {
-        id: batch.id,
-        batchNumber: batch.batchNumber,
-        name: batch.name,
-        description: batch.description,
-        status: batch.status,
-        relationships: {
-          shipmentsCount: batch.shipments.length,
-          photosCount,
-        },
-        assignedShipments: batch.shipments.map((s) => s.trackingNumber),
-        warnings:
-          batch.shipments.length > 0
+        return {
+          id: batch.id,
+          batchNumber: batch.batchNumber,
+          name: batch.name,
+          description: batch.description,
+          status: batch.status,
+          departure: batch.departure ? batch.departure.toISOString().split("T")[0] : null,
+          arrival: batch.arrival ? batch.arrival.toISOString().split("T")[0] : null,
+          relationships: {
+            shipmentsCount: (batch.shipments || []).length,
+            photosCount,
+          },
+          assignedShipments: (batch.shipments || []).map((s) => s.trackingNumber),
+          warnings:
+            (batch.shipments || []).length > 0
+              ? [
+                  `This batch contains ${batch.shipments.length} assigned shipments (${batch.shipments.map((s) => s.trackingNumber).join(", ")}). You must reassign or remove all shipments before deleting this batch.`,
+                ]
+              : [],
+          canDelete,
+        };
+      }
+
+      case "Customer": {
+        const customer = await prisma.customer.findFirst({
+          where: {
+            OR: [{ id: recordId }, { customerIdentifier: recordId }],
+          },
+          include: {
+            shipments: { select: { id: true, trackingNumber: true } },
+            payments: { select: { id: true, status: true, amount: true } },
+            sourcingRequests: { select: { id: true } },
+            creditAccount: true,
+            notifications: { select: { id: true } },
+          },
+        });
+
+        if (!customer) return null;
+
+        const hasHistory =
+          (customer.payments || []).length > 0 ||
+          (customer.shipments || []).length > 0 ||
+          (customer.sourcingRequests || []).length > 0;
+
+        return {
+          id: customer.id,
+          customerIdentifier: customer.customerIdentifier,
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+          status: customer.status,
+          relationships: {
+            shipmentsCount: (customer.shipments || []).length,
+            paymentsCount: (customer.payments || []).length,
+            sourcingRequestsCount: (customer.sourcingRequests || []).length,
+            creditBalance: customer.creditAccount?.balance || 0,
+            notificationsCount: (customer.notifications || []).length,
+          },
+          warnings: hasHistory
             ? [
-                `This batch contains ${batch.shipments.length} assigned shipments (${batch.shipments.map((s) => s.trackingNumber).join(", ")}). You must reassign or remove all shipments before deleting this batch.`,
+                "This customer account contains historical logistics or financial records. To preserve audit and accounting integrity, use 'Deactivate Customer' instead of permanent deletion.",
               ]
             : [],
-        canDelete,
-      };
+          canDelete: !hasHistory,
+        };
+      }
+
+      case "Payment": {
+        const payment = await prisma.payment.findFirst({
+          where: {
+            OR: [{ id: recordId }, { reference: recordId }],
+          },
+          include: {
+            customer: true,
+            shipment: true,
+            creditTransactions: true,
+          },
+        });
+
+        if (!payment) return null;
+
+        const notifsCount = await prisma.notification.count({
+          where: { paymentId: payment.id },
+        }).catch(() => 0);
+
+        return {
+          id: payment.id,
+          reference: payment.reference,
+          amount: payment.amount,
+          currency: payment.currency || "GHS",
+          status: payment.status,
+          provider: payment.provider,
+          customer: payment.customer
+            ? { id: payment.customer.id, name: payment.customer.name, identifier: payment.customer.customerIdentifier }
+            : null,
+          shipment: payment.shipment ? { id: payment.shipment.id, trackingNumber: payment.shipment.trackingNumber } : null,
+          relationships: {
+            creditTransactionsCount: (payment.creditTransactions || []).length,
+            notificationsCount: notifsCount,
+          },
+          warnings: payment.status === "SUCCESS"
+            ? ["This payment was successfully completed. Deleting this record will remove it from local payment history while keeping audit logs intact."]
+            : [],
+          canDelete: true,
+        };
+      }
+
+      default:
+        return null;
     }
+  } catch (err) {
+    console.error("[getRecordRelationshipsAction] Error:", err);
+    return null;
+  }
+}
 
-    case "Customer": {
-      const customer = await prisma.customer.findFirst({
-        where: {
-          OR: [{ id: recordId }, { customerIdentifier: recordId }],
-        },
-        include: {
-          shipments: { select: { id: true, trackingNumber: true } },
-          payments: { select: { id: true, status: true, amount: true } },
-          sourcingRequests: { select: { id: true } },
-          creditAccount: true,
-          notifications: { select: { id: true } },
-        },
-      });
+/**
+ * Authorized Update / Edit of a Data Management Record
+ */
+export async function updateDataRecordAction(
+  entityType: string,
+  recordId: string,
+  data: Record<string, any>
+) {
+  try {
+    const admin = await requireAdminSession();
 
-      if (!customer) return null;
+    switch (entityType.toLowerCase()) {
+      case "shipments":
+      case "shipment": {
+        const existing = await prisma.shipment.findUnique({ where: { id: recordId } });
+        if (!existing) return { error: "Shipment record not found." };
 
-      const hasHistory =
-        customer.payments.length > 0 ||
-        customer.shipments.length > 0 ||
-        customer.sourcingRequests.length > 0;
+        const updateData: any = {};
+        if (data.description !== undefined) updateData.description = String(data.description);
+        if (data.trackingNumber !== undefined && data.trackingNumber.trim()) updateData.trackingNumber = String(data.trackingNumber).trim();
+        if (data.status !== undefined && data.status) updateData.status = data.status;
+        if (data.fee !== undefined) updateData.fee = parseFloat(data.fee) || 0;
+        if (data.weight !== undefined) updateData.weight = data.weight !== "" && data.weight !== null ? parseFloat(data.weight) : null;
+        if (data.quantity !== undefined) updateData.quantity = data.quantity !== "" && data.quantity !== null ? parseInt(data.quantity) : null;
+        if (data.batchId !== undefined) updateData.batchId = data.batchId ? String(data.batchId) : null;
 
-      return {
-        id: customer.id,
-        customerIdentifier: customer.customerIdentifier,
-        name: customer.name,
-        email: customer.email,
-        phone: customer.phone,
-        status: customer.status,
-        relationships: {
-          shipmentsCount: customer.shipments.length,
-          paymentsCount: customer.payments.length,
-          sourcingRequestsCount: customer.sourcingRequests.length,
-          creditBalance: customer.creditAccount?.balance || 0,
-          notificationsCount: customer.notifications.length,
-        },
-        warnings: hasHistory
-          ? [
-              "This customer account contains historical logistics or financial records. To preserve audit and accounting integrity, use 'Deactivate Customer' instead of permanent deletion.",
-            ]
-          : [],
-        canDelete: !hasHistory,
-      };
+        const updated = await prisma.shipment.update({
+          where: { id: recordId },
+          data: updateData,
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "SHIPMENT_EDITED",
+            entityType: "Shipment",
+            entityId: recordId,
+            description: `Shipment ${updated.trackingNumber} updated by ${admin.name}`,
+            adminId: admin.id,
+            metadata: { updatedFields: Object.keys(updateData) },
+          },
+        }).catch(() => {});
+
+        return { success: true, record: updated };
+      }
+
+      case "batches":
+      case "batch": {
+        const existing = await prisma.batch.findUnique({ where: { id: recordId } });
+        if (!existing) return { error: "Batch record not found." };
+
+        const updateData: any = {};
+        if (data.batchNumber !== undefined && data.batchNumber.trim()) updateData.batchNumber = String(data.batchNumber).trim();
+        if (data.name !== undefined) updateData.name = String(data.name);
+        if (data.description !== undefined) updateData.description = String(data.description);
+        if (data.status !== undefined && data.status) updateData.status = String(data.status);
+        if (data.departure !== undefined) updateData.departure = data.departure ? new Date(data.departure) : null;
+        if (data.arrival !== undefined) updateData.arrival = data.arrival ? new Date(data.arrival) : null;
+
+        const updated = await prisma.batch.update({
+          where: { id: recordId },
+          data: updateData,
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "BATCH_EDITED",
+            entityType: "Batch",
+            entityId: recordId,
+            description: `Batch ${updated.batchNumber} updated by ${admin.name}`,
+            adminId: admin.id,
+            metadata: { updatedFields: Object.keys(updateData) },
+          },
+        }).catch(() => {});
+
+        return { success: true, record: updated };
+      }
+
+      case "customers":
+      case "customer": {
+        const existing = await prisma.customer.findUnique({ where: { id: recordId } });
+        if (!existing) return { error: "Customer record not found." };
+
+        const updateData: any = {};
+        if (data.name !== undefined) updateData.name = String(data.name);
+        if (data.phone !== undefined) updateData.phone = data.phone ? String(data.phone) : null;
+        if (data.email !== undefined) updateData.email = data.email ? String(data.email) : null;
+        if (data.status !== undefined && data.status) updateData.status = String(data.status);
+
+        const updated = await prisma.customer.update({
+          where: { id: recordId },
+          data: updateData,
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "CUSTOMER_EDITED",
+            entityType: "Customer",
+            entityId: recordId,
+            description: `Customer ${updated.customerIdentifier} updated by ${admin.name}`,
+            adminId: admin.id,
+            metadata: { updatedFields: Object.keys(updateData) },
+          },
+        }).catch(() => {});
+
+        return { success: true, record: updated };
+      }
+
+      case "events":
+      case "trackingevent": {
+        const existing = await prisma.trackingEvent.findUnique({ where: { id: recordId } });
+        if (!existing) return { error: "Tracking event record not found." };
+
+        const updateData: any = {};
+        if (data.status !== undefined && data.status) updateData.status = data.status;
+        if (data.location !== undefined) updateData.location = data.location ? String(data.location) : null;
+        if (data.note !== undefined) updateData.note = data.note ? String(data.note) : null;
+
+        const updated = await prisma.trackingEvent.update({
+          where: { id: recordId },
+          data: updateData,
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "TRACKING_EVENT_EDITED",
+            entityType: "TrackingEvent",
+            entityId: recordId,
+            description: `Tracking event updated by ${admin.name}`,
+            adminId: admin.id,
+            metadata: { updatedFields: Object.keys(updateData) },
+          },
+        }).catch(() => {});
+
+        return { success: true, record: updated };
+      }
+
+      case "notifications":
+      case "notification": {
+        const existing = await prisma.notification.findUnique({ where: { id: recordId } });
+        if (!existing) return { error: "Notification record not found." };
+
+        const updateData: any = {};
+        if (data.title !== undefined) updateData.title = String(data.title);
+        if (data.message !== undefined) updateData.message = String(data.message);
+        if (data.read !== undefined) updateData.read = Boolean(data.read);
+
+        const updated = await prisma.notification.update({
+          where: { id: recordId },
+          data: updateData,
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "NOTIFICATION_EDITED",
+            entityType: "Notification",
+            entityId: recordId,
+            description: `Notification '${updated.title}' updated by ${admin.name}`,
+            adminId: admin.id,
+            metadata: { updatedFields: Object.keys(updateData) },
+          },
+        }).catch(() => {});
+
+        return { success: true, record: updated };
+      }
+
+      case "payments":
+      case "payment": {
+        const existing = await prisma.payment.findUnique({ where: { id: recordId } });
+        if (!existing) return { error: "Payment record not found." };
+
+        const updateData: any = {};
+        if (data.amount !== undefined) updateData.amount = parseFloat(data.amount) || 0;
+        if (data.status !== undefined && data.status) updateData.status = data.status;
+        if (data.currency !== undefined) updateData.currency = String(data.currency);
+        if (data.provider !== undefined) updateData.provider = data.provider ? String(data.provider) : null;
+
+        const updated = await prisma.payment.update({
+          where: { id: recordId },
+          data: updateData,
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: "PAYMENT_EDITED",
+            entityType: "Payment",
+            entityId: recordId,
+            description: `Payment ${updated.reference} updated by ${admin.name}`,
+            adminId: admin.id,
+            metadata: { updatedFields: Object.keys(updateData) },
+          },
+        }).catch(() => {});
+
+        return { success: true, record: updated };
+      }
+
+      default:
+        return { error: "Invalid entity type for record editing." };
     }
-
-    case "Payment": {
-      const payment = await prisma.payment.findFirst({
-        where: {
-          OR: [{ id: recordId }, { reference: recordId }],
-        },
-        include: {
-          customer: true,
-          shipment: true,
-          creditTransactions: true,
-        },
-      });
-
-      if (!payment) return null;
-
-      const notifsCount = await prisma.notification.count({
-        where: { paymentId: payment.id },
-      });
-
-      return {
-        id: payment.id,
-        reference: payment.reference,
-        amount: payment.amount,
-        currency: payment.currency || "GHS",
-        status: payment.status,
-        customer: payment.customer
-          ? { id: payment.customer.id, name: payment.customer.name, identifier: payment.customer.customerIdentifier }
-          : null,
-        shipment: payment.shipment ? { id: payment.shipment.id, trackingNumber: payment.shipment.trackingNumber } : null,
-        relationships: {
-          creditTransactionsCount: payment.creditTransactions.length,
-          notificationsCount: notifsCount,
-        },
-        warnings: payment.status === "SUCCESS"
-          ? ["This payment was successfully completed. Deleting this record will remove it from local payment history while keeping audit logs intact."]
-          : [],
-        canDelete: true,
-      };
-    }
-
-    default:
-      return null;
+  } catch (err: any) {
+    console.error("[updateDataRecordAction] Error:", err);
+    return { error: err?.message || "Failed to update record." };
   }
 }
 
@@ -1294,94 +1534,104 @@ export type ResetCategoryId = typeof SUPPORTED_RESET_CATEGORIES[number]["id"];
  * 1. Generate live operational reset preview with real database counts
  */
 export async function getOperationalResetPreviewAction() {
-  await requireAdminSession();
-  const { ensureResetAuditSchema } = await import("@/lib/reset-audit");
-  await ensureResetAuditSchema();
+  try {
+    await requireAdminSession();
+    const { ensureResetAuditSchema } = await import("@/lib/reset-audit");
+    await ensureResetAuditSchema();
 
-  const [
-    shipmentsCount,
-    trackingEventsCount,
-    photosCount,
-    sourcingRequestsCount,
-    batchesCount,
-    creditTransactionsCount,
-    creditAccountsCount,
-    paymentsCount,
-    emailLogsCount,
-    notificationsCount,
-    auditLogsCount,
-    // Protected records
-    adminUsersCount,
-    customersCount,
-    brandSettingsCount,
-    systemSettingsCount,
-  ] = await Promise.all([
-    prisma.shipment.count(),
-    prisma.trackingEvent.count(),
-    prisma.shipmentPhoto.count(),
-    prisma.sourcingRequest.count(),
-    prisma.batch.count(),
-    prisma.creditTransaction.count(),
-    prisma.creditAccount.count(),
-    prisma.payment.count(),
-    prisma.emailLog.count().catch(() => 0),
-    prisma.notification.count(),
-    prisma.auditLog.count(),
-    prisma.adminUser.count(),
-    prisma.customer.count(),
-    prisma.brandSettings.count().catch(() => 1),
-    prisma.systemSettings.count().catch(() => 1),
-  ]);
-
-  return {
-    categories: {
-      SHIPMENTS: {
-        count: shipmentsCount,
-        details: `${shipmentsCount} shipments, ${trackingEventsCount} tracking events, ${photosCount} photos`,
-      },
-      SOURCING_REQUESTS: {
-        count: sourcingRequestsCount,
-        details: `${sourcingRequestsCount} customer sourcing applications`,
-      },
-      BATCHES: {
-        count: batchesCount,
-        details: `${batchesCount} shipping batches`,
-      },
-      CREDIT_LEDGER: {
-        count: creditTransactionsCount,
-        details: `${creditTransactionsCount} transactions across ${creditAccountsCount} accounts`,
-      },
-      LOCAL_PAYMENTS: {
-        count: paymentsCount,
-        details: `${paymentsCount} local payment ledger records`,
-      },
-      EMAIL_LOGS_NOTIFICATIONS: {
-        count: emailLogsCount + notificationsCount,
-        details: `${emailLogsCount} email logs, ${notificationsCount} notifications`,
-      },
-      OPERATIONAL_AUDIT_LOGS: {
-        count: auditLogsCount,
-        details: `${auditLogsCount} administrative audit entries`,
-      },
-    },
-    totalOperationalRecords:
-      shipmentsCount +
-      trackingEventsCount +
-      photosCount +
-      sourcingRequestsCount +
-      batchesCount +
-      creditTransactionsCount +
-      paymentsCount +
-      emailLogsCount +
-      notificationsCount +
+    const [
+      shipmentsCount,
+      trackingEventsCount,
+      photosCount,
+      sourcingRequestsCount,
+      batchesCount,
+      creditTransactionsCount,
+      creditAccountsCount,
+      paymentsCount,
+      emailLogsCount,
+      notificationsCount,
       auditLogsCount,
-    protectedInfrastructure: {
-      adminAccounts: adminUsersCount,
-      customerAccounts: customersCount,
-      brandSettings: brandSettingsCount,
-      systemSettings: systemSettingsCount,
-    },
-  };
+      // Protected records
+      adminUsersCount,
+      customersCount,
+      brandSettingsCount,
+      systemSettingsCount,
+    ] = await Promise.all([
+      prisma.shipment.count().catch(() => 0),
+      prisma.trackingEvent.count().catch(() => 0),
+      prisma.shipmentPhoto.count().catch(() => 0),
+      prisma.sourcingRequest.count().catch(() => 0),
+      prisma.batch.count().catch(() => 0),
+      prisma.creditTransaction.count().catch(() => 0),
+      prisma.creditAccount.count().catch(() => 0),
+      prisma.payment.count().catch(() => 0),
+      prisma.emailLog.count().catch(() => 0),
+      prisma.notification.count().catch(() => 0),
+      prisma.auditLog.count().catch(() => 0),
+      prisma.adminUser.count().catch(() => 0),
+      prisma.customer.count().catch(() => 0),
+      prisma.brandSettings.count().catch(() => 1),
+      prisma.systemSettings.count().catch(() => 1),
+    ]);
+
+    return {
+      categories: {
+        SHIPMENTS: {
+          count: shipmentsCount,
+          details: `${shipmentsCount} shipments, ${trackingEventsCount} tracking events, ${photosCount} photos`,
+        },
+        SOURCING_REQUESTS: {
+          count: sourcingRequestsCount,
+          details: `${sourcingRequestsCount} customer sourcing applications`,
+        },
+        BATCHES: {
+          count: batchesCount,
+          details: `${batchesCount} shipping batches`,
+        },
+        CREDIT_LEDGER: {
+          count: creditTransactionsCount,
+          details: `${creditTransactionsCount} transactions across ${creditAccountsCount} accounts`,
+        },
+        LOCAL_PAYMENTS: {
+          count: paymentsCount,
+          details: `${paymentsCount} local payment ledger records`,
+        },
+        EMAIL_LOGS_NOTIFICATIONS: {
+          count: emailLogsCount + notificationsCount,
+          details: `${emailLogsCount} email logs, ${notificationsCount} notifications`,
+        },
+        OPERATIONAL_AUDIT_LOGS: {
+          count: auditLogsCount,
+          details: `${auditLogsCount} administrative audit entries`,
+        },
+      },
+      totalOperationalRecords:
+        shipmentsCount +
+        trackingEventsCount +
+        photosCount +
+        sourcingRequestsCount +
+        batchesCount +
+        creditTransactionsCount +
+        paymentsCount +
+        emailLogsCount +
+        notificationsCount +
+        auditLogsCount,
+      protectedInfrastructure: {
+        adminAccounts: adminUsersCount,
+        customerAccounts: customersCount,
+        brandSettings: brandSettingsCount,
+        systemSettings: systemSettingsCount,
+      },
+    };
+  } catch (err: any) {
+    console.error("[getOperationalResetPreviewAction] Error:", err);
+    return {
+      categories: {},
+      totalOperationalRecords: 0,
+      protectedInfrastructure: { adminAccounts: 0, customerAccounts: 0, brandSettings: 0, systemSettings: 0 },
+      error: err?.message || "Failed to load reset preview",
+    };
+  }
 }
 
 /**
@@ -1688,8 +1938,14 @@ export async function executeOperationalResetAction(params: {
  * 3. Fetch past operational reset audits
  */
 export async function getResetAuditHistoryAction() {
-  await requireAdminSession();
-  const { getResetAuditHistory } = await import("@/lib/reset-audit");
-  return getResetAuditHistory();
+  try {
+    await requireAdminSession();
+    const { getResetAuditHistory } = await import("@/lib/reset-audit");
+    const history = await getResetAuditHistory();
+    return Array.isArray(history) ? history : [];
+  } catch (err: any) {
+    console.error("[getResetAuditHistoryAction] Error:", err);
+    return [];
+  }
 }
 

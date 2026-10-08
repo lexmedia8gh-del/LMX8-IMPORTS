@@ -5,13 +5,14 @@ import {
   Database, Truck, Layers, Users, Clock, Bell, Shield, 
   AlertTriangle, Trash2, Eye, RefreshCw, Search, CheckCircle2, 
   X, Lock, ShieldAlert, ArrowRight, UserX, UserCheck, ChevronDown,
-  CheckSquare, Square
+  CheckSquare, Square, Pencil
 } from "lucide-react";
 import { AdminDrawer } from "@/components/admin-drawer";
 import { 
   getDatabaseOverviewAction,
   getDataRecordsAction,
   getRecordRelationshipsAction,
+  updateDataRecordAction,
   deleteShipmentSafeAction,
   deleteBatchSafeAction,
   deleteCustomerSafeAction,
@@ -40,6 +41,12 @@ export default function AdminDataManagementPage() {
 
   // Selection state for bulk operations
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Record Editing State
+  const [recordToEdit, setRecordToEdit] = useState<{ type: string; id: string; data: any } | null>(null);
+  const [editFormData, setEditFormData] = useState<Record<string, any>>({});
+  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Detail Drawer State
   const [selectedEntity, setSelectedEntity] = useState<{ type: string; id: string } | null>(null);
@@ -106,9 +113,10 @@ export default function AdminDataManagementPage() {
     setLoadingResetHistory(true);
     try {
       const data = await getResetAuditHistoryAction();
-      setResetHistory(data);
+      setResetHistory(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to load reset history:", err);
+      setResetHistory([]);
     } finally {
       setLoadingResetHistory(false);
     }
@@ -130,7 +138,7 @@ export default function AdminDataManagementPage() {
     setSelectedIds(new Set());
     try {
       const data = await getDataRecordsAction(tab);
-      setRecords(data);
+      setRecords(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(`Failed to load ${tab} records:`, e);
       setRecords([]);
@@ -153,7 +161,9 @@ export default function AdminDataManagementPage() {
 
   // Filter Records
   const filteredRecords = useMemo(() => {
-    return (records || []).filter((r) => {
+    const list = Array.isArray(records) ? records : [];
+    return list.filter((r) => {
+      if (!r || typeof r !== "object") return false;
       if (!search.trim()) return true;
       const term = search.toLowerCase();
       return Object.values(r).some((v) => 
@@ -195,6 +205,85 @@ export default function AdminDataManagementPage() {
     } else {
       const allKeys = new Set(filteredRecords.map((r) => getRecordKey(r)));
       setSelectedIds(allKeys);
+    }
+  };
+
+  // Start editing a record
+  const handleStartEdit = (type: string, record: any) => {
+    setRecordToEdit({ type, id: record.id, data: record });
+    setEditError(null);
+
+    const ent = type.toLowerCase();
+    if (ent === "shipment" || ent === "shipments") {
+      setEditFormData({
+        description: record.description || "",
+        trackingNumber: record.trackingNumber || "",
+        status: record.status || "SHIPMENT_CREATED",
+        fee: record.fee ?? 0,
+        weight: record.weight ?? "",
+        quantity: record.quantity ?? "",
+        batchId: record.batchId || "",
+      });
+    } else if (ent === "batch" || ent === "batches") {
+      setEditFormData({
+        batchNumber: record.batchNumber || "",
+        name: record.name || "",
+        description: record.description || "",
+        status: record.status || "OPEN",
+        departure: record.departure || "",
+        arrival: record.arrival || "",
+      });
+    } else if (ent === "customer" || ent === "customers") {
+      setEditFormData({
+        name: record.name || "",
+        phone: record.phone !== "N/A" ? record.phone || "" : "",
+        email: record.email !== "N/A" ? record.email || "" : "",
+        status: record.status || "ACTIVE",
+      });
+    } else if (ent === "trackingevent" || ent === "events") {
+      setEditFormData({
+        status: record.status || "SHIPMENT_CREATED",
+        location: record.location !== "N/A" ? record.location || "" : "",
+        note: record.note !== "N/A" ? record.note || "" : "",
+      });
+    } else if (ent === "notification" || ent === "notifications") {
+      setEditFormData({
+        title: record.title || "",
+        message: record.message || "",
+        read: Boolean(record.read),
+      });
+    } else if (ent === "payment" || ent === "payments") {
+      setEditFormData({
+        amount: record.amount ?? 0,
+        status: record.status || "PENDING",
+        currency: record.currency || "GHS",
+        provider: record.provider || "PAYSTACK",
+      });
+    }
+  };
+
+  // Save record changes
+  const handleSaveEdit = async () => {
+    if (!recordToEdit) return;
+    setIsSavingEdit(true);
+    setEditError(null);
+
+    try {
+      const res = await updateDataRecordAction(recordToEdit.type, recordToEdit.id, editFormData);
+      if (res?.error) {
+        setEditError(res.error);
+      } else {
+        showToast(`✓ ${recordToEdit.type} record updated successfully.`);
+        setRecordToEdit(null);
+        setEditFormData({});
+        loadOverview();
+        if (activeTab !== "danger") loadRecords(activeTab);
+        if (selectedEntity) handleOpenDetails(selectedEntity.type, selectedEntity.id);
+      }
+    } catch (err: any) {
+      setEditError(err?.message || "Failed to update record.");
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -649,6 +738,12 @@ export default function AdminDataManagementPage() {
                               <Eye size={13} /> Inspect
                             </button>
                             <button
+                              onClick={() => handleStartEdit("Shipment", s)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Pencil size={13} /> Edit
+                            </button>
+                            <button
                               onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
                               className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
                             >
@@ -747,6 +842,12 @@ export default function AdminDataManagementPage() {
                                   <Eye size={13} /> Inspect
                                 </button>
                                 <button
+                                  onClick={() => handleStartEdit("Shipment", s)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Pencil size={13} /> Edit
+                                </button>
+                                <button
                                   onClick={() => setRecordToDelete({ type: "Shipment", id: s.trackingNumber, name: s.trackingNumber })}
                                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
                                 >
@@ -814,6 +915,12 @@ export default function AdminDataManagementPage() {
                             className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <Eye size={13} /> Inspect
+                          </button>
+                          <button
+                            onClick={() => handleStartEdit("Batch", b)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Pencil size={13} /> Edit
                           </button>
                           <button
                             onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
@@ -903,6 +1010,12 @@ export default function AdminDataManagementPage() {
                                   <Eye size={13} /> Inspect
                                 </button>
                                 <button
+                                  onClick={() => handleStartEdit("Batch", b)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Pencil size={13} /> Edit
+                                </button>
+                                <button
                                   onClick={() => setRecordToDelete({ type: "Batch", id: b.batchNumber, name: `${b.name} (${b.batchNumber})` })}
                                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
                                 >
@@ -972,6 +1085,12 @@ export default function AdminDataManagementPage() {
                             className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <Eye size={13} /> Inspect
+                          </button>
+                          <button
+                            onClick={() => handleStartEdit("Customer", c)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Pencil size={13} /> Edit
                           </button>
                           <button
                             onClick={() => handleToggleCustomerStatus(c.id)}
@@ -1075,6 +1194,12 @@ export default function AdminDataManagementPage() {
                                   <Eye size={13} /> Inspect
                                 </button>
                                 <button
+                                  onClick={() => handleStartEdit("Customer", c)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Pencil size={13} /> Edit
+                                </button>
+                                <button
                                   onClick={() => handleToggleCustomerStatus(c.id)}
                                   disabled={isPending}
                                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer ${
@@ -1149,12 +1274,20 @@ export default function AdminDataManagementPage() {
                         {e.note && <p className="text-[11px] text-[#667085] bg-gray-50 p-2 rounded-lg">{e.note}</p>}
                         <div className="flex items-center justify-between text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
                           <span>{new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          <button
-                            onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <Trash2 size={13} /> Delete
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleStartEdit("TrackingEvent", e)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Pencil size={13} /> Edit
+                            </button>
+                            <button
+                              onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1227,12 +1360,20 @@ export default function AdminDataManagementPage() {
                               {new Date(e.timestamp).toLocaleDateString()} {new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </td>
                             <td className="px-4 py-3.5">
-                              <button
-                                onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Trash2 size={13} /> Delete
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleStartEdit("TrackingEvent", e)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Pencil size={13} /> Edit
+                                </button>
+                                <button
+                                  onClick={() => setRecordToDelete({ type: "TrackingEvent", id: e.id, name: `Event for ${e.shipmentTrackingNumber}` })}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 size={13} /> Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1287,12 +1428,20 @@ export default function AdminDataManagementPage() {
                         <p className="text-[11px] text-[#667085] bg-gray-50 p-2 rounded-lg">{n.message}</p>
                         <div className="flex items-center justify-between text-[11px] text-[#667085] pt-2 border-t border-[#F1F5F9]">
                           <span>{new Date(n.createdAt).toLocaleDateString()}</span>
-                          <button
-                            onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <Trash2 size={13} /> Delete
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleStartEdit("Notification", n)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Pencil size={13} /> Edit
+                            </button>
+                            <button
+                              onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1363,12 +1512,20 @@ export default function AdminDataManagementPage() {
                               {new Date(n.createdAt).toLocaleDateString()}
                             </td>
                             <td className="px-4 py-3.5">
-                              <button
-                                onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Trash2 size={13} /> Delete
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleStartEdit("Notification", n)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Pencil size={13} /> Edit
+                                </button>
+                                <button
+                                  onClick={() => setRecordToDelete({ type: "Notification", id: n.id, name: n.title })}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 size={13} /> Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1436,6 +1593,12 @@ export default function AdminDataManagementPage() {
                               className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
                             >
                               <Eye size={13} /> Inspect
+                            </button>
+                            <button
+                              onClick={() => handleStartEdit("Payment", p)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Pencil size={13} /> Edit
                             </button>
                             <button
                               onClick={() => setRecordToDelete({ type: "Payment", id: p.reference, name: `${p.reference} (${p.currency} ${p.amount})` })}
@@ -1527,6 +1690,12 @@ export default function AdminDataManagementPage() {
                                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-gray-200 transition-colors flex items-center gap-1 cursor-pointer"
                                 >
                                   <Eye size={13} /> Inspect
+                                </button>
+                                <button
+                                  onClick={() => handleStartEdit("Payment", p)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Pencil size={13} /> Edit
                                 </button>
                                 <button
                                   onClick={() => setRecordToDelete({ type: "Payment", id: p.reference, name: `${p.reference} (${p.currency} ${p.amount})` })}
@@ -1932,6 +2101,13 @@ export default function AdminDataManagementPage() {
             <div className="pt-4 border-t border-[#F1F5F9] space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#141B47]">Available Actions</h4>
               <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => handleStartEdit(selectedEntity?.type || "", entityDetails)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Pencil size={14} /> Edit Record...
+                </button>
+
                 {selectedEntity?.type === "Customer" && (
                   <button
                     onClick={() => handleToggleCustomerStatus(entityDetails.id)}
@@ -2179,6 +2355,361 @@ export default function AdminDataManagementPage() {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── RECORD EDITING MODAL ── */}
+      {recordToEdit && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl border border-[#E5E7EB] space-y-5 max-h-[90vh] overflow-y-auto animate-in zoom-in-95">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-200">
+                  <Pencil size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-[#141B47]">Edit {recordToEdit.type} Record</h3>
+                  <p className="text-xs text-[#667085] font-mono mt-0.5">{recordToEdit.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setRecordToEdit(null);
+                  setEditError(null);
+                }}
+                className="p-1.5 rounded-lg text-[#667085] hover:text-[#141B47] hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
+                <AlertTriangle size={16} className="shrink-0 text-red-500" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            {/* Form Fields according to entity type */}
+            <div className="space-y-4">
+              {(recordToEdit.type.toLowerCase() === "shipment" || recordToEdit.type.toLowerCase() === "shipments") && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Tracking Number</label>
+                    <input
+                      type="text"
+                      value={editFormData.trackingNumber || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, trackingNumber: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs font-mono font-bold focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Description</label>
+                    <input
+                      type="text"
+                      value={editFormData.description || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-[#141B47] mb-1">Status</label>
+                      <select
+                        value={editFormData.status || "SHIPMENT_CREATED"}
+                        onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500 bg-white"
+                      >
+                        <option value="SHIPMENT_CREATED">Shipment Created</option>
+                        <option value="PREPARING_SHIPMENT">Preparing Shipment</option>
+                        <option value="SHIPPED">Shipped</option>
+                        <option value="IN_TRANSIT">In Transit</option>
+                        <option value="ARRIVED_AT_DESTINATION">Arrived at Destination</option>
+                        <option value="CUSTOMS_CLEARANCE">Customs Clearance</option>
+                        <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
+                        <option value="DELIVERED">Delivered</option>
+                        <option value="ON_HOLD">On Hold</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#141B47] mb-1">Fee (GHS)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editFormData.fee ?? 0}
+                        onChange={(e) => setEditFormData({ ...editFormData, fee: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-[#141B47] mb-1">Weight (kg)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={editFormData.weight ?? ""}
+                        onChange={(e) => setEditFormData({ ...editFormData, weight: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#141B47] mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        value={editFormData.quantity ?? ""}
+                        onChange={(e) => setEditFormData({ ...editFormData, quantity: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {(recordToEdit.type.toLowerCase() === "batch" || recordToEdit.type.toLowerCase() === "batches") && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Batch Code</label>
+                    <input
+                      type="text"
+                      value={editFormData.batchNumber || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, batchNumber: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs font-mono font-bold focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Batch Name</label>
+                    <input
+                      type="text"
+                      value={editFormData.name || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Description</label>
+                    <input
+                      type="text"
+                      value={editFormData.description || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Status</label>
+                    <select
+                      value={editFormData.status || "OPEN"}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500 bg-white"
+                    >
+                      <option value="OPEN">Open</option>
+                      <option value="IN_TRANSIT">In Transit</option>
+                      <option value="ARRIVED">Arrived</option>
+                      <option value="CLOSED">Closed</option>
+                      <option value="ARCHIVED">Archived</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {(recordToEdit.type.toLowerCase() === "customer" || recordToEdit.type.toLowerCase() === "customers") && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={editFormData.name || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs font-bold focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Phone Number</label>
+                    <input
+                      type="text"
+                      value={editFormData.phone || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      value={editFormData.email || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Status</label>
+                    <select
+                      value={editFormData.status || "ACTIVE"}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500 bg-white"
+                    >
+                      <option value="ACTIVE">Active</option>
+                      <option value="INACTIVE">Inactive</option>
+                      <option value="SUSPENDED">Suspended</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {(recordToEdit.type.toLowerCase() === "trackingevent" || recordToEdit.type.toLowerCase() === "events") && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Checkpoint Status</label>
+                    <select
+                      value={editFormData.status || "SHIPMENT_CREATED"}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500 bg-white"
+                    >
+                      <option value="SHIPMENT_CREATED">Shipment Created</option>
+                      <option value="PREPARING_SHIPMENT">Preparing Shipment</option>
+                      <option value="SHIPPED">Shipped</option>
+                      <option value="IN_TRANSIT">In Transit</option>
+                      <option value="ARRIVED_AT_DESTINATION">Arrived at Destination</option>
+                      <option value="CUSTOMS_CLEARANCE">Customs Clearance</option>
+                      <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
+                      <option value="DELIVERED">Delivered</option>
+                      <option value="ON_HOLD">On Hold</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Location</label>
+                    <input
+                      type="text"
+                      value={editFormData.location || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Note / Remarks</label>
+                    <textarea
+                      value={editFormData.note || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, note: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500 h-20"
+                    />
+                  </div>
+                </>
+              )}
+
+              {(recordToEdit.type.toLowerCase() === "notification" || recordToEdit.type.toLowerCase() === "notifications") && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Title</label>
+                    <input
+                      type="text"
+                      value={editFormData.title || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs font-bold focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Message</label>
+                    <textarea
+                      value={editFormData.message || ""}
+                      onChange={(e) => setEditFormData({ ...editFormData, message: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500 h-24"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <input
+                      type="checkbox"
+                      id="edit-read"
+                      checked={Boolean(editFormData.read)}
+                      onChange={(e) => setEditFormData({ ...editFormData, read: e.target.checked })}
+                      className="rounded border-[#E5E7EB] text-amber-600 focus:ring-amber-500"
+                    />
+                    <label htmlFor="edit-read" className="text-xs font-medium text-[#141B47] cursor-pointer">
+                      Mark as Read
+                    </label>
+                  </div>
+                </>
+              )}
+
+              {(recordToEdit.type.toLowerCase() === "payment" || recordToEdit.type.toLowerCase() === "payments") && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-[#141B47] mb-1">Amount</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editFormData.amount ?? 0}
+                        onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#141B47] mb-1">Currency</label>
+                      <input
+                        type="text"
+                        value={editFormData.currency || "GHS"}
+                        onChange={(e) => setEditFormData({ ...editFormData, currency: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs font-mono focus:outline-hidden focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Payment Status</label>
+                    <select
+                      value={editFormData.status || "PENDING"}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500 bg-white"
+                    >
+                      <option value="PENDING">Pending</option>
+                      <option value="SUCCESS">Success</option>
+                      <option value="FAILED">Failed</option>
+                      <option value="REFUNDED">Refunded</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#141B47] mb-1">Provider</label>
+                    <input
+                      type="text"
+                      value={editFormData.provider || "PAYSTACK"}
+                      onChange={(e) => setEditFormData({ ...editFormData, provider: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
+              <button
+                type="button"
+                onClick={() => {
+                  setRecordToEdit(null);
+                  setEditError(null);
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold border border-[#E5E7EB] text-[#172236] hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSavingEdit}
+                onClick={handleSaveEdit}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSavingEdit ? (
+                  <>
+                    <RefreshCw size={13} className="animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Pencil size={13} />
+                    <span>Save Record</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
