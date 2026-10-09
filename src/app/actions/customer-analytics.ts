@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentCustomer, requireAdminSession } from "@/lib/auth";
+import { ensureAnalyticsSchema } from "@/lib/analytics-schema";
 
 export async function recordCustomerPageViewAction(path: string, pageTitle?: string) {
   try {
@@ -16,11 +17,14 @@ export async function recordCustomerPageViewAction(path: string, pageTitle?: str
     // Sanitize path (strip query params and hashes for privacy and deduplication)
     const sanitizedPath = path.split("?")[0].split("#")[0];
 
+    await ensureAnalyticsSchema();
+
     await prisma.customerPageView.create({
       data: {
         customerId: customer.id,
+        customerIdentifier: customer.customerIdentifier || "CUSTOMER",
         path: sanitizedPath,
-        pageTitle: pageTitle ? pageTitle.slice(0, 120) : undefined,
+        title: pageTitle ? pageTitle.slice(0, 120) : undefined,
       },
     });
 
@@ -84,6 +88,7 @@ export async function getCustomerAnalyticsOverviewAction(
   customRange?: { from: string; to: string }
 ): Promise<CustomerAnalyticsOverview> {
   await requireAdminSession();
+  await ensureAnalyticsSchema();
 
   const now = new Date();
   let startDate = new Date();
@@ -112,8 +117,8 @@ export async function getCustomerAnalyticsOverviewAction(
   // 1. Total Registered Customers
   const totalCustomers = await prisma.customer.count();
 
-  // 2. Auth Events within period
-  const authEventsInPeriod = await prisma.customerAuthEvent.findMany({
+  // 2. Auth Events within period using CustomerLoginLog
+  const loginLogsInPeriod = await prisma.customerLoginLog.findMany({
     where: {
       createdAt: {
         gte: startDate,
@@ -123,12 +128,16 @@ export async function getCustomerAnalyticsOverviewAction(
     orderBy: { createdAt: "desc" },
   });
 
-  const successfulLogins = authEventsInPeriod.filter((e) => e.outcome === "SUCCESS").length;
-  const failedLogins = authEventsInPeriod.filter((e) => e.outcome === "FAILED").length;
-  const lockedAttempts = authEventsInPeriod.filter((e) => e.outcome === "LOCKED").length;
+  const successfulLogins = loginLogsInPeriod.filter((e) => e.status === "SUCCESS").length;
+  const failedLogins = loginLogsInPeriod.filter((e) => e.status === "FAILED").length;
+  const lockedAttempts = loginLogsInPeriod.filter(
+    (e) => e.failureReason?.toLowerCase().includes("lock")
+  ).length;
 
   const uniqueLoggedInSet = new Set(
-    authEventsInPeriod.filter((e) => e.outcome === "SUCCESS" && e.customerId).map((e) => e.customerId!)
+    loginLogsInPeriod
+      .filter((e) => e.status === "SUCCESS" && e.customerId)
+      .map((e) => e.customerId as string)
   );
   const uniqueCustomersLoggedIn = uniqueLoggedInSet.size;
 
@@ -161,9 +170,12 @@ export async function getCustomerAnalyticsOverviewAction(
 
   // 4. Daily series aggregation
   const daysMap = new Map<string, { success: number; failed: number; views: number }>();
-  
+
   // Initialize days in range (up to 31 days)
-  const daysDiff = Math.min(31, Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))));
+  const daysDiff = Math.min(
+    31,
+    Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+  );
   for (let i = 0; i <= daysDiff; i++) {
     const d = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
     if (d > endDate) break;
@@ -171,10 +183,10 @@ export async function getCustomerAnalyticsOverviewAction(
     daysMap.set(key, { success: 0, failed: 0, views: 0 });
   }
 
-  for (const e of authEventsInPeriod) {
+  for (const e of loginLogsInPeriod) {
     const key = e.createdAt.toISOString().split("T")[0];
     const item = daysMap.get(key) || { success: 0, failed: 0, views: 0 };
-    if (e.outcome === "SUCCESS") item.success += 1;
+    if (e.status === "SUCCESS") item.success += 1;
     else item.failed += 1;
     daysMap.set(key, item);
   }
@@ -269,20 +281,26 @@ export async function getCustomerAnalyticsOverviewAction(
     }));
 
   // 7. Recent auth events with customer details
-  const recentAuthEventsSlice = authEventsInPeriod.slice(0, 20);
-  const customerIds = recentAuthEventsSlice.map((e) => e.customerId).filter(Boolean) as string[];
+  const recentLoginSlice = loginLogsInPeriod.slice(0, 20);
+  const customerIds = recentLoginSlice
+    .map((e) => e.customerId)
+    .filter((id): id is string => Boolean(id));
+
   const customers = await prisma.customer.findMany({
     where: { id: { in: customerIds } },
     select: { id: true, name: true, customerIdentifier: true },
   });
   const customerLookup = new Map(customers.map((c) => [c.id, c]));
 
-  const recentAuthEvents = recentAuthEventsSlice.map((e) => ({
+  const recentAuthEvents = recentLoginSlice.map((e) => ({
     id: e.id,
-    customerIdentifier: e.customerIdentifier || (e.customerId ? customerLookup.get(e.customerId)?.customerIdentifier : null) || "Unknown",
+    customerIdentifier:
+      e.customerIdentifier ||
+      (e.customerId ? customerLookup.get(e.customerId)?.customerIdentifier : null) ||
+      "Unknown",
     name: e.customerId ? customerLookup.get(e.customerId)?.name : undefined,
-    method: e.method,
-    outcome: e.outcome,
+    method: e.authMethod || "PIN",
+    outcome: e.status,
     createdAt: e.createdAt.toISOString(),
   }));
 
@@ -311,6 +329,7 @@ export async function getCustomerAnalyticsOverviewAction(
 
 export async function getCustomerActivityHistoryAction(customerId: string) {
   await requireAdminSession();
+  await ensureAnalyticsSchema();
 
   const customer = await prisma.customer.findUnique({
     where: { id: customerId },
@@ -326,7 +345,7 @@ export async function getCustomerActivityHistoryAction(customerId: string) {
         orderBy: { createdAt: "desc" },
         take: 50,
       },
-      authEvents: {
+      loginLogs: {
         orderBy: { createdAt: "desc" },
         take: 30,
       },
@@ -349,13 +368,13 @@ export async function getCustomerActivityHistoryAction(customerId: string) {
       pageViews: customer.pageViews.map((pv) => ({
         id: pv.id,
         path: pv.path,
-        pageTitle: pv.pageTitle || "",
+        pageTitle: pv.title || "",
         createdAt: pv.createdAt.toISOString(),
       })),
-      authEvents: customer.authEvents.map((ae) => ({
+      authEvents: customer.loginLogs.map((ae) => ({
         id: ae.id,
-        method: ae.method,
-        outcome: ae.outcome,
+        method: ae.authMethod,
+        outcome: ae.status,
         createdAt: ae.createdAt.toISOString(),
       })),
     },

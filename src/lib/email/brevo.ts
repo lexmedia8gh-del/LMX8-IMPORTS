@@ -856,67 +856,6 @@ export async function sendCustomerCreatedEmail(customerId: string): Promise<{ su
   }
 }
 
-// 1b. Customer Credentials Delivery
-export async function sendCustomerCredentialsEmail(customerId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string; messageId?: string }> {
-  try {
-    await ensureEmailLogSchema();
-    const customer = await prisma.customer.findUnique({
-      where: { id: customerId },
-    });
-
-    if (!customer) return { success: false, error: "Customer not found." };
-    if (!customer.email || !customer.email.trim().includes("@")) {
-      return { success: false, error: "Customer has no registered email address." };
-    }
-
-    const idempotencyKey = `customer-creds-${customer.id}-${Date.now()}`;
-    const portalBase = getPortalBaseUrl();
-    const loginUrl = `${portalBase}/login`;
-    const htmlContent = await generateCustomerCredentialsHtml({
-      customerName: customer.name,
-      customerIdentifier: customer.customerIdentifier,
-      phone: customer.phone || undefined,
-      loginUrl,
-    });
-
-    const subject = `Your LMX8 IMPORTS Customer Portal Credentials (${customer.customerIdentifier})`;
-
-    await prisma.emailLog.create({
-      data: {
-        customerId: customer.id,
-        eventType: "CUSTOMER_CREDENTIALS",
-        status: "PENDING",
-        recipient: customer.email.trim(),
-        subject,
-        idempotencyKey,
-      },
-    });
-
-    const result = await sendBrevoEmail({
-      to: [{ email: customer.email.trim(), name: customer.name }],
-      subject,
-      htmlContent,
-    });
-
-    if (result.success) {
-      await prisma.emailLog.update({
-        where: { idempotencyKey },
-        data: { status: "SENT", providerMessageId: result.messageId || null, sentAt: new Date() },
-      });
-      return { success: true, messageId: result.messageId };
-    } else {
-      await prisma.emailLog.update({
-        where: { idempotencyKey },
-        data: { status: "FAILED", failedAt: new Date(), errorMessage: result.error || "Failed to send credentials email." },
-      });
-      return { success: false, error: result.error };
-    }
-  } catch (err: any) {
-    console.error("[sendCustomerCredentialsEmail] Exception:", err);
-    return { success: false, error: err?.message || "Internal error occurred during email dispatch." };
-  }
-}
-
 // 2. Sourcing Request Created
 export async function sendSourcingRequestCreatedEmail(requestId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {

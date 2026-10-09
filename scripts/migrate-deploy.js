@@ -117,6 +117,18 @@ async function runMigrate() {
     if (!Array.isArray(checkAnalytics) || checkAnalytics.length === 0) {
       console.log("[migrate-deploy] Creating CustomerAuthEvent & CustomerPageView tables...");
       const analyticsStmts = [
+        `CREATE TABLE IF NOT EXISTS "public"."CustomerLoginLog" (
+            "id" TEXT NOT NULL,
+            "customerId" TEXT,
+            "customerIdentifier" TEXT,
+            "status" TEXT NOT NULL,
+            "authMethod" TEXT NOT NULL DEFAULT 'PIN',
+            "ipAddress" TEXT,
+            "userAgent" TEXT,
+            "failureReason" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "CustomerLoginLog_pkey" PRIMARY KEY ("id")
+        );`,
         `CREATE TABLE IF NOT EXISTS "public"."CustomerAuthEvent" (
             "id" TEXT NOT NULL,
             "customerId" TEXT,
@@ -131,12 +143,18 @@ async function runMigrate() {
         `CREATE TABLE IF NOT EXISTS "public"."CustomerPageView" (
             "id" TEXT NOT NULL,
             "customerId" TEXT NOT NULL,
+            "customerIdentifier" TEXT NOT NULL DEFAULT 'CUSTOMER',
             "path" TEXT NOT NULL,
+            "title" TEXT,
             "pageTitle" TEXT,
+            "sessionId" TEXT,
             "sessionRef" TEXT,
             "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT "CustomerPageView_pkey" PRIMARY KEY ("id")
         );`,
+        `CREATE INDEX IF NOT EXISTS "CustomerLoginLog_customerId_idx" ON "public"."CustomerLoginLog"("customerId");`,
+        `CREATE INDEX IF NOT EXISTS "CustomerLoginLog_status_idx" ON "public"."CustomerLoginLog"("status");`,
+        `CREATE INDEX IF NOT EXISTS "CustomerLoginLog_createdAt_idx" ON "public"."CustomerLoginLog"("createdAt");`,
         `CREATE INDEX IF NOT EXISTS "CustomerAuthEvent_customerId_idx" ON "public"."CustomerAuthEvent"("customerId");`,
         `CREATE INDEX IF NOT EXISTS "CustomerAuthEvent_customerIdentifier_idx" ON "public"."CustomerAuthEvent"("customerIdentifier");`,
         `CREATE INDEX IF NOT EXISTS "CustomerAuthEvent_outcome_idx" ON "public"."CustomerAuthEvent"("outcome");`,
@@ -144,6 +162,12 @@ async function runMigrate() {
         `CREATE INDEX IF NOT EXISTS "CustomerPageView_customerId_idx" ON "public"."CustomerPageView"("customerId");`,
         `CREATE INDEX IF NOT EXISTS "CustomerPageView_path_idx" ON "public"."CustomerPageView"("path");`,
         `CREATE INDEX IF NOT EXISTS "CustomerPageView_createdAt_idx" ON "public"."CustomerPageView"("createdAt");`,
+        `DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerLoginLog_customerId_fkey') THEN
+                ALTER TABLE "public"."CustomerLoginLog" ADD CONSTRAINT "CustomerLoginLog_customerId_fkey" 
+                FOREIGN KEY ("customerId") REFERENCES "public"."Customer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+            END IF;
+        EXCEPTION WHEN duplicate_object THEN null; WHEN undefined_table THEN null; END $$;`,
         `DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerAuthEvent_customerId_fkey') THEN
                 ALTER TABLE "public"."CustomerAuthEvent" ADD CONSTRAINT "CustomerAuthEvent_customerId_fkey" 
