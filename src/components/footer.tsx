@@ -1,10 +1,14 @@
 "use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Globe } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { useBrandSettings } from "@/components/brand-provider";
 
+const CONTACT_URL = "https://lexmedia-nfc.vercel.app/";
+
 export function Footer() {
+  const pathname = usePathname();
   const brandContext = useBrandSettings();
   const branding = brandContext?.branding;
 
@@ -13,6 +17,25 @@ export function Footer() {
   const accentColor = branding?.accentColor || "#F2901F";
   const businessName = branding?.businessName || "LMX8 IMPORTS";
   const tagline = branding?.tagline || "Your Goods. Our Priority.";
+
+  const isLoginPage = pathname === "/login" || pathname === "/admin-login";
+
+  // Dedicated minimal customer login footer without duplicate logo or public clutter
+  if (isLoginPage) {
+    return (
+      <footer
+        className="w-full py-4 px-6 border-t text-center"
+        style={{
+          background: primaryBg,
+          borderColor: "rgba(255,255,255,0.06)",
+        }}
+      >
+        <p className="text-xs text-[#667085]">
+          &copy; {new Date().getFullYear()} {businessName}. All rights reserved.
+        </p>
+      </footer>
+    );
+  }
 
   return (
     <footer style={{ background: primaryBg, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
@@ -47,24 +70,38 @@ export function Footer() {
           <div>
             <h4 className="text-sm font-semibold text-white mb-4">Company</h4>
             <ul className="space-y-2.5">
-              {[
-                { label: "How It Works", href: "/how-it-works" },
-                { label: "Contact Us", href: "/contact" },
-                { label: "Terms of Service", href: "/terms" },
-                { label: "Privacy Policy", href: "/privacy" },
-              ].map(item => (
-                <li key={item.href}><Link href={item.href} className="text-sm hover:text-white transition-colors" style={{ color: "#94A3B8" }}>{item.label}</Link></li>
-              ))}
+              <li><Link href="/how-it-works" className="text-sm hover:text-white transition-colors" style={{ color: "#94A3B8" }}>How It Works</Link></li>
+              <li>
+                <a
+                  href={CONTACT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm hover:text-white transition-colors"
+                  style={{ color: "#94A3B8" }}
+                >
+                  Contact Us
+                </a>
+              </li>
+              <li><Link href="/terms" className="text-sm hover:text-white transition-colors" style={{ color: "#94A3B8" }}>Terms of Service</Link></li>
+              <li><Link href="/privacy" className="text-sm hover:text-white transition-colors" style={{ color: "#94A3B8" }}>Privacy Policy</Link></li>
             </ul>
           </div>
 
           {/* Contact */}
           <div>
-            <h4 className="text-sm font-semibold text-white mb-4">Contact</h4>
+            <h4 className="text-sm font-semibold text-white mb-4">Help &amp; Support</h4>
             <ul className="space-y-2.5 text-sm" style={{ color: "#94A3B8" }}>
-              <li>[Support Email Placeholder]</li>
-              <li>[WhatsApp Placeholder]</li>
-              <li>[Ghana Office Placeholder]</li>
+              <li>
+                <a
+                  href={CONTACT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/15 text-xs font-semibold text-white hover:bg-white/5 transition-colors"
+                >
+                  Open Support Hub &rarr;
+                </a>
+              </li>
+              <li className="text-xs text-[#667085]">Official support &amp; inquiries via LexMedia</li>
             </ul>
           </div>
         </div>

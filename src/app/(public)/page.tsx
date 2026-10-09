@@ -295,11 +295,19 @@ export default function Home() {
                 Access Customer Portal <ArrowRight className="w-4 h-4" />
               </button>
             </Link>
-            <Link href="/contact" className="w-full sm:w-auto">
-              <button className="w-full sm:w-auto h-12 px-8 text-sm font-semibold rounded-xl border flex items-center justify-center transition-all hover:bg-white/5 cursor-pointer text-white border-white/25">
+            <a
+              href="https://lexmedia-nfc.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full sm:w-auto"
+            >
+              <button
+                type="button"
+                className="w-full sm:w-auto h-12 px-8 text-sm font-semibold rounded-xl border flex items-center justify-center transition-all hover:bg-white/5 cursor-pointer text-white border-white/25 hover:border-white/50"
+              >
                 Contact Us
               </button>
-            </Link>
+            </a>
           </div>
         </div>
       </section>

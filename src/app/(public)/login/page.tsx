@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { User, Lock, Eye, EyeOff, AlertCircle, Loader2, Shield } from "lucide-react";
 import { useState, useTransition, useEffect } from "react";
 import { loginCustomerAction, loginAdminAction } from "@/app/actions/auth";
-import { BrandLogo } from "@/components/brand-logo";
 import { getBrandSettingsAction } from "@/app/actions/branding";
 
 export default function LoginPage() {
@@ -71,24 +69,9 @@ export default function LoginPage() {
       {/* ── LEFT WELCOME PANEL (DESKTOP) ── */}
       <section
         aria-label="Welcome Information"
-        className="hidden lg:flex lg:w-1/2 flex-col justify-center px-12 xl:px-20 py-16 relative border-r border-white/[0.04]"
+        className="hidden lg:flex lg:w-1/2 flex-col justify-center px-12 xl:px-20 py-12 relative border-r border-white/[0.04]"
       >
-        <div className="max-w-lg space-y-6">
-          {/* Official Brand Logo */}
-          <div className="flex items-center">
-            <Link
-              href="/"
-              className="inline-block transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101B49] focus-visible:ring-[#FF9418] rounded-lg"
-            >
-              <BrandLogo
-                variant="light"
-                height={48}
-                alt={`${businessName} Logo`}
-                className="max-h-12 w-auto"
-              />
-            </Link>
-          </div>
-
+        <div className="max-w-lg space-y-5">
           {/* Orange accent line */}
           <div
             className="w-12 h-1 rounded-full"
@@ -98,14 +81,14 @@ export default function LoginPage() {
 
           {/* Heading */}
           <h1
-            className="text-4xl xl:text-5xl font-bold text-white tracking-tight leading-tight"
+            className="text-3xl xl:text-4xl font-bold text-white tracking-tight leading-tight"
             style={{ fontFamily: "var(--font-heading)" }}
           >
             Welcome back!
           </h1>
 
           {/* Supporting text */}
-          <p className="text-base xl:text-lg text-[#94A3B8] leading-relaxed">
+          <p className="text-base text-[#94A3B8] leading-relaxed max-w-md">
             Access your account to track your shipments, manage your orders and stay updated.
           </p>
         </div>
@@ -114,34 +97,22 @@ export default function LoginPage() {
       {/* ── MOBILE / TABLET WELCOME BANNER (< 1024px) ── */}
       <section
         aria-label="Welcome Information"
-        className="lg:hidden w-full px-6 pt-10 pb-4 flex flex-col items-center text-center space-y-4"
+        className="lg:hidden w-full px-4 pt-6 pb-2 flex flex-col items-center text-center space-y-2.5"
       >
-        <Link
-          href="/"
-          className="inline-block transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101B49] focus-visible:ring-[#FF9418] rounded-lg"
-        >
-          <BrandLogo
-            variant="light"
-            height={40}
-            alt={`${businessName} Logo`}
-            className="max-h-10 w-auto"
-          />
-        </Link>
-
         <div
           className="w-10 h-1 rounded-full mx-auto"
           style={{ backgroundColor: accentColor }}
           aria-hidden="true"
         />
 
-        <div className="space-y-2 max-w-md">
+        <div className="space-y-1.5 max-w-md">
           <h1
             className="text-2xl sm:text-3xl font-bold text-white tracking-tight"
             style={{ fontFamily: "var(--font-heading)" }}
           >
             Welcome back!
           </h1>
-          <p className="text-sm text-[#94A3B8] leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#94A3B8] leading-relaxed max-w-sm mx-auto">
             Access your account to track your shipments, manage your orders and stay updated.
           </p>
         </div>
@@ -150,7 +121,7 @@ export default function LoginPage() {
       {/* ── RIGHT LOGIN PANEL ── */}
       <section
         aria-label="Login Form"
-        className="flex-1 flex items-center justify-center p-4 sm:p-8 lg:p-12 xl:p-16 w-full"
+        className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-12 xl:p-16 w-full"
       >
         <div className="w-full max-w-md">
           <div
