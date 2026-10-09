@@ -1588,3 +1588,153 @@ export async function sendShippingFeePaidSuccessEmail(paymentId: string): Promis
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Customer Credential & Access Instructions Delivery
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function generateCustomerCredentialsEmailHtml(data: {
+  customerName: string;
+  customerIdentifier: string;
+  phone?: string;
+  loginUrl: string;
+}): Promise<string> {
+  const content = `
+    <p class="greeting">Hello ${data.customerName || "Valued Customer"},</p>
+    <p class="lead">Here are your official credentials and secure access instructions for the <strong>LMX8 IMPORTS Customer Portal</strong>.</p>
+    
+    <div class="status-card" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+      <div class="status-badge" style="background: #141B47; color: #FFFFFF; font-weight: 700; margin-bottom: 12px;">ACCOUNT ACCESS CREDENTIALS</div>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td class="label" style="padding: 8px 0; color: #64748B; font-size: 13px;">Customer Name</td>
+          <td class="val" style="padding: 8px 0; color: #0F172A; font-weight: 700; text-align: right; font-size: 13px;">${data.customerName}</td>
+        </tr>
+        <tr>
+          <td class="label" style="padding: 8px 0; color: #64748B; font-size: 13px;">Customer ID</td>
+          <td class="val" style="padding: 8px 0; color: #141B47; font-weight: 800; text-align: right; font-size: 14px; font-family: monospace;">${data.customerIdentifier}</td>
+        </tr>
+        ${data.phone ? `
+        <tr>
+          <td class="label" style="padding: 8px 0; color: #64748B; font-size: 13px;">Registered Phone</td>
+          <td class="val" style="padding: 8px 0; color: #0F172A; font-weight: 600; text-align: right; font-size: 13px;">${data.phone}</td>
+        </tr>
+        ` : ""}
+      </table>
+    </div>
+
+    <div style="background: #EFF6FF; border-left: 4px solid #355DAF; padding: 16px 20px; border-radius: 8px; margin-bottom: 24px;">
+      <h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 700; color: #1E3A8A;">How to Sign In:</h3>
+      <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #1E293B; line-height: 1.6;">
+        <li>Visit the portal login at <a href="${data.loginUrl}" style="color: #355DAF; font-weight: 600;">${data.loginUrl}</a>.</li>
+        <li>Enter your <strong>Customer ID (${data.customerIdentifier})</strong> or your registered phone number.</li>
+        <li>Enter your confidential 6-digit access PIN provided to you.</li>
+        <li>Once signed in, you can update your PIN anytime under <strong>My Profile &gt; Change PIN</strong>.</li>
+      </ol>
+    </div>
+
+    <div style="text-align: center; margin: 24px 0;">
+      <a href="${data.loginUrl}" class="btn" style="background: #F2901F; color: #FFFFFF; font-weight: 800; font-size: 14px; padding: 14px 32px; text-decoration: none; border-radius: 10px; display: inline-block;">Open Customer Portal</a>
+    </div>
+
+    <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 14px; margin-top: 20px; font-size: 12px; color: #78350F; line-height: 1.5;">
+      <strong>Security Reminder:</strong> Never share your PIN with anyone. LMX8 IMPORTS representatives will never request your secret PIN over phone or email. If you suspect unauthorized access, contact administration immediately.
+    </div>
+  `;
+
+  return wrapInBrandedLayout("Your LMX8 IMPORTS Account Access Credentials", content);
+}
+
+export async function sendCustomerCredentialsEmail(customerId: string): Promise<{
+  success: boolean;
+  messageId?: string;
+  recipient?: string;
+  error?: string;
+}> {
+  try {
+    await ensureEmailLogSchema();
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+
+    if (!customer) {
+      return { success: false, error: "Customer record not found." };
+    }
+
+    if (!customer.email || !customer.email.trim().includes("@")) {
+      return { success: false, error: "Customer has no verified email address configured." };
+    }
+
+    const recipient = customer.email.trim();
+    const portalBase = getPortalBaseUrl();
+    const loginUrl = `${portalBase}/login`;
+    const idempotencyKey = `customer-credentials-${customer.id}-${Date.now()}`;
+
+    const htmlContent = await generateCustomerCredentialsEmailHtml({
+      customerName: customer.name,
+      customerIdentifier: customer.customerIdentifier,
+      phone: customer.phone || undefined,
+      loginUrl,
+    });
+
+    const subject = `Your LMX8 IMPORTS Account Access Details (${customer.customerIdentifier})`;
+
+    await prisma.emailLog.create({
+      data: {
+        customerId: customer.id,
+        eventType: "CUSTOMER_CREDENTIAL_INSTRUCTIONS",
+        status: "PENDING",
+        recipient,
+        subject,
+        idempotencyKey,
+        metadata: {
+          customerIdentifier: customer.customerIdentifier,
+          action: "ADMIN_CREDENTIAL_DELIVERY",
+        },
+      },
+    });
+
+    const result = await sendBrevoEmail({
+      to: [{ email: recipient, name: customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    if (result.success) {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: {
+          status: "SENT",
+          providerMessageId: result.messageId || null,
+          sentAt: new Date(),
+        },
+      });
+
+      return {
+        success: true,
+        messageId: result.messageId,
+        recipient,
+      };
+    } else {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: {
+          status: "FAILED",
+          failedAt: new Date(),
+          errorMessage: result.error || "Failed to deliver credentials email via Brevo.",
+        },
+      });
+
+      return {
+        success: false,
+        recipient,
+        error: result.error || "Brevo dispatch failed.",
+      };
+    }
+  } catch (err: any) {
+    console.error("[sendCustomerCredentialsEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal delivery error." };
+  }
+}
+
+

@@ -16,6 +16,7 @@ import {
   markNotificationReadAction,
   markAllNotificationsReadAction,
 } from "@/app/actions/notifications";
+import { PortalPageTracker } from "@/components/portal-page-tracker";
 
 const NAV = [
   { href: "/portal",               icon: LayoutDashboard, label: "Dashboard" },
@@ -184,8 +185,11 @@ function NotificationPanel({
   return (
     <div
       ref={panelRef}
-      className="absolute right-0 top-full mt-2 z-50 bg-white rounded-2xl shadow-xl border border-[#E2E8F0] overflow-hidden flex flex-col"
-      style={{ width: "min(360px, calc(100vw - 24px))", maxHeight: "min(480px, calc(100vh - 100px))" }}
+      id="notification-popover"
+      role="region"
+      aria-label="Customer notifications"
+      className="fixed inset-x-3 sm:inset-x-auto sm:right-0 top-16 sm:top-full mt-2 z-50 bg-white rounded-2xl shadow-2xl border border-[#E2E8F0] overflow-hidden flex flex-col sm:w-96 animate-in fade-in zoom-in-95 duration-150"
+      style={{ maxHeight: "min(490px, calc(100vh - 90px))" }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#F1F5F9] bg-gray-50/80 shrink-0">
@@ -357,14 +361,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [notifications, setNotifications] = useState<NotifItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   useEffect(() => {
     getCurrentCustomerAction()
@@ -426,6 +422,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="flex min-h-screen" style={{ background: "#F7F9FC" }}>
+      <PortalPageTracker />
 
       {/* Desktop Sidebar */}
       <aside
@@ -476,42 +473,28 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <button
                 onClick={handleBellClick}
                 aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
-                className="relative p-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                aria-haspopup="dialog"
+                aria-expanded={notifOpen}
+                aria-controls="notification-popover"
+                className="relative p-2 rounded-xl text-gray-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <Bell size={20} />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1 leading-none">
+                  <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1 leading-none shadow-sm">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
               </button>
 
-              {isMobile ? (
-                <Sheet open={notifOpen} onOpenChange={setNotifOpen}>
-                  <SheetContent side="right" className="p-0 w-full max-w-sm">
-                    <SheetTitle className="sr-only">Notifications</SheetTitle>
-                    <NotificationPanel
-                      open={true}
-                      onClose={() => setNotifOpen(false)}
-                      notifications={notifications}
-                      unreadCount={unreadCount}
-                      onMarkRead={handleMarkRead}
-                      onMarkAllRead={handleMarkAllRead}
-                      loading={notifLoading}
-                    />
-                  </SheetContent>
-                </Sheet>
-              ) : (
-                <NotificationPanel
-                  open={notifOpen}
-                  onClose={() => setNotifOpen(false)}
-                  notifications={notifications}
-                  unreadCount={unreadCount}
-                  onMarkRead={handleMarkRead}
-                  onMarkAllRead={handleMarkAllRead}
-                  loading={notifLoading}
-                />
-              )}
+              <NotificationPanel
+                open={notifOpen}
+                onClose={() => setNotifOpen(false)}
+                notifications={notifications}
+                unreadCount={unreadCount}
+                onMarkRead={handleMarkRead}
+                onMarkAllRead={handleMarkAllRead}
+                loading={notifLoading}
+              />
             </div>
 
             {/* Profile Dropdown */}

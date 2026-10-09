@@ -70,7 +70,7 @@ model Customer {
   payments           Payment[]
   notifications      Notification[]
   emailLogs          EmailLog[]
-  authEvents         CustomerAuthEvent[]
+  loginLogs          CustomerLoginLog[]
   pageViews          CustomerPageView[]
 }
 
@@ -409,37 +409,40 @@ model SystemSettings {
   updatedBy               String?  // Admin User ID
 }
 
-model CustomerAuthEvent {
-  id                 String    @id @default(uuid())
+model CustomerLoginLog {
+  id                 String   @id @default(uuid())
   customerId         String?
   customerIdentifier String?
-  method             String    @default("PIN")
-  outcome            String    // "SUCCESS" | "FAILED" | "LOCKED"
+  status             String   // "SUCCESS" | "FAILED"
+  authMethod         String   @default("PIN") // "CUSTOMER_ID_PIN" | "PHONE_PIN"
   ipAddress          String?
   userAgent          String?
-  createdAt          DateTime  @default(now())
+  failureReason      String?
+  createdAt          DateTime @default(now())
 
-  customer           Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer           Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([customerId])
-  @@index([customerIdentifier])
-  @@index([outcome])
+  @@index([status])
   @@index([createdAt])
+  @@index([customerIdentifier])
 }
 
 model CustomerPageView {
-  id         String   @id @default(uuid())
-  customerId String
-  path       String
-  pageTitle  String?
-  sessionRef String?
-  createdAt  DateTime @default(now())
+  id                 String   @id @default(uuid())
+  customerId         String
+  customerIdentifier String
+  path               String
+  title              String?
+  sessionId          String?
+  createdAt          DateTime @default(now())
 
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer           Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
   @@index([path])
   @@index([createdAt])
 }
+
 
 

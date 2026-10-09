@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback, useTransition, useMemo } from "react";
 import {
   Users, Search, UserPlus, Edit3, Key, Shield, ShieldAlert, CheckCircle2,
-  XCircle, AlertTriangle, RefreshCw, Check, X, Phone, Mail, Lock, UserX, UserCheck
+  XCircle, AlertTriangle, RefreshCw, Check, X, Phone, Mail, Lock, UserX, UserCheck,
+  Send, MessageSquare, ExternalLink, Copy
 } from "lucide-react";
 import { AdminDrawer } from "@/components/admin-drawer";
 import { CreateCustomerDrawer } from "@/components/drawers/create-customer-drawer";
@@ -12,6 +13,8 @@ import {
   updateCustomerAction,
   resetCustomerPinAction,
   toggleCustomerStatusAction,
+  sendCustomerCredentialsEmailAction,
+  prepareCustomerWhatsAppMessageAction,
 } from "@/app/actions/customers";
 
 interface CustomerRecord {
@@ -69,9 +72,94 @@ export default function AdminCustomerSettings() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Credential Delivery State
+  const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+  const [whatsAppModal, setWhatsAppModal] = useState<{
+    open: boolean;
+    customer: CustomerRecord | null;
+    phone: string;
+    whatsappUrl: string;
+    messageText: string;
+    loading: boolean;
+    error: string | null;
+  }>({
+    open: false,
+    customer: null,
+    phone: "",
+    whatsappUrl: "",
+    messageText: "",
+    loading: false,
+    error: null,
+  });
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const handleSendCredentialsEmail = async (customer: CustomerRecord) => {
+    if (!customer.email || customer.email === "N/A" || !customer.email.includes("@")) {
+      showToast("Cannot send email: customer has no valid email address.");
+      return;
+    }
+
+    setSendingEmailId(customer.id);
+    try {
+      const res = await sendCustomerCredentialsEmailAction(customer.id);
+      if (res.error) {
+        showToast(`Email delivery failed: ${res.error}`);
+      } else {
+        showToast(res.message || `Credentials sent to ${customer.email}.`);
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Failed to send credential email.");
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  const handleOpenWhatsAppReview = async (customer: CustomerRecord) => {
+    if (!customer.phone || customer.phone === "N/A") {
+      showToast("Cannot prepare WhatsApp: customer has no phone number.");
+      return;
+    }
+
+    setWhatsAppModal({
+      open: true,
+      customer,
+      phone: customer.phone,
+      whatsappUrl: "",
+      messageText: "",
+      loading: true,
+      error: null,
+    });
+
+    try {
+      const res = await prepareCustomerWhatsAppMessageAction(customer.id);
+      if (res.error) {
+        setWhatsAppModal((prev) => ({
+          ...prev,
+          loading: false,
+          error: res.error || "Failed to prepare message.",
+        }));
+      } else {
+        setWhatsAppModal({
+          open: true,
+          customer,
+          phone: res.formattedPhone || customer.phone,
+          whatsappUrl: res.whatsappUrl || "",
+          messageText: res.messageText || "",
+          loading: false,
+          error: null,
+        });
+      }
+    } catch (err: any) {
+      setWhatsAppModal((prev) => ({
+        ...prev,
+        loading: false,
+        error: err?.message || "Failed to prepare WhatsApp message.",
+      }));
+    }
   };
 
   const loadCustomers = useCallback(async () => {
@@ -338,12 +426,39 @@ export default function AdminCustomerSettings() {
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <button
-                      onClick={() => handleOpenEdit(c)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-[#141B47] hover:text-white transition-all inline-flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Edit3 size={13} /> Edit Customer
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {c.email && c.email !== "N/A" && (
+                        <button
+                          type="button"
+                          onClick={() => handleSendCredentialsEmail(c)}
+                          disabled={sendingEmailId === c.id}
+                          title={`Send access email to ${c.email}`}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-blue-200 bg-blue-50/70 text-blue-700 hover:bg-blue-100 transition-all inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        >
+                          <Send size={12} className={sendingEmailId === c.id ? "animate-pulse" : ""} />
+                          <span className="hidden lg:inline">{sendingEmailId === c.id ? "Sending..." : "Email"}</span>
+                        </button>
+                      )}
+
+                      {c.phone && c.phone !== "N/A" && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenWhatsAppReview(c)}
+                          title={`Prepare WhatsApp access instructions for ${c.phone}`}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-emerald-200 bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100 transition-all inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <MessageSquare size={12} />
+                          <span className="hidden lg:inline">WhatsApp</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleOpenEdit(c)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-[#141B47] hover:text-white transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit3 size={13} /> Edit
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -392,16 +507,41 @@ export default function AdminCustomerSettings() {
                 </p>
               </div>
 
-              <div className="pt-2 border-t border-[#F1F5F9] flex items-center justify-between gap-2">
+              <div className="pt-2 border-t border-[#F1F5F9] flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[11px] font-semibold text-[#667085]">
                   {c.shipmentsCount} shipment(s) · {c.credits} credit(s)
                 </span>
-                <button
-                  onClick={() => handleOpenEdit(c)}
-                  className="px-3 py-2 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#355DAF] transition-colors inline-flex items-center gap-1.5 cursor-pointer shrink-0"
-                >
-                  <Edit3 size={13} /> Edit Customer
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {c.email && c.email !== "N/A" && (
+                    <button
+                      type="button"
+                      onClick={() => handleSendCredentialsEmail(c)}
+                      disabled={sendingEmailId === c.id}
+                      title="Send Access Email"
+                      className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors inline-flex items-center gap-1 cursor-pointer min-h-[36px]"
+                    >
+                      <Send size={12} className={sendingEmailId === c.id ? "animate-pulse" : ""} />
+                      <span className="text-[11px]">Email</span>
+                    </button>
+                  )}
+                  {c.phone && c.phone !== "N/A" && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenWhatsAppReview(c)}
+                      title="Send WhatsApp Access"
+                      className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors inline-flex items-center gap-1 cursor-pointer min-h-[36px]"
+                    >
+                      <MessageSquare size={12} />
+                      <span className="text-[11px]">WhatsApp</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleOpenEdit(c)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#355DAF] transition-colors inline-flex items-center gap-1.5 cursor-pointer shrink-0 min-h-[36px]"
+                  >
+                    <Edit3 size={13} /> Edit
+                  </button>
+                </div>
               </div>
             </div>
           ))
@@ -553,6 +693,72 @@ export default function AdminCustomerSettings() {
               </div>
             )}
 
+            {/* ── CREDENTIAL DELIVERY SECTION ── */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50/30 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#141B47] flex items-center gap-1.5">
+                    <Send size={14} className="text-[#355DAF]" /> Account Credential Delivery
+                  </h4>
+                  <p className="text-[11px] text-[#667085] mt-0.5">
+                    Deliver official portal login instructions to the customer via Email or WhatsApp.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                {/* Email Delivery */}
+                <button
+                  type="button"
+                  onClick={() => handleSendCredentialsEmail(editingCustomer)}
+                  disabled={sendingEmailId === editingCustomer.id || !editingCustomer.email || editingCustomer.email === "N/A"}
+                  className="p-3 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 text-left transition-all flex flex-col justify-between gap-2 disabled:opacity-50 cursor-pointer shadow-2xs"
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                      <Mail size={13} /> Email Instructions
+                    </span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                      Brevo
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 truncate w-full">
+                    {editingCustomer.email && editingCustomer.email !== "N/A"
+                      ? editingCustomer.email
+                      : "No verified email configured"}
+                  </p>
+                  <span className="text-[11px] font-bold text-blue-700">
+                    {sendingEmailId === editingCustomer.id ? "Sending Email..." : "Send Email Now →"}
+                  </span>
+                </button>
+
+                {/* WhatsApp Delivery */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenWhatsAppReview(editingCustomer)}
+                  disabled={!editingCustomer.phone || editingCustomer.phone === "N/A"}
+                  className="p-3 rounded-xl border border-emerald-200 bg-white hover:bg-emerald-50 text-left transition-all flex flex-col justify-between gap-2 disabled:opacity-50 cursor-pointer shadow-2xs"
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                      <MessageSquare size={13} /> WhatsApp Message
+                    </span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      wa.me
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 truncate w-full">
+                    {editingCustomer.phone && editingCustomer.phone !== "N/A"
+                      ? editingCustomer.phone
+                      : "No phone number configured"}
+                  </p>
+                  <span className="text-[11px] font-bold text-emerald-700">
+                    Review &amp; Open WhatsApp →
+                  </span>
+                </button>
+              </div>
+            </div>
+
             {/* ── SECURITY SECTION (PIN RESET) ── */}
             <div className="pt-4 border-t border-[#E5E7EB] space-y-3">
               <div className="flex items-center justify-between">
@@ -654,6 +860,103 @@ export default function AdminCustomerSettings() {
             </div>
           </form>
         </AdminDrawer>
+      )}
+
+      {/* ── WHATSAPP ACCESS REVIEW MODAL ── */}
+      {whatsAppModal.open && whatsAppModal.customer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-[#E5E7EB] relative animate-in zoom-in-95">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#F1F5F9]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-200">
+                  <MessageSquare size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#141B47]">WhatsApp Access Delivery</h3>
+                  <p className="text-xs text-[#667085] mt-0.5">
+                    Review account access instructions for {whatsAppModal.customer.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWhatsAppModal((prev) => ({ ...prev, open: false }))}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {whatsAppModal.loading ? (
+              <div className="py-10 text-center text-xs text-[#667085]">
+                <RefreshCw size={18} className="animate-spin inline-block mr-2" />
+                Preparing WhatsApp access message...
+              </div>
+            ) : whatsAppModal.error ? (
+              <div className="p-4 rounded-xl bg-red-50 text-red-800 text-xs border border-red-200">
+                {whatsAppModal.error}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
+                    <span className="text-[10px] uppercase font-bold text-gray-500 block">Customer ID</span>
+                    <span className="font-mono font-bold text-[#141B47] text-sm">{whatsAppModal.customer.customerIdentifier}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
+                    <span className="text-[10px] uppercase font-bold text-gray-500 block">Verified Phone</span>
+                    <span className="font-semibold text-[#141B47] text-xs">{whatsAppModal.phone}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-bold text-[#172236]">Message Preview</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(whatsAppModal.messageText);
+                        showToast("Message copied to clipboard!");
+                      }}
+                      className="text-[#355DAF] hover:underline flex items-center gap-1 font-semibold text-[11px] cursor-pointer"
+                    >
+                      <Copy size={12} /> Copy Text
+                    </button>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] font-sans text-xs text-[#1E293B] whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
+                    {whatsAppModal.messageText}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+                  <strong>Security Note:</strong> Confidential PINs are never included in message URLs or application logs. Customers log in using their personal PIN or request a reset.
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setWhatsAppModal((prev) => ({ ...prev, open: false }))}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <a
+                    href={whatsAppModal.whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      showToast("Opening WhatsApp with credentials message...");
+                      setWhatsAppModal((prev) => ({ ...prev, open: false }));
+                    }}
+                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#10B981] hover:bg-[#059669] text-white transition-all inline-flex items-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    <MessageSquare size={14} /> Open in WhatsApp
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

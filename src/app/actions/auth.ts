@@ -54,44 +54,54 @@ export async function loginCustomerAction(identifier: string, pin: string, redir
     }
 
     if (!customer) {
-      // Record failed attempt for unknown identifier
-      try {
-        await prisma.customerAuthEvent.create({
-          data: {
-            customerIdentifier: rawId.slice(0, 30),
-            method: "PIN",
-            outcome: "FAILED",
-          },
-        });
-      } catch {
-        // Non-blocking telemetry
-      }
+      // Record analytics for failed attempt (never log raw PIN or secrets)
+      const { recordCustomerLoginEvent } = await import("@/app/actions/analytics");
+      await recordCustomerLoginEvent({
+        customerIdentifier: rawId.substring(0, 30),
+        status: "FAILED",
+        authMethod: isIdFormat ? "CUSTOMER_ID_PIN" : "PHONE_PIN",
+        failureReason: "CUSTOMER_NOT_FOUND",
+      });
       // Generic error to avoid revealing if a customer exists
       return { error: "Invalid Customer ID/Phone Number or PIN." };
     }
 
     if (customer.status !== "ACTIVE") {
+      const { recordCustomerLoginEvent } = await import("@/app/actions/analytics");
+      await recordCustomerLoginEvent({
+        customerId: customer.id,
+        customerIdentifier: customer.customerIdentifier,
+        status: "FAILED",
+        authMethod: isIdFormat ? "CUSTOMER_ID_PIN" : "PHONE_PIN",
+        failureReason: "ACCOUNT_INACTIVE",
+      });
       return { error: "Account is not active. Please contact support." };
     }
 
     // Brute force protection check
     if (customer.lockedUntil && customer.lockedUntil > new Date()) {
-      try {
-        await prisma.customerAuthEvent.create({
-          data: {
-            customerId: customer.id,
-            customerIdentifier: customer.customerIdentifier,
-            method: "PIN",
-            outcome: "LOCKED",
-          },
-        });
-      } catch {}
+      const { recordCustomerLoginEvent } = await import("@/app/actions/analytics");
+      await recordCustomerLoginEvent({
+        customerId: customer.id,
+        customerIdentifier: customer.customerIdentifier,
+        status: "FAILED",
+        authMethod: isIdFormat ? "CUSTOMER_ID_PIN" : "PHONE_PIN",
+        failureReason: "ACCOUNT_LOCKED",
+      });
       return { error: "Account is temporarily locked due to too many failed attempts. Please try again later." };
     }
 
     // Verify PIN
     // If the customer doesn't have a pinHash, they haven't set up their account yet
     if (!customer.pinHash) {
+      const { recordCustomerLoginEvent } = await import("@/app/actions/analytics");
+      await recordCustomerLoginEvent({
+        customerId: customer.id,
+        customerIdentifier: customer.customerIdentifier,
+        status: "FAILED",
+        authMethod: isIdFormat ? "CUSTOMER_ID_PIN" : "PHONE_PIN",
+        failureReason: "SETUP_INCOMPLETE",
+      });
       return { error: "Account setup incomplete. Please contact support." };
     }
 
@@ -130,16 +140,14 @@ export async function loginCustomerAction(identifier: string, pin: string, redir
         data: { loginAttempts: newAttempts, lockedUntil },
       });
 
-      try {
-        await prisma.customerAuthEvent.create({
-          data: {
-            customerId: customer.id,
-            customerIdentifier: customer.customerIdentifier,
-            method: "PIN",
-            outcome: newAttempts >= 5 ? "LOCKED" : "FAILED",
-          },
-        });
-      } catch {}
+      const { recordCustomerLoginEvent } = await import("@/app/actions/analytics");
+      await recordCustomerLoginEvent({
+        customerId: customer.id,
+        customerIdentifier: customer.customerIdentifier,
+        status: "FAILED",
+        authMethod: isIdFormat ? "CUSTOMER_ID_PIN" : "PHONE_PIN",
+        failureReason: "INVALID_PIN",
+      });
 
       return { error: "Invalid Customer ID/Phone Number or PIN." };
     }
@@ -159,16 +167,14 @@ export async function loginCustomerAction(identifier: string, pin: string, redir
       },
     });
 
-    try {
-      await prisma.customerAuthEvent.create({
-        data: {
-          customerId: customer.id,
-          customerIdentifier: customer.customerIdentifier,
-          method: "PIN",
-          outcome: "SUCCESS",
-        },
-      });
-    } catch {}
+    // Record successful login analytics
+    const { recordCustomerLoginEvent } = await import("@/app/actions/analytics");
+    await recordCustomerLoginEvent({
+      customerId: customer.id,
+      customerIdentifier: customer.customerIdentifier,
+      status: "SUCCESS",
+      authMethod: isIdFormat ? "CUSTOMER_ID_PIN" : "PHONE_PIN",
+    });
 
     await createSession({
       type: "customer",

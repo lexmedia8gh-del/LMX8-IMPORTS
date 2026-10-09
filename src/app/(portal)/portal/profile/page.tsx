@@ -1,6 +1,7 @@
 import { getCurrentCustomerAction } from "@/app/actions";
 import { User, Mail, Phone, MapPin, ShieldCheck, CheckCircle2, Wallet } from "lucide-react";
 import { redirect } from "next/navigation";
+import { CustomerChangePinCard } from "@/components/customer-change-pin-card";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +106,9 @@ export default async function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Security & PIN Management Section */}
+      <CustomerChangePinCard />
     </div>
   );
 }

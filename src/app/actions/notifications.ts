@@ -177,3 +177,70 @@ export async function getAdminNotificationsAndAuditAction() {
     })),
   };
 }
+
+export async function getAdminNotificationsAction() {
+  const { requireAdminSession } = await import("@/lib/auth");
+  await requireAdminSession();
+
+  const [notifications, unreadCount] = await Promise.all([
+    prisma.notification.findMany({
+      include: {
+        customer: {
+          select: { id: true, name: true, customerIdentifier: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    prisma.notification.count({
+      where: { read: false },
+    }),
+  ]);
+
+  return {
+    unreadCount,
+    notifications: notifications.map((n) => ({
+      id: n.id,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      read: n.read,
+      actionUrl: n.actionUrl,
+      createdAt: n.createdAt.toISOString(),
+      customer: n.customer
+        ? {
+            id: n.customer.id,
+            name: n.customer.name,
+            customerIdentifier: n.customer.customerIdentifier,
+          }
+        : null,
+    })),
+  };
+}
+
+export async function markAdminNotificationReadAction(notificationId: string) {
+  const { requireAdminSession } = await import("@/lib/auth");
+  await requireAdminSession();
+
+  await prisma.notification.update({
+    where: { id: notificationId },
+    data: { read: true },
+  });
+
+  revalidatePath("/admin/notifications");
+  return { success: true };
+}
+
+export async function markAllAdminNotificationsReadAction() {
+  const { requireAdminSession } = await import("@/lib/auth");
+  await requireAdminSession();
+
+  await prisma.notification.updateMany({
+    where: { read: false },
+    data: { read: true },
+  });
+
+  revalidatePath("/admin/notifications");
+  return { success: true };
+}
+

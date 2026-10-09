@@ -8,10 +8,10 @@ import {
   LogOut, FileText, ArrowRightLeft, Paintbrush, PanelLeftClose, PanelLeftOpen, Database, Mail, Activity
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
 import { getCurrentAdminAction } from "@/app/actions";
 import { BrandLogo } from "@/components/brand-logo";
 import { useBrandSettings } from "@/components/brand-provider";
+import { AdminNotificationMenu } from "@/components/admin-notification-menu";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -29,6 +29,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   
   const navItems = [
     { href: "/admin", icon: <Package className="w-5 h-5 shrink-0" />, label: "Dashboard" },
+    { href: "/admin/analytics", icon: <Activity className="w-5 h-5 shrink-0" />, label: "Analytics" },
     { href: "/admin/customers", icon: <Users className="w-5 h-5 shrink-0" />, label: "Customers" },
     { href: "/admin/shipments", icon: <Truck className="w-5 h-5 shrink-0" />, label: "Shipments" },
     { href: "/admin/sourcing", icon: <Search className="w-5 h-5 shrink-0" />, label: "Sourcing" },
@@ -129,7 +130,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             {/* Mobile Sheet Trigger */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-              <SheetTrigger className="md:hidden p-2 rounded-xl hover:bg-gray-100 transition-colors text-[#141B47] shrink-0" aria-label="Open Navigation Menu">
+              <SheetTrigger className="md:hidden p-2 rounded-xl hover:bg-gray-100 transition-colors text-[#141B47] shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Open Navigation Menu">
                 <Menu className="w-6 h-6" />
               </SheetTrigger>
               <SheetContent side="left" className="w-[85vw] max-w-xs p-0 border-none flex flex-col z-50 shadow-2xl" style={{ backgroundColor: branding?.primaryColor || "#141B47", color: "white" }}>
@@ -180,7 +181,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
             {/* Mobile Logo Brand display */}
             <div className="md:hidden flex items-center gap-2">
-              <Link href="/admin">
+              <Link href="/admin" className="min-h-[44px] flex items-center">
                 <BrandLogo variant="symbol" height={28} />
               </Link>
               <span className="text-xs font-black tracking-tight text-[#141B47] truncate max-w-[120px] sm:max-w-none">
@@ -200,12 +201,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           
           {/* Header Right Controls */}
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-            <Link href="/admin/notifications">
-              <Button variant="ghost" size="icon" className="relative hover:bg-gray-100 rounded-xl w-9 h-9 sm:w-10 sm:h-10 text-[#64748B]">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
-              </Button>
-            </Link>
+            {/* Notifications Menu Popover */}
+            <AdminNotificationMenu />
 
             <div className="h-6 w-px bg-[#E2E8F0] hidden sm:block"></div>
             
@@ -222,7 +219,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     if (el && !el.contains(document.activeElement)) el.classList.add('hidden');
                   }, 200);
                 }}
-                className="flex items-center gap-2 sm:gap-3 cursor-pointer hover:bg-gray-100 p-1 sm:p-1.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                className="flex items-center gap-2 sm:gap-3 cursor-pointer hover:bg-gray-100 p-1 sm:p-1.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 min-h-[44px]"
                 aria-expanded="false"
                 aria-haspopup="true"
               >
