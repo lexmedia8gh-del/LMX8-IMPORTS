@@ -1,12 +1,24 @@
 import "server-only";
 import { PrismaClient } from "@prisma/client";
 
-// Ensure DATABASE_URL and DIRECT_URL are initialized in process.env so Prisma never crashes
+// Ensure DATABASE_URL and DIRECT_URL are initialized in process.env across
+// Vercel, Supabase, Cloud SQL, and custom environments so Prisma never crashes
+const resolvedDatabaseUrl =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.POSTGRES_URL ||
+  "postgresql://postgres:postgres@localhost:5432/postgres?schema=public";
+
+const resolvedDirectUrl =
+  process.env.DIRECT_URL ||
+  process.env.POSTGRES_URL_NON_POOLING ||
+  resolvedDatabaseUrl;
+
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/postgres?schema=public";
+  process.env.DATABASE_URL = resolvedDatabaseUrl;
 }
 if (!process.env.DIRECT_URL) {
-  process.env.DIRECT_URL = process.env.DATABASE_URL;
+  process.env.DIRECT_URL = resolvedDirectUrl;
 }
 
 // PrismaClient is attached to the `global` object in development to prevent

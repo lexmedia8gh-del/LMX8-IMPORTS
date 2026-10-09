@@ -4,13 +4,31 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { requireAdminSession } from "@/lib/auth";
 import { deleteFileFromStorage } from "@/lib/storage";
+import {
+  DatabaseOverviewResult,
+  DataRecordsResult,
+  OperationalResetPreviewResult,
+} from "@/lib/data-management-types";
 
 /**
  * Overview statistics for Admin Data Management dashboard
  */
-export async function getDatabaseOverviewAction() {
+export async function getDatabaseOverviewAction(): Promise<DatabaseOverviewResult> {
+  const reqId = `ovw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   try {
     await requireAdminSession();
+
+    const errors: Record<string, string> = {};
+
+    const safeCount = async (model: any, name: string): Promise<number | null> => {
+      try {
+        return await model.count();
+      } catch (err: any) {
+        console.error(`[getDatabaseOverviewAction][${reqId}] Failed to count ${name}:`, err?.message || err);
+        errors[name] = `Failed to count ${name}`;
+        return null;
+      }
+    };
 
     const [
       customersCount,
@@ -23,41 +41,67 @@ export async function getDatabaseOverviewAction() {
       photosCount,
       auditLogsCount,
     ] = await Promise.all([
-      prisma.customer.count().catch(() => 0),
-      prisma.batch.count().catch(() => 0),
-      prisma.shipment.count().catch(() => 0),
-      prisma.trackingEvent.count().catch(() => 0),
-      prisma.payment.count().catch(() => 0),
-      prisma.notification.count().catch(() => 0),
-      prisma.sourcingRequest.count().catch(() => 0),
-      prisma.shipmentPhoto.count().catch(() => 0),
-      prisma.auditLog.count().catch(() => 0),
+      safeCount(prisma.customer, "customers"),
+      safeCount(prisma.batch, "batches"),
+      safeCount(prisma.shipment, "shipments"),
+      safeCount(prisma.trackingEvent, "trackingEvents"),
+      safeCount(prisma.payment, "payments"),
+      safeCount(prisma.notification, "notifications"),
+      safeCount(prisma.sourcingRequest, "sourcingRequests"),
+      safeCount(prisma.shipmentPhoto, "photos"),
+      safeCount(prisma.auditLog, "auditLogs"),
     ]);
 
+    const hasAnySuccess = [
+      customersCount,
+      batchesCount,
+      shipmentsCount,
+      trackingEventsCount,
+      paymentsCount,
+      notificationsCount,
+      sourcingRequestsCount,
+      photosCount,
+      auditLogsCount,
+    ].some((c) => c !== null);
+
     return {
-      customers: customersCount,
-      batches: batchesCount,
-      shipments: shipmentsCount,
-      trackingEvents: trackingEventsCount,
-      payments: paymentsCount,
-      notifications: notificationsCount,
-      sourcingRequests: sourcingRequestsCount,
-      photos: photosCount,
-      auditLogs: auditLogsCount,
+      success: hasAnySuccess,
+      counts: {
+        customers: customersCount,
+        batches: batchesCount,
+        shipments: shipmentsCount,
+        trackingEvents: trackingEventsCount,
+        payments: paymentsCount,
+        notifications: notificationsCount,
+        sourcingRequests: sourcingRequestsCount,
+        photos: photosCount,
+        auditLogs: auditLogsCount,
+      },
+      errors: Object.keys(errors).length > 0 ? errors : undefined,
+      error: !hasAnySuccess
+        ? "Database connection error: Unable to retrieve overview counts."
+        : undefined,
+      requestId: reqId,
     };
   } catch (err: any) {
-    console.error("[getDatabaseOverviewAction] Error:", err);
+    console.error(`[getDatabaseOverviewAction][${reqId}] Error:`, err);
     return {
-      customers: 0,
-      batches: 0,
-      shipments: 0,
-      trackingEvents: 0,
-      payments: 0,
-      notifications: 0,
-      sourcingRequests: 0,
-      photos: 0,
-      auditLogs: 0,
-      error: err?.message || "Failed to load database overview",
+      success: false,
+      counts: {
+        customers: null,
+        batches: null,
+        shipments: null,
+        trackingEvents: null,
+        payments: null,
+        notifications: null,
+        sourcingRequests: null,
+        photos: null,
+        auditLogs: null,
+      },
+      error: err?.message?.includes("Unauthorized")
+        ? "Unauthorized access. Please log in as an administrator."
+        : "Failed to load database overview.",
+      requestId: reqId,
     };
   }
 }
@@ -65,25 +109,31 @@ export async function getDatabaseOverviewAction() {
 /**
  * Fetch records for Data Management tabular explorer
  */
-export async function getDataRecordsAction(entityType: "shipments" | "batches" | "customers" | "events" | "notifications" | "payments") {
+export async function getDataRecordsAction(
+  entityType: "shipments" | "batches" | "customers" | "events" | "notifications" | "payments"
+): Promise<DataRecordsResult> {
+  const reqId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   try {
     await requireAdminSession();
 
     switch (entityType) {
       case "shipments": {
-        const records = await prisma.shipment.findMany({
-          include: {
-            customer: { select: { id: true, customerIdentifier: true, name: true } },
-            batch: { select: { id: true, batchNumber: true, name: true, status: true } },
-            trackingEvents: { select: { id: true } },
-            photos: { select: { id: true } },
-            payments: { select: { id: true, status: true, amount: true } },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 100,
-        });
+        const [records, total] = await Promise.all([
+          prisma.shipment.findMany({
+            include: {
+              customer: { select: { id: true, customerIdentifier: true, name: true } },
+              batch: { select: { id: true, batchNumber: true, name: true, status: true } },
+              trackingEvents: { select: { id: true } },
+              photos: { select: { id: true } },
+              payments: { select: { id: true, status: true, amount: true } },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+          }),
+          prisma.shipment.count(),
+        ]);
 
-        return (records || []).map((s) => ({
+        const mapped = (records || []).map((s) => ({
           id: s.id,
           trackingNumber: s.trackingNumber || "N/A",
           description: s.description || "N/A",
@@ -102,18 +152,23 @@ export async function getDataRecordsAction(entityType: "shipments" | "batches" |
           paymentsCount: (s.payments || []).length,
           hasPaidPayments: (s.payments || []).some((p) => p.status === "SUCCESS"),
         }));
+
+        return { success: true, records: mapped, total, requestId: reqId };
       }
 
       case "batches": {
-        const records = await prisma.batch.findMany({
-          include: {
-            shipments: { select: { id: true, trackingNumber: true } },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 100,
-        });
+        const [records, total] = await Promise.all([
+          prisma.batch.findMany({
+            include: {
+              shipments: { select: { id: true, trackingNumber: true } },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+          }),
+          prisma.batch.count(),
+        ]);
 
-        return (records || []).map((b) => ({
+        const mapped = (records || []).map((b) => ({
           id: b.id,
           batchNumber: b.batchNumber || "N/A",
           name: b.name || "N/A",
@@ -126,22 +181,27 @@ export async function getDataRecordsAction(entityType: "shipments" | "batches" |
           fileDeletionAt: b.fileDeletionAt ? b.fileDeletionAt.toISOString() : null,
           createdAt: b.createdAt ? b.createdAt.toISOString() : new Date().toISOString(),
         }));
+
+        return { success: true, records: mapped, total, requestId: reqId };
       }
 
       case "customers": {
-        const records = await prisma.customer.findMany({
-          include: {
-            shipments: { select: { id: true } },
-            payments: { select: { id: true, status: true } },
-            sourcingRequests: { select: { id: true } },
-            creditAccount: { select: { balance: true } },
-            notifications: { select: { id: true } },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 100,
-        });
+        const [records, total] = await Promise.all([
+          prisma.customer.findMany({
+            include: {
+              shipments: { select: { id: true } },
+              payments: { select: { id: true, status: true } },
+              sourcingRequests: { select: { id: true } },
+              creditAccount: { select: { balance: true } },
+              notifications: { select: { id: true } },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+          }),
+          prisma.customer.count(),
+        ]);
 
-        return (records || []).map((c) => ({
+        const mapped = (records || []).map((c) => ({
           id: c.id,
           customerIdentifier: c.customerIdentifier || "N/A",
           name: c.name || "N/A",
@@ -155,19 +215,24 @@ export async function getDataRecordsAction(entityType: "shipments" | "batches" |
           notificationsCount: (c.notifications || []).length,
           createdAt: c.createdAt ? c.createdAt.toISOString() : new Date().toISOString(),
         }));
+
+        return { success: true, records: mapped, total, requestId: reqId };
       }
 
       case "events": {
-        const records = await prisma.trackingEvent.findMany({
-          include: {
-            shipment: { select: { id: true, trackingNumber: true, description: true } },
-            admin: { select: { id: true, name: true, email: true } },
-          },
-          orderBy: { timestamp: "desc" },
-          take: 100,
-        });
+        const [records, total] = await Promise.all([
+          prisma.trackingEvent.findMany({
+            include: {
+              shipment: { select: { id: true, trackingNumber: true, description: true } },
+              admin: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: { timestamp: "desc" },
+            take: 100,
+          }),
+          prisma.trackingEvent.count(),
+        ]);
 
-        return (records || []).map((e) => ({
+        const mapped = (records || []).map((e) => ({
           id: e.id,
           status: e.status || "SHIPMENT_CREATED",
           location: e.location || "N/A",
@@ -177,18 +242,23 @@ export async function getDataRecordsAction(entityType: "shipments" | "batches" |
           shipmentDescription: e.shipment?.description || "N/A",
           adminName: e.admin?.name || e.admin?.email || "System",
         }));
+
+        return { success: true, records: mapped, total, requestId: reqId };
       }
 
       case "notifications": {
-        const records = await prisma.notification.findMany({
-          include: {
-            customer: { select: { id: true, customerIdentifier: true, name: true } },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 100,
-        });
+        const [records, total] = await Promise.all([
+          prisma.notification.findMany({
+            include: {
+              customer: { select: { id: true, customerIdentifier: true, name: true } },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+          }),
+          prisma.notification.count(),
+        ]);
 
-        return (records || []).map((n) => ({
+        const mapped = (records || []).map((n) => ({
           id: n.id,
           type: n.type || "SYSTEM",
           title: n.title || "N/A",
@@ -198,19 +268,24 @@ export async function getDataRecordsAction(entityType: "shipments" | "batches" |
           customerIdentifier: n.customer?.customerIdentifier || "N/A",
           createdAt: n.createdAt ? n.createdAt.toISOString() : new Date().toISOString(),
         }));
+
+        return { success: true, records: mapped, total, requestId: reqId };
       }
 
       case "payments": {
-        const records = await prisma.payment.findMany({
-          include: {
-            customer: { select: { id: true, customerIdentifier: true, name: true } },
-            shipment: { select: { id: true, trackingNumber: true } },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 100,
-        });
+        const [records, total] = await Promise.all([
+          prisma.payment.findMany({
+            include: {
+              customer: { select: { id: true, customerIdentifier: true, name: true } },
+              shipment: { select: { id: true, trackingNumber: true } },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+          }),
+          prisma.payment.count(),
+        ]);
 
-        return (records || []).map((p) => ({
+        const mapped = (records || []).map((p) => ({
           id: p.id,
           reference: p.reference || "N/A",
           amount: p.amount ?? 0,
@@ -223,14 +298,22 @@ export async function getDataRecordsAction(entityType: "shipments" | "batches" |
           customerIdentifier: p.customer?.customerIdentifier || "N/A",
           shipmentTrackingNumber: p.shipment?.trackingNumber || "N/A",
         }));
+
+        return { success: true, records: mapped, total, requestId: reqId };
       }
 
       default:
-        return [];
+        return { success: false, records: [], total: 0, error: "Invalid entity type requested." };
     }
   } catch (err: any) {
-    console.error("[getDataRecordsAction] Error:", err);
-    return [];
+    console.error(`[getDataRecordsAction][${reqId}] Error fetching ${entityType}:`, err?.message || err);
+    return {
+      success: false,
+      records: [],
+      total: 0,
+      error: `Failed to load ${entityType} records from database. Please verify connectivity.`,
+      requestId: reqId,
+    };
   }
 }
 
@@ -1518,22 +1601,11 @@ export async function deleteSelectedDataRecordsAction(
 
 let isResetInProgress = false;
 
-export const SUPPORTED_RESET_CATEGORIES = [
-  { id: "SHIPMENTS", label: "Shipments & Tracking History", desc: "All shipments, tracking events, and cargo photos" },
-  { id: "SOURCING_REQUESTS", label: "Sourcing Requests", desc: "Customer product sourcing requests and quotations" },
-  { id: "BATCHES", label: "Batch Operational Records", desc: "Shipping consignments and batch schedules" },
-  { id: "CREDIT_LEDGER", label: "Credit Ledger & Balances", desc: "Credit transactions (resets balances to 0)" },
-  { id: "LOCAL_PAYMENTS", label: "Local Payment Records", desc: "Local database payment history (does not affect external Paystack)" },
-  { id: "EMAIL_LOGS_NOTIFICATIONS", label: "Email Logs & Notifications", desc: "Notification history and Brevo email delivery logs" },
-  { id: "OPERATIONAL_AUDIT_LOGS", label: "Operational Audit Logs", desc: "General activity audit records (preserves Reset Audits)" },
-] as const;
-
-export type ResetCategoryId = typeof SUPPORTED_RESET_CATEGORIES[number]["id"];
-
 /**
  * 1. Generate live operational reset preview with real database counts
  */
-export async function getOperationalResetPreviewAction() {
+export async function getOperationalResetPreviewAction(): Promise<OperationalResetPreviewResult> {
+  const reqId = `prev_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   try {
     await requireAdminSession();
     const { ensureResetAuditSchema } = await import("@/lib/reset-audit");
@@ -1575,6 +1647,7 @@ export async function getOperationalResetPreviewAction() {
     ]);
 
     return {
+      success: true,
       categories: {
         SHIPMENTS: {
           count: shipmentsCount,
@@ -1622,14 +1695,19 @@ export async function getOperationalResetPreviewAction() {
         brandSettings: brandSettingsCount,
         systemSettings: systemSettingsCount,
       },
+      requestId: reqId,
     };
   } catch (err: any) {
-    console.error("[getOperationalResetPreviewAction] Error:", err);
+    console.error(`[getOperationalResetPreviewAction][${reqId}] Error:`, err?.message || err);
     return {
+      success: false,
       categories: {},
       totalOperationalRecords: 0,
       protectedInfrastructure: { adminAccounts: 0, customerAccounts: 0, brandSettings: 0, systemSettings: 0 },
-      error: err?.message || "Failed to load reset preview",
+      error: err?.message?.includes("Unauthorized")
+        ? "Unauthorized access. Please log in as an administrator."
+        : "Failed to load operational reset preview.",
+      requestId: reqId,
     };
   }
 }

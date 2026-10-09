@@ -25,8 +25,14 @@ import {
   getOperationalResetPreviewAction,
   executeOperationalResetAction,
   getResetAuditHistoryAction,
-  SUPPORTED_RESET_CATEGORIES,
 } from "@/app/actions/data-management";
+import {
+  SUPPORTED_RESET_CATEGORIES,
+  ResetCategoryId,
+  DatabaseOverviewResult,
+  DataRecordsResult,
+  OperationalResetPreviewResult,
+} from "@/lib/data-management-types";
 import Link from "next/link";
 
 type TabType = "shipments" | "batches" | "customers" | "events" | "payments" | "notifications" | "danger";
@@ -34,7 +40,11 @@ type TabType = "shipments" | "batches" | "customers" | "events" | "payments" | "
 export default function AdminDataManagementPage() {
   const [activeTab, setActiveTab] = useState<TabType>("shipments");
   const [overview, setOverview] = useState<any>(null);
+  const [overviewLoading, setOverviewLoading] = useState<boolean>(true);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+
   const [records, setRecords] = useState<any[]>([]);
+  const [recordsError, setRecordsError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [isPending, startTransition] = useTransition();
@@ -72,8 +82,9 @@ export default function AdminDataManagementPage() {
   const [selectedResetCategories, setSelectedResetCategories] = useState<Set<string>>(
     new Set(["SHIPMENTS", "SOURCING_REQUESTS", "BATCHES"])
   );
-  const [resetPreview, setResetPreview] = useState<any>(null);
+  const [resetPreview, setResetPreview] = useState<OperationalResetPreviewResult | null>(null);
   const [loadingResetPreview, setLoadingResetPreview] = useState(false);
+  const [resetPreviewError, setResetPreviewError] = useState<string | null>(null);
   const [resetConfirmationPhrase, setResetConfirmationPhrase] = useState("");
   const [resetAdminPin, setResetAdminPin] = useState("");
   const [isExecutingReset, setIsExecutingReset] = useState(false);
@@ -99,11 +110,20 @@ export default function AdminDataManagementPage() {
 
   const loadResetPreview = useCallback(async () => {
     setLoadingResetPreview(true);
+    setResetPreviewError(null);
     try {
       const data = await getOperationalResetPreviewAction();
-      setResetPreview(data);
-    } catch (err) {
+      if (data.success) {
+        setResetPreview(data);
+        setResetPreviewError(null);
+      } else {
+        setResetPreview(null);
+        setResetPreviewError(data.error || "Failed to load reset preview");
+      }
+    } catch (err: any) {
       console.error("Failed to load reset preview:", err);
+      setResetPreview(null);
+      setResetPreviewError(err?.message || "Failed to load reset preview");
     } finally {
       setLoadingResetPreview(false);
     }
@@ -124,24 +144,42 @@ export default function AdminDataManagementPage() {
 
   // Load Overview & Records
   const loadOverview = useCallback(async () => {
+    setOverviewLoading(true);
     try {
-      const data = await getDatabaseOverviewAction();
-      setOverview(data);
-    } catch (e) {
+      const res = await getDatabaseOverviewAction();
+      if (res.success && res.counts) {
+        setOverview(res.counts);
+        setOverviewError(res.error || null);
+      } else {
+        setOverview(res.counts || null);
+        setOverviewError(res.error || "Failed to load database overview");
+      }
+    } catch (e: any) {
       console.error("Failed to load DB overview:", e);
+      setOverviewError(e?.message || "Failed to load database overview");
+    } finally {
+      setOverviewLoading(false);
     }
   }, []);
 
   const loadRecords = useCallback(async (tab: TabType) => {
     if (tab === "danger") return;
     setLoading(true);
+    setRecordsError(null);
     setSelectedIds(new Set());
     try {
-      const data = await getDataRecordsAction(tab);
-      setRecords(Array.isArray(data) ? data : []);
-    } catch (e) {
+      const res = await getDataRecordsAction(tab);
+      if (res.success) {
+        setRecords(Array.isArray(res.records) ? res.records : []);
+        setRecordsError(null);
+      } else {
+        setRecords([]);
+        setRecordsError(res.error || `Failed to load ${tab} records`);
+      }
+    } catch (e: any) {
       console.error(`Failed to load ${tab} records:`, e);
       setRecords([]);
+      setRecordsError(e?.message || `Failed to load ${tab} records`);
     } finally {
       setLoading(false);
     }
@@ -154,10 +192,13 @@ export default function AdminDataManagementPage() {
   useEffect(() => {
     setSearch("");
     setSelectedIds(new Set());
-    if (activeTab !== "danger") {
+    if (activeTab === "danger") {
+      loadResetPreview();
+      loadResetHistory();
+    } else {
       loadRecords(activeTab);
     }
-  }, [activeTab, loadRecords]);
+  }, [activeTab, loadRecords, loadResetPreview, loadResetHistory]);
 
   // Filter Records
   const filteredRecords = useMemo(() => {
@@ -501,6 +542,26 @@ export default function AdminDataManagementPage() {
         </button>
       </div>
 
+      {/* Database Overview Error Alert */}
+      {overviewError && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle size={18} className="text-amber-600 shrink-0" />
+            <div>
+              <p className="font-bold">Database Connectivity Notice</p>
+              <p className="text-amber-800 mt-0.5">{overviewError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={loadOverview}
+            className="px-3.5 py-1.5 bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+          >
+            Retry Connection
+          </button>
+        </div>
+      )}
+
       {/* ── KPI STATISTIC CARDS ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
@@ -615,6 +676,25 @@ export default function AdminDataManagementPage() {
 
         {/* ── TOOLBAR & BULK RESET ACTION BAR (TASK 2) ── */}
         <div className="p-4 sm:p-6">
+          {recordsError && activeTab !== "danger" && (
+            <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-900 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle size={18} className="text-red-600 shrink-0" />
+                <div>
+                  <p className="font-bold">Database Error Loading {activeTab.toUpperCase()} Records</p>
+                  <p className="text-red-700 mt-0.5">{recordsError}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadRecords(activeTab)}
+                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+              >
+                Retry Query
+              </button>
+            </div>
+          )}
+
           {activeTab !== "danger" && (
             <div className="space-y-4 mb-6">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -689,7 +769,9 @@ export default function AdminDataManagementPage() {
                     <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading shipments...
                   </div>
                 ) : filteredRecords.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-xl">No shipment records found.</div>
+                  <div className={`py-12 text-center text-xs rounded-xl ${recordsError ? "text-red-700 bg-red-50 border border-red-200" : "text-[#667085] bg-gray-50"}`}>
+                    {recordsError ? `Database error: ${recordsError}` : "No shipment records found."}
+                  </div>
                 ) : (
                   filteredRecords.map((s) => {
                     const key = getRecordKey(s);
@@ -787,7 +869,9 @@ export default function AdminDataManagementPage() {
                       </tr>
                     ) : filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-12 text-center text-xs text-[#667085]">No shipment records found.</td>
+                        <td colSpan={7} className={`py-12 text-center text-xs ${recordsError ? "text-red-700 bg-red-50/50 font-semibold" : "text-[#667085]"}`}>
+                          {recordsError ? `Database error: ${recordsError}` : "No shipment records found."}
+                        </td>
                       </tr>
                     ) : (
                       filteredRecords.map((s) => {
@@ -1756,6 +1840,25 @@ export default function AdminDataManagementPage() {
                   </button>
                 </div>
 
+                {resetPreviewError && (
+                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                      <div>
+                        <p className="font-bold">Reset Preview Notice</p>
+                        <p className="text-amber-800">{resetPreviewError}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={loadResetPreview}
+                      className="px-3 py-1.5 bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold rounded-lg text-xs transition-colors cursor-pointer shrink-0"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 {/* Reset Mode Selector */}
                 <div className="grid sm:grid-cols-2 gap-3">
                   <button
@@ -1807,7 +1910,7 @@ export default function AdminDataManagementPage() {
                       <div className="flex gap-2 text-[11px]">
                         <button
                           type="button"
-                          onClick={() => setSelectedResetCategories(new Set(SUPPORTED_RESET_CATEGORIES.map((c) => c.id)))}
+                          onClick={() => setSelectedResetCategories(new Set((Array.isArray(SUPPORTED_RESET_CATEGORIES) ? SUPPORTED_RESET_CATEGORIES : []).map((c) => c.id)))}
                           className="text-blue-600 hover:underline cursor-pointer"
                         >
                           Select All
@@ -1825,7 +1928,7 @@ export default function AdminDataManagementPage() {
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-2.5">
-                    {SUPPORTED_RESET_CATEGORIES.map((cat) => {
+                    {(Array.isArray(SUPPORTED_RESET_CATEGORIES) ? SUPPORTED_RESET_CATEGORIES : []).map((cat) => {
                       const isSelected = resetMode === "ALL_OPERATIONAL" || selectedResetCategories.has(cat.id);
                       const catPreview = resetPreview?.categories?.[cat.id];
 
@@ -1986,41 +2089,44 @@ export default function AdminDataManagementPage() {
                 </div>
 
                 <div className="divide-y divide-[#F1F5F9] max-h-72 overflow-y-auto">
-                  {resetHistory.length === 0 ? (
+                  {(!Array.isArray(resetHistory) || resetHistory.length === 0) ? (
                     <div className="p-8 text-center text-[#667085] text-xs">
                       No operational data resets have been executed yet.
                     </div>
                   ) : (
-                    resetHistory.map((audit) => (
-                      <div key={audit.id} className="p-4 hover:bg-gray-50/50 transition-colors space-y-1.5 text-xs">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono font-bold text-[#141B47]">{audit.operationId}</span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                              audit.status === "SUCCESS"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {audit.status}
-                          </span>
-                        </div>
-                        <div className="text-[#64748B] flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-                          <span>Admin: <strong>{audit.adminName}</strong> ({audit.adminEmail})</span>
-                          <span>·</span>
-                          <span>Mode: <strong className="font-mono">{audit.resetMode}</strong></span>
-                          <span>·</span>
-                          <span>Timestamp: <strong className="font-mono">{new Date(audit.startedAt).toLocaleString()}</strong></span>
-                        </div>
-                        <div className="text-[11px] text-[#475569] flex flex-wrap gap-1 pt-1">
-                          {audit.selectedCategories?.map((c: string) => (
-                            <span key={c} className="px-1.5 py-0.5 rounded bg-gray-100 font-mono text-[10px]">
-                              {c}
+                    resetHistory.map((audit) => {
+                      const selectedCats = Array.isArray(audit?.selectedCategories) ? audit.selectedCategories : [];
+                      return (
+                        <div key={audit.id} className="p-4 hover:bg-gray-50/50 transition-colors space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono font-bold text-[#141B47]">{audit.operationId}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                audit.status === "SUCCESS"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {audit.status}
                             </span>
-                          ))}
+                          </div>
+                          <div className="text-[#64748B] flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                            <span>Admin: <strong>{audit.adminName}</strong> ({audit.adminEmail})</span>
+                            <span>·</span>
+                            <span>Mode: <strong className="font-mono">{audit.resetMode}</strong></span>
+                            <span>·</span>
+                            <span>Timestamp: <strong className="font-mono">{new Date(audit.startedAt).toLocaleString()}</strong></span>
+                          </div>
+                          <div className="text-[11px] text-[#475569] flex flex-wrap gap-1 pt-1">
+                            {selectedCats.map((c: string) => (
+                              <span key={c} className="px-1.5 py-0.5 rounded bg-gray-100 font-mono text-[10px]">
+                                {c}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -2075,7 +2181,7 @@ export default function AdminDataManagementPage() {
             </div>
 
             {/* Warnings if any */}
-            {entityDetails.warnings?.map((w: string, idx: number) => (
+            {Array.isArray(entityDetails.warnings) && entityDetails.warnings.map((w: string, idx: number) => (
               <div key={idx} className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
                 <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-600" />
                 <span className="leading-relaxed">{w}</span>

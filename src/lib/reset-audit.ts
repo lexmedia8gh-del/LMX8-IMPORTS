@@ -79,7 +79,7 @@ export async function getResetAuditHistory(): Promise<ResetAuditRecord[]> {
       adminName: a.adminName,
       adminEmail: a.adminEmail,
       resetMode: a.resetMode,
-      selectedCategories: a.selectedCategories,
+      selectedCategories: Array.isArray(a.selectedCategories) ? a.selectedCategories : [],
       countsBefore: (a.countsBefore as Record<string, number>) || {},
       countsAfter: (a.countsAfter as Record<string, number>) || {},
       startedAt: a.startedAt.toISOString(),
