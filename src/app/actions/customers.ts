@@ -504,3 +504,235 @@ export async function toggleCustomerStatusAction(customerId: string, targetStatu
     message: `Customer ${targetStatus === "ACTIVE" ? "activated" : "deactivated"}.`,
   };
 }
+
+export async function sendCustomerCredentialsEmailAction(customerId: string) {
+  try {
+    const admin = await requireAdminSession();
+
+    const customer = await prisma.customer.findFirst({
+      where: {
+        OR: [{ id: customerId }, { customerIdentifier: customerId }],
+      },
+    });
+
+    if (!customer) {
+      return { error: "Customer not found." };
+    }
+
+    if (!customer.email || !customer.email.includes("@")) {
+      return { error: "Customer does not have a valid email address configured." };
+    }
+
+    const { sendCustomerCredentialsEmail } = await import("@/lib/email/brevo");
+    const result = await sendCustomerCredentialsEmail(customer.id);
+
+    if (result.success) {
+      await prisma.auditLog.create({
+        data: {
+          action: "CREDENTIALS_DISPATCHED_EMAIL",
+          entityType: "Customer",
+          entityId: customer.id,
+          description: `Login access instructions dispatched via Brevo email to ${customer.email} by ${admin.name || admin.email}`,
+          adminId: admin.id,
+        },
+      });
+
+      return {
+        success: true,
+        message: `Portal access instructions sent successfully to ${customer.email}.`,
+      };
+    } else {
+      return {
+        error: result.error || "Failed to dispatch email via Brevo. Check email service configuration.",
+      };
+    }
+  } catch (err: any) {
+    console.error("[sendCustomerCredentialsEmailAction] Error:", err);
+    return { error: err?.message || "Failed to send credentials." };
+  }
+}
+
+export async function prepareCustomerWhatsAppCredentialsAction(customerId: string) {
+  try {
+    await requireAdminSession();
+
+    const customer = await prisma.customer.findFirst({
+      where: {
+        OR: [{ id: customerId }, { customerIdentifier: customerId }],
+      },
+    });
+
+    if (!customer) {
+      return { error: "Customer not found." };
+    }
+
+    if (!customer.phone) {
+      return { error: "Customer does not have a registered phone number." };
+    }
+
+    // Clean phone for WhatsApp international link (digits only, no + or spaces)
+    let cleanPhone = customer.phone.replace(/\D/g, "");
+    if (cleanPhone.startsWith("0")) {
+      cleanPhone = "233" + cleanPhone.substring(1);
+    } else if (!cleanPhone.startsWith("233") && cleanPhone.length === 9) {
+      cleanPhone = "233" + cleanPhone;
+    }
+
+    const host = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "https://lmx8imports.com";
+    const loginUrl = `${host.replace(/\/$/, "")}/login`;
+
+    const messageText = `Hello ${customer.name},
+
+Welcome to LMX8 IMPORTS! Here are your customer portal access details:
+
+📦 Customer ID: ${customer.customerIdentifier}
+🔗 Login Portal: ${loginUrl}
+
+How to sign in:
+1. Tap the portal link above.
+2. Enter your Customer ID (${customer.customerIdentifier}) or registered phone number.
+3. Enter your secret 6-8 digit Customer PIN.
+
+🔒 Security Notice: Keep your PIN private. You can change your PIN anytime inside your profile. For support or a PIN reset, please reply directly to this message.
+
+Thank you for choosing LMX8 IMPORTS!`;
+
+    const encodedText = encodeURIComponent(messageText);
+    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedText}`;
+
+    return {
+      success: true,
+      customerId: customer.id,
+      customerIdentifier: customer.customerIdentifier,
+      name: customer.name,
+      phone: customer.phone,
+      cleanPhone,
+      loginUrl,
+      messageText,
+      whatsappUrl,
+    };
+  } catch (err: any) {
+    console.error("[prepareCustomerWhatsAppCredentialsAction] Error:", err);
+    return { error: err?.message || "Failed to prepare WhatsApp message." };
+  }
+}
+
+export async function changeCustomerPinAction(data: {
+  currentPin: string;
+  newPin: string;
+  confirmPin: string;
+}) {
+  try {
+    const { getCurrentCustomer } = await import("@/lib/auth");
+    const customer = await getCurrentCustomer();
+    if (!customer || customer.status !== "ACTIVE") {
+      return { error: "Unauthorized: Active customer session required." };
+    }
+
+    const currentPin = (data.currentPin || "").trim();
+    const newPin = (data.newPin || "").trim();
+    const confirmPin = (data.confirmPin || "").trim();
+
+    if (!currentPin || !newPin || !confirmPin) {
+      return { error: "Current PIN, New PIN, and Confirm PIN are all required." };
+    }
+
+    if (newPin !== confirmPin) {
+      return { error: "New PIN and Confirm PIN do not match." };
+    }
+
+    if (newPin.length < 6 || newPin.length > 8 || !/^\d+$/.test(newPin)) {
+      return { error: "New PIN must be between 6 and 8 numeric digits." };
+    }
+
+    if (currentPin === newPin) {
+      return { error: "New PIN must be different from your current PIN." };
+    }
+
+    // Rate limit check
+    if (customer.lockedUntil && customer.lockedUntil > new Date()) {
+      return { error: "Account is temporarily locked due to too many failed attempts. Try again later." };
+    }
+
+    if (!customer.pinHash) {
+      return { error: "Account credentials incomplete. Please contact support." };
+    }
+
+    // Verify current PIN
+    const isCurrentMatch = await bcrypt.compare(currentPin, customer.pinHash);
+    if (!isCurrentMatch) {
+      const newAttempts = customer.loginAttempts + 1;
+      let lockedUntil = null;
+      if (newAttempts >= 5) {
+        lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+      }
+      await prisma.customer.update({
+        where: { id: customer.id },
+        data: { loginAttempts: newAttempts, lockedUntil },
+      });
+      return { error: "Incorrect current PIN. Please check and try again." };
+    }
+
+    // Hash and store new PIN
+    const newPinHash = await bcrypt.hash(newPin, 10);
+    await prisma.customer.update({
+      where: { id: customer.id },
+      data: {
+        pinHash: newPinHash,
+        loginAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+
+    // 1. Audit Log (Never record PIN)
+    await prisma.auditLog.create({
+      data: {
+        action: "CUSTOMER_PIN_CHANGED",
+        entityType: "Customer",
+        entityId: customer.id,
+        description: `Customer ${customer.customerIdentifier} (${customer.name}) changed their security PIN`,
+      },
+    });
+
+    // 2. In-app confirmation notification for Customer
+    await prisma.notification.create({
+      data: {
+        customerId: customer.id,
+        type: "ACCOUNT",
+        title: "PIN Changed Successfully",
+        message: "Your customer portal PIN was updated successfully. Use your new PIN on your next login.",
+        actionUrl: "/portal/profile",
+      },
+    });
+
+    // 3. Security alert for Administrators
+    // Note: We never log the PIN itself!
+    try {
+      const admins = await prisma.adminUser.findMany({
+        where: { status: "ACTIVE" },
+      });
+      for (const a of admins) {
+        await prisma.auditLog.create({
+          data: {
+            action: "ADMIN_SECURITY_ALERT_PIN_CHANGED",
+            entityType: "Customer",
+            entityId: customer.id,
+            description: `Security Notice: Customer ${customer.customerIdentifier} (${customer.name}) changed their security PIN on ${new Date().toLocaleString("en-GH")}.`,
+            adminId: a.id,
+          },
+        });
+      }
+    } catch {
+      // Non-blocking
+    }
+
+    return {
+      success: true,
+      message: "Your security PIN has been updated successfully.",
+    };
+  } catch (err: any) {
+    console.error("[changeCustomerPinAction] Error:", err);
+    return { error: err?.message || "Failed to update PIN. Please try again." };
+  }
+}
+

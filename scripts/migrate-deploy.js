@@ -108,6 +108,66 @@ async function runMigrate() {
       console.log("[migrate-deploy] Verified: Table 'EmailLog' exists in public schema.");
     }
 
+    // ── 1b. Proactively ensure CustomerAuthEvent & CustomerPageView exist ──
+    const checkAnalytics = await prisma.$queryRawUnsafe(`
+      SELECT table_name FROM information_schema.tables 
+      WHERE table_schema = 'public' AND (table_name = 'CustomerAuthEvent' OR table_name = 'customerauthevent');
+    `).catch(() => []);
+
+    if (!Array.isArray(checkAnalytics) || checkAnalytics.length === 0) {
+      console.log("[migrate-deploy] Creating CustomerAuthEvent & CustomerPageView tables...");
+      const analyticsStmts = [
+        `CREATE TABLE IF NOT EXISTS "public"."CustomerAuthEvent" (
+            "id" TEXT NOT NULL,
+            "customerId" TEXT,
+            "customerIdentifier" TEXT,
+            "method" TEXT NOT NULL DEFAULT 'PIN',
+            "outcome" TEXT NOT NULL,
+            "ipAddress" TEXT,
+            "userAgent" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "CustomerAuthEvent_pkey" PRIMARY KEY ("id")
+        );`,
+        `CREATE TABLE IF NOT EXISTS "public"."CustomerPageView" (
+            "id" TEXT NOT NULL,
+            "customerId" TEXT NOT NULL,
+            "path" TEXT NOT NULL,
+            "pageTitle" TEXT,
+            "sessionRef" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "CustomerPageView_pkey" PRIMARY KEY ("id")
+        );`,
+        `CREATE INDEX IF NOT EXISTS "CustomerAuthEvent_customerId_idx" ON "public"."CustomerAuthEvent"("customerId");`,
+        `CREATE INDEX IF NOT EXISTS "CustomerAuthEvent_customerIdentifier_idx" ON "public"."CustomerAuthEvent"("customerIdentifier");`,
+        `CREATE INDEX IF NOT EXISTS "CustomerAuthEvent_outcome_idx" ON "public"."CustomerAuthEvent"("outcome");`,
+        `CREATE INDEX IF NOT EXISTS "CustomerAuthEvent_createdAt_idx" ON "public"."CustomerAuthEvent"("createdAt");`,
+        `CREATE INDEX IF NOT EXISTS "CustomerPageView_customerId_idx" ON "public"."CustomerPageView"("customerId");`,
+        `CREATE INDEX IF NOT EXISTS "CustomerPageView_path_idx" ON "public"."CustomerPageView"("path");`,
+        `CREATE INDEX IF NOT EXISTS "CustomerPageView_createdAt_idx" ON "public"."CustomerPageView"("createdAt");`,
+        `DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerAuthEvent_customerId_fkey') THEN
+                ALTER TABLE "public"."CustomerAuthEvent" ADD CONSTRAINT "CustomerAuthEvent_customerId_fkey" 
+                FOREIGN KEY ("customerId") REFERENCES "public"."Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+            END IF;
+        EXCEPTION WHEN duplicate_object THEN null; WHEN undefined_table THEN null; END $$;`,
+        `DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerPageView_customerId_fkey') THEN
+                ALTER TABLE "public"."CustomerPageView" ADD CONSTRAINT "CustomerPageView_customerId_fkey" 
+                FOREIGN KEY ("customerId") REFERENCES "public"."Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+            END IF;
+        EXCEPTION WHEN duplicate_object THEN null; WHEN undefined_table THEN null; END $$;`
+      ];
+
+      for (const stmt of analyticsStmts) {
+        try {
+          await prisma.$executeRawUnsafe(stmt);
+        } catch (sErr) {
+          console.warn("[migrate-deploy] Analytics schema notice:", sErr?.message || sErr);
+        }
+      }
+      console.log("[migrate-deploy] Analytics tables verified successfully.");
+    }
+
     // ── 2. Diagnose & clean up _prisma_migrations table state ────────────────
     const migrationsTableExists = await prisma.$queryRawUnsafe(`
       SELECT table_name FROM information_schema.tables 

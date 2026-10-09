@@ -377,6 +377,60 @@ export async function generateCustomerWelcomeHtml(data: { customerName: string; 
   return wrapInBrandedLayout("Welcome to LMX8 IMPORTS", content);
 }
 
+export async function generateCustomerCredentialsHtml(data: {
+  customerName: string;
+  customerIdentifier: string;
+  phone?: string;
+  loginUrl: string;
+}): Promise<string> {
+  const content = `
+    <p class="greeting">Hello ${data.customerName || "Valued Customer"},</p>
+    <p class="lead">Here are your official LMX8 IMPORTS customer portal credentials and access instructions.</p>
+    
+    <div class="status-card" style="background: #F8FAFC; border-color: #E2E8F0;">
+      <div class="status-badge" style="background: #141B47;">Account Access Details</div>
+      <table>
+        <tr>
+          <td class="label">Customer ID</td>
+          <td class="val" style="color: #141B47; font-size: 15px; font-weight: 800; font-family: monospace;">${data.customerIdentifier}</td>
+        </tr>
+        ${data.phone ? `
+        <tr>
+          <td class="label">Registered Phone</td>
+          <td class="val" style="font-family: monospace; color: #172236;">${data.phone}</td>
+        </tr>` : ""}
+        <tr>
+          <td class="label">Portal URL</td>
+          <td class="val"><a href="${data.loginUrl}" style="color: #F2901F; font-weight: 700; text-decoration: none;">${data.loginUrl}</a></td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="margin: 20px 0; padding: 16px; background: #FFFFFF; border-radius: 12px; border: 1px solid #E2E8F0;">
+      <p style="font-size: 14px; font-weight: 700; color: #141B47; margin: 0 0 10px 0;">How to Sign In to Your Portal:</p>
+      <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #475569; line-height: 1.6;">
+        <li>Go to the portal login page: <strong>${data.loginUrl}</strong></li>
+        <li>Enter your <strong>Customer ID</strong> (<code>${data.customerIdentifier}</code>) or registered phone number.</li>
+        <li>Enter your secret 6-8 digit Customer PIN.</li>
+      </ol>
+    </div>
+
+    <div style="margin: 16px 0; padding: 14px; background: #FFFBEB; border-radius: 12px; border: 1px solid #FDE68A; font-size: 13px; color: #92400E; line-height: 1.5;">
+      <strong>Account Security Guidance:</strong>
+      <ul style="margin: 6px 0 0 0; padding-left: 18px;">
+        <li>Never share your PIN with anyone, including staff members.</li>
+        <li>You can change your PIN anytime inside your Customer Profile settings.</li>
+        <li>If you forget your PIN or suspect unauthorized access, contact LMX8 IMPORTS administration immediately for a secure reset.</li>
+      </ul>
+    </div>
+
+    <div style="text-align: center; margin: 24px 0 8px 0;">
+      <a href="${data.loginUrl}" class="btn" style="background: #F2901F; color: #FFFFFF;">Log In to Customer Portal</a>
+    </div>
+  `;
+  return wrapInBrandedLayout("Your LMX8 IMPORTS Portal Credentials", content);
+}
+
 export async function generateSourcingRequestCreatedHtml(data: {
   customerName: string;
   requestNumber: string;
@@ -799,6 +853,67 @@ export async function sendCustomerCreatedEmail(customerId: string): Promise<{ su
   } catch (err: any) {
     console.error("[sendCustomerCreatedEmail] Exception:", err);
     return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// 1b. Customer Credentials Delivery
+export async function sendCustomerCredentialsEmail(customerId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string; messageId?: string }> {
+  try {
+    await ensureEmailLogSchema();
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+
+    if (!customer) return { success: false, error: "Customer not found." };
+    if (!customer.email || !customer.email.trim().includes("@")) {
+      return { success: false, error: "Customer has no registered email address." };
+    }
+
+    const idempotencyKey = `customer-creds-${customer.id}-${Date.now()}`;
+    const portalBase = getPortalBaseUrl();
+    const loginUrl = `${portalBase}/login`;
+    const htmlContent = await generateCustomerCredentialsHtml({
+      customerName: customer.name,
+      customerIdentifier: customer.customerIdentifier,
+      phone: customer.phone || undefined,
+      loginUrl,
+    });
+
+    const subject = `Your LMX8 IMPORTS Customer Portal Credentials (${customer.customerIdentifier})`;
+
+    await prisma.emailLog.create({
+      data: {
+        customerId: customer.id,
+        eventType: "CUSTOMER_CREDENTIALS",
+        status: "PENDING",
+        recipient: customer.email.trim(),
+        subject,
+        idempotencyKey,
+      },
+    });
+
+    const result = await sendBrevoEmail({
+      to: [{ email: customer.email.trim(), name: customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    if (result.success) {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "SENT", providerMessageId: result.messageId || null, sentAt: new Date() },
+      });
+      return { success: true, messageId: result.messageId };
+    } else {
+      await prisma.emailLog.update({
+        where: { idempotencyKey },
+        data: { status: "FAILED", failedAt: new Date(), errorMessage: result.error || "Failed to send credentials email." },
+      });
+      return { success: false, error: result.error };
+    }
+  } catch (err: any) {
+    console.error("[sendCustomerCredentialsEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error occurred during email dispatch." };
   }
 }
 

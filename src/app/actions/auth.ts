@@ -54,6 +54,18 @@ export async function loginCustomerAction(identifier: string, pin: string, redir
     }
 
     if (!customer) {
+      // Record failed attempt for unknown identifier
+      try {
+        await prisma.customerAuthEvent.create({
+          data: {
+            customerIdentifier: rawId.slice(0, 30),
+            method: "PIN",
+            outcome: "FAILED",
+          },
+        });
+      } catch {
+        // Non-blocking telemetry
+      }
       // Generic error to avoid revealing if a customer exists
       return { error: "Invalid Customer ID/Phone Number or PIN." };
     }
@@ -64,6 +76,16 @@ export async function loginCustomerAction(identifier: string, pin: string, redir
 
     // Brute force protection check
     if (customer.lockedUntil && customer.lockedUntil > new Date()) {
+      try {
+        await prisma.customerAuthEvent.create({
+          data: {
+            customerId: customer.id,
+            customerIdentifier: customer.customerIdentifier,
+            method: "PIN",
+            outcome: "LOCKED",
+          },
+        });
+      } catch {}
       return { error: "Account is temporarily locked due to too many failed attempts. Please try again later." };
     }
 
@@ -108,6 +130,17 @@ export async function loginCustomerAction(identifier: string, pin: string, redir
         data: { loginAttempts: newAttempts, lockedUntil },
       });
 
+      try {
+        await prisma.customerAuthEvent.create({
+          data: {
+            customerId: customer.id,
+            customerIdentifier: customer.customerIdentifier,
+            method: "PIN",
+            outcome: newAttempts >= 5 ? "LOCKED" : "FAILED",
+          },
+        });
+      } catch {}
+
       return { error: "Invalid Customer ID/Phone Number or PIN." };
     }
 
@@ -125,6 +158,17 @@ export async function loginCustomerAction(identifier: string, pin: string, redir
         description: `Successful login for customer ${customer.customerIdentifier}`,
       },
     });
+
+    try {
+      await prisma.customerAuthEvent.create({
+        data: {
+          customerId: customer.id,
+          customerIdentifier: customer.customerIdentifier,
+          method: "PIN",
+          outcome: "SUCCESS",
+        },
+      });
+    } catch {}
 
     await createSession({
       type: "customer",

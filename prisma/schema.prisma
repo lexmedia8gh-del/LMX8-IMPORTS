@@ -70,6 +70,8 @@ model Customer {
   payments           Payment[]
   notifications      Notification[]
   emailLogs          EmailLog[]
+  authEvents         CustomerAuthEvent[]
+  pageViews          CustomerPageView[]
 }
 
 model AdminUser {
@@ -405,6 +407,39 @@ model SystemSettings {
   lockoutDurationMinutes  Int      @default(15)
   updatedAt               DateTime @updatedAt
   updatedBy               String?  // Admin User ID
+}
+
+model CustomerAuthEvent {
+  id                 String    @id @default(uuid())
+  customerId         String?
+  customerIdentifier String?
+  method             String    @default("PIN")
+  outcome            String    // "SUCCESS" | "FAILED" | "LOCKED"
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime  @default(now())
+
+  customer           Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([customerIdentifier])
+  @@index([outcome])
+  @@index([createdAt])
+}
+
+model CustomerPageView {
+  id         String   @id @default(uuid())
+  customerId String
+  path       String
+  pageTitle  String?
+  sessionRef String?
+  createdAt  DateTime @default(now())
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([path])
+  @@index([createdAt])
 }
 
 
