@@ -1,10 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Search, Truck, PackageSearch, ShieldCheck, Box, Globe, Clock, CheckCircle, Plane, Ship } from "lucide-react";
 import { useBrandSettings } from "@/components/brand-provider";
 
 export default function Home() {
+  const router = useRouter();
+  const [quickTrackingId, setQuickTrackingId] = useState("");
   const brandContext = useBrandSettings();
   const branding = brandContext?.branding;
 
@@ -12,6 +16,16 @@ export default function Home() {
   const secondaryColor = branding?.secondaryColor || "#355DAF";
   const accentColor = branding?.accentColor || "#F2901F";
   const businessName = branding?.businessName || "LMX8 IMPORTS";
+
+  const handleQuickTrackSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = quickTrackingId.trim();
+    if (clean) {
+      router.push(`/track?id=${encodeURIComponent(clean)}`);
+    } else {
+      router.push("/track");
+    }
+  };
 
   return (
     <div className="flex flex-col w-full overflow-hidden">
@@ -31,32 +45,32 @@ export default function Home() {
         }} />
 
         {/* Hero content container */}
-        <div className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10 pt-10 sm:pt-16 lg:pt-24 pb-8 lg:pb-28">
-          <div className="max-w-2xl space-y-5 sm:space-y-7">
+        <div className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10 pt-8 sm:pt-16 lg:pt-24 pb-8 lg:pb-28">
+          <div className="max-w-2xl space-y-4 sm:space-y-6 md:space-y-7">
             {/* Eyebrow */}
-            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <span className="gold-line shrink-0" style={{ backgroundColor: accentColor }}></span>
-              <span className="text-xs sm:text-sm font-semibold tracking-widest uppercase truncate" style={{ color: accentColor }}>
+              <span className="text-[11px] sm:text-xs md:text-sm font-semibold tracking-wider sm:tracking-widest uppercase truncate" style={{ color: accentColor }}>
                 Your Trusted Import &amp; Shipping Partner
               </span>
             </div>
 
             {/* Headline */}
-            <h1 style={{ fontFamily: "var(--font-poppins)", lineHeight: 1.12 }} className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight">
+            <h1 style={{ fontFamily: "var(--font-poppins)", lineHeight: 1.12 }} className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight">
               <span className="text-white block">Import Smarter.</span>
               <span className="block" style={{ color: accentColor }}>Ship Further.</span>
             </h1>
 
             {/* Sub */}
-            <p className="text-sm sm:text-base md:text-lg leading-relaxed max-w-lg" style={{ color: "#94A3B8" }}>
+            <p className="text-xs sm:text-base md:text-lg leading-relaxed max-w-lg" style={{ color: "#94A3B8" }}>
               Get your goods from China to Ghana with ease. Track your shipments, pay shipping fees, and request products with {businessName}.
             </p>
 
             {/* CTAs */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-1 sm:pt-2 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-4 pt-1 sm:pt-2 w-full sm:w-auto">
               <Link href="/track" className="w-full sm:w-auto">
                 <button
-                  className="w-full sm:w-auto h-12 px-7 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-90 hover:scale-[1.01] shadow-lg cursor-pointer text-white"
+                  className="w-full sm:w-auto h-12 px-6 sm:px-7 text-xs sm:text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-90 hover:scale-[1.01] shadow-lg cursor-pointer text-white min-h-[48px]"
                   style={{ background: accentColor }}
                 >
                   <Search className="w-4 h-4" /> Track My Goods
@@ -64,7 +78,7 @@ export default function Home() {
               </Link>
               <Link href="/portal/sourcing" className="w-full sm:w-auto">
                 <button
-                  className="w-full sm:w-auto h-12 px-7 text-sm font-semibold rounded-xl border flex items-center justify-center gap-2 transition-all duration-200 hover:bg-white/5 cursor-pointer text-white"
+                  className="w-full sm:w-auto h-12 px-6 sm:px-7 text-xs sm:text-sm font-semibold rounded-xl border flex items-center justify-center gap-2 transition-all duration-200 hover:bg-white/5 cursor-pointer text-white min-h-[48px]"
                   style={{ borderColor: "rgba(255,255,255,0.25)" }}
                 >
                   Request Product Sourcing <ArrowRight className="w-4 h-4" />
@@ -73,7 +87,7 @@ export default function Home() {
             </div>
 
             {/* 2x2 Mobile / 4-Col Desktop Feature Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 pt-5 sm:pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3.5 pt-4 sm:pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
               {[
                 { icon: <Truck className="w-4 h-4 sm:w-5 sm:h-5" />, title: "China to Ghana", sub: "Reliable import services" },
                 { icon: <Box className="w-4 h-4 sm:w-5 sm:h-5" />, title: "Track Shipments", sub: "Real-time updates" },
@@ -82,13 +96,13 @@ export default function Home() {
               ].map((f) => (
                 <div
                   key={f.title}
-                  className="min-w-0 p-2.5 sm:p-3.5 rounded-xl flex items-start gap-2.5 transition-all"
+                  className="min-w-0 p-2.5 sm:p-3.5 rounded-xl flex items-start gap-2 sm:gap-2.5 transition-all"
                   style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
                 >
                   <div className="mt-0.5 shrink-0" style={{ color: accentColor }}>{f.icon}</div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs sm:text-sm font-bold text-white truncate sm:whitespace-normal">{f.title}</p>
-                    <p className="text-[11px] sm:text-xs mt-0.5 leading-tight break-words" style={{ color: "#94A3B8" }}>{f.sub}</p>
+                    <p className="text-[10px] sm:text-xs mt-0.5 leading-tight break-words" style={{ color: "#94A3B8" }}>{f.sub}</p>
                   </div>
                 </div>
               ))}
@@ -101,32 +115,33 @@ export default function Home() {
           className="relative lg:absolute lg:bottom-0 left-0 right-0 border-t border-white/10 shadow-xl z-20 mt-4 lg:mt-0"
           style={{ background: `${primaryColor}FA`, backdropFilter: "blur(12px)" }}
         >
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-4 sm:py-5 flex flex-col md:flex-row items-stretch md:items-center gap-3 sm:gap-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-3.5 sm:py-5 flex flex-col md:flex-row items-stretch md:items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl shrink-0" style={{ background: `${accentColor}1F` }}>
-                <Search className="w-5 h-5" style={{ color: accentColor }} />
+              <div className="p-2 sm:p-2.5 rounded-xl shrink-0" style={{ background: `${accentColor}1F` }}>
+                <Search className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: accentColor }} />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-bold text-white">Track Your Shipment</p>
-                <p className="text-xs mt-0.5 truncate" style={{ color: "#94A3B8" }}>Enter your shipment number or tracking ID.</p>
+                <p className="text-xs sm:text-sm font-bold text-white">Track Your Shipment</p>
+                <p className="text-[11px] sm:text-xs mt-0.5 truncate" style={{ color: "#94A3B8" }}>Enter your shipment number or tracking ID.</p>
               </div>
             </div>
-            <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full md:w-auto">
+            <form onSubmit={handleQuickTrackSubmit} className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
               <input
                 type="text"
-                placeholder="Enter Container / Shipment Number"
-                className="flex-1 w-full px-4 h-12 text-sm rounded-xl border text-white placeholder:text-gray-500 focus:outline-none focus:border-yellow-400 transition-colors"
+                value={quickTrackingId}
+                onChange={(e) => setQuickTrackingId(e.target.value)}
+                placeholder="Enter Container / Shipment Number (e.g. LMX8-00125)"
+                className="flex-1 w-full px-3.5 sm:px-4 h-11 sm:h-12 text-xs sm:text-sm rounded-xl border text-white placeholder:text-gray-500 focus:outline-none focus:border-yellow-400 transition-colors"
                 style={{ background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.15)" }}
               />
-              <Link href="/track" className="w-full sm:w-auto">
-                <button
-                  className="w-full sm:w-auto px-6 h-12 text-sm font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity cursor-pointer text-white shrink-0"
-                  style={{ background: accentColor }}
-                >
-                  Track <ArrowRight className="w-4 h-4" />
-                </button>
-              </Link>
-            </div>
+              <button
+                type="submit"
+                className="w-full sm:w-auto px-5 sm:px-6 h-11 sm:h-12 text-xs sm:text-sm font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity cursor-pointer text-white shrink-0 min-h-[44px]"
+                style={{ background: accentColor }}
+              >
+                Track <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
             <p className="hidden lg:block text-xs text-right max-w-[160px]" style={{ color: "#94A3B8" }}>
               From warehouse to Ghana, stay informed every step of the way.
             </p>

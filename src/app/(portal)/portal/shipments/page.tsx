@@ -98,16 +98,18 @@ export default function ShipmentsPage() {
                   className="bg-white rounded-2xl p-4 shadow-sm active:opacity-80 transition-opacity"
                   style={{ border: "1px solid #E5E7EB" }}
                 >
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="min-w-0">
-                      <p className="font-bold text-sm truncate" style={{ color: "#172236" }}>
+                  <div className="flex items-start justify-between gap-3 mb-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold font-mono text-xs sm:text-sm break-all" style={{ color: "#172236" }}>
                         {s.id}
                       </p>
-                      <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "#667085" }}>
-                        {s.description}
+                      <p className="text-xs mt-1 line-clamp-2 leading-relaxed" style={{ color: "#667085" }}>
+                        {s.description || "General Merchandise"}
                       </p>
                     </div>
-                    <ShipmentStatusBadge status={s.status} />
+                    <div className="shrink-0">
+                      <ShipmentStatusBadge status={s.status} />
+                    </div>
                   </div>
                   <div className="flex items-center justify-between text-xs" style={{ color: "#94A3B8" }}>
                     <span>Registered: {s.registeredDate}</span>

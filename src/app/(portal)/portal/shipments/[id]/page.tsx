@@ -200,27 +200,27 @@ export default function ShipmentDetailsPage({
   )}`;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-16">
       {/* ── TOP NAVIGATION & LIVE REALTIME BAR ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-2">
         <Link
           href="/portal/shipments"
-          className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-[#64748B] hover:text-[#172236] transition-colors"
+          className="inline-flex items-center gap-1.5 py-2 px-1 text-xs sm:text-sm font-bold text-[#64748B] hover:text-[#172236] transition-colors min-h-[40px]"
         >
-          <ArrowLeft size={16} /> Back to My Shipments
+          <ArrowLeft size={16} /> <span>Back to My Shipments</span>
         </Link>
 
         <div className="flex items-center gap-2">
           {isRealtimeConnected ? (
             <span
-              className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs"
+              className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold px-2.5 sm:px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs"
               title="Real-time live synchronization active"
             >
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Live Sync Active</span>
+              <span className="hidden xs:inline">Live</span> Sync Active
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#94A3B8]">
+            <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-[#94A3B8]">
               <Clock size={12} /> Standard Sync
             </span>
           )}
@@ -229,16 +229,16 @@ export default function ShipmentDetailsPage({
             type="button"
             onClick={refresh}
             title="Refresh status now"
-            className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] hover:text-[#172236] hover:bg-gray-50 transition-colors cursor-pointer"
+            className="p-2 sm:p-1.5 rounded-xl sm:rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] hover:text-[#172236] hover:bg-gray-50 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
           >
-            <RefreshCw size={13} className={isUpdating ? "animate-spin text-amber-600" : ""} />
+            <RefreshCw size={14} className={isUpdating ? "animate-spin text-amber-600" : ""} />
           </button>
         </div>
       </div>
 
       {/* ── LIVE HERO CONSIGNMENT BANNER ── */}
       <div
-        className="rounded-3xl overflow-hidden shadow-md text-white relative border border-white/10"
+        className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-md text-white relative border border-white/10"
         style={{
           background: `linear-gradient(135deg, ${primaryColor} 0%, #0B1F44 60%, ${secondaryColor} 100%)`,
         }}
@@ -252,19 +252,19 @@ export default function ShipmentDetailsPage({
 
         {/* Live sync alert header if updating */}
         {isUpdating && (
-          <div className="px-6 py-2 bg-amber-500/20 border-b border-amber-400/30 text-amber-200 text-xs font-semibold flex items-center gap-2 backdrop-blur-xs">
+          <div className="px-4 sm:px-6 py-2 bg-amber-500/20 border-b border-amber-400/30 text-amber-200 text-xs font-semibold flex items-center gap-2 backdrop-blur-xs">
             <RefreshCw size={13} className="animate-spin text-amber-300 shrink-0" />
-            <span>Synchronizing live checkpoint from Ctrl Room operations...</span>
+            <span>Synchronizing live checkpoint from operations...</span>
           </div>
         )}
 
-        <div className="p-6 sm:p-8 space-y-6 relative z-10">
+        <div className="p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 relative z-10">
           {/* Header Row: Tracking ID + Status Pill */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/10">
-            <div>
-              <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-4 sm:pb-5 border-b border-white/10">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">
-                  Consignment Tracking Code
+                  Consignment Tracking
                 </span>
                 {shipment.batch && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/15">
@@ -273,24 +273,24 @@ export default function ShipmentDetailsPage({
                 )}
               </div>
 
-              <div className="flex items-center gap-2.5 mt-1.5">
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wide font-mono text-white drop-shadow-xs">
+              <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+                <h1 className="text-xl xs:text-2xl sm:text-3xl font-extrabold tracking-wide font-mono text-white drop-shadow-xs break-all">
                   {shipment.id}
                 </h1>
                 <button
                   type="button"
                   onClick={handleCopyTracking}
-                  className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/90 hover:text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border border-white/15"
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-white/90 hover:text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border border-white/15 min-h-[34px]"
                   title="Copy tracking code to clipboard"
                 >
                   {copiedTracking ? (
                     <>
-                      <Check size={12} className="text-emerald-400" />
+                      <Check size={13} className="text-emerald-400" />
                       <span className="text-emerald-300">Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy size={12} />
+                      <Copy size={13} />
                       <span>Copy</span>
                     </>
                   )}
@@ -298,14 +298,14 @@ export default function ShipmentDetailsPage({
               </div>
 
               {shipment.description && (
-                <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl font-medium">
+                <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl font-medium leading-relaxed">
                   {shipment.description}
                 </p>
               )}
             </div>
 
-            <div className="flex flex-col sm:items-end gap-1.5 shrink-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+            <div className="flex sm:flex-col sm:items-end justify-between items-center gap-1.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/10">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#94A3B8] hidden sm:block">
                 Current Milestone
               </span>
               <ShipmentStatusBadge status={shipment.status} showLivePulse />
@@ -317,8 +317,68 @@ export default function ShipmentDetailsPage({
             </div>
           </div>
 
-          {/* Journey Path Visualizer (Guangzhou ✈/🚢 Accra) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center bg-white/5 rounded-2xl p-4 sm:p-5 border border-white/10 backdrop-blur-xs">
+          {/* ── MOBILE-FIRST ROUTE VISUALIZER ── */}
+          {/* Mobile Layout (< md) */}
+          <div className="md:hidden bg-white/5 rounded-2xl p-4 border border-white/10 backdrop-blur-xs space-y-3.5">
+            {/* Origin */}
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-white/10 text-white flex items-center justify-center shrink-0 border border-white/15">
+                <MapPin size={16} className="text-amber-400" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Origin Hub
+                </span>
+                <p className="font-bold text-xs text-white truncate">
+                  {shipment.origin || "Guangzhou Warehouse, China"}
+                </p>
+                <span className="text-[10px] text-slate-300">Intake &amp; Consolidation</span>
+              </div>
+            </div>
+
+            {/* In-Transit Connector */}
+            <div className="pl-4 py-1 border-l-2 border-dashed border-white/20 ml-4 space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-xs font-bold text-white border border-white/15">
+                <TransitIcon size={13} style={{ color: accentColor }} className="animate-pulse" />
+                <span>{shipment.shippingMethod || (isAirFreight ? "Air Cargo Express" : "Sea Freight Container")}</span>
+              </div>
+              <div className="w-full relative flex items-center pt-1">
+                <div className="w-full h-1.5 bg-white/15 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{
+                      width: `${progressPercentage}%`,
+                      background: `linear-gradient(90deg, #F2901F, #FBBF24)`,
+                    }}
+                  />
+                </div>
+              </div>
+              <span className="text-[10px] text-amber-300 font-semibold block">
+                {progressPercentage}% of journey completed
+              </span>
+            </div>
+
+            {/* Destination */}
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-white/10 text-white flex items-center justify-center shrink-0 border border-white/15">
+                <MapPin size={16} className="text-emerald-400" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Final Destination
+                </span>
+                <p className="font-bold text-xs text-white truncate">
+                  {shipment.destination || "Accra Hub, Ghana"}
+                </p>
+                <span className="text-[10px] text-emerald-300 font-semibold flex items-center gap-1">
+                  <Calendar size={10} /> {shipment.estimatedArrival ? `Est. ${shipment.estimatedArrival}` : "In Transit"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop Layout (>= md) */}
+          <div className="hidden md:grid md:grid-cols-3 gap-4 items-center bg-white/5 rounded-2xl p-4 sm:p-5 border border-white/10 backdrop-blur-xs">
             {/* Origin */}
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-white/10 text-white flex items-center justify-center shrink-0 border border-white/15">
@@ -388,35 +448,96 @@ export default function ShipmentDetailsPage({
       </div>
 
       {/* ── VISUAL 5-STAGE MILESTONE JOURNEY STEPPER ── */}
-      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-[#E5E7EB] shadow-xs space-y-5">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 border border-[#E5E7EB] shadow-xs space-y-4 sm:space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shrink-0">
               <Radio size={16} />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-[#172236]">Milestone Progress Tracker</h2>
-              <p className="text-[11px] text-[#667085]">End-to-end journey stages from China intake to Ghana delivery</p>
+              <h2 className="text-xs sm:text-sm font-bold text-[#172236]">Milestone Progress Tracker</h2>
+              <p className="text-[10px] sm:text-[11px] text-[#667085]">Verified stages from China intake to Ghana delivery</p>
             </div>
           </div>
-          <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 text-[#141B47] border border-slate-200">
+          <span className="text-[11px] sm:text-xs font-bold px-2.5 sm:px-3 py-1 rounded-full bg-slate-100 text-[#141B47] border border-slate-200 shrink-0">
             Stage {milestoneIndex + 1} of 5
           </span>
         </div>
 
-        {/* Stepper Grid */}
-        <div className="relative pt-2">
-          {/* Background Connecting Line (Desktop) */}
-          <div className="hidden md:block absolute top-7 left-10 right-10 h-1 bg-slate-100 z-0 rounded-full" />
+        {/* Stepper Content */}
+        {/* Mobile View: Vertical Clean Steps (< md) */}
+        <div className="md:hidden space-y-2.5 pt-1">
+          {MILESTONE_STAGES.map((stage, idx) => {
+            const isPast = idx < milestoneIndex;
+            const isCurrent = idx === milestoneIndex;
+            const isUpcoming = idx > milestoneIndex;
+            const StageIcon = stage.icon;
+
+            return (
+              <div
+                key={stage.key}
+                className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                  isCurrent
+                    ? "bg-amber-50/80 border-amber-300 shadow-xs"
+                    : isPast
+                    ? "bg-slate-50/70 border-slate-200"
+                    : "bg-white border-slate-100 opacity-60"
+                }`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-bold text-xs mt-0.5 ${
+                    isPast
+                      ? "bg-emerald-500 text-white"
+                      : isCurrent
+                      ? "bg-[#07182F] text-[#F2901F] ring-3 ring-amber-200"
+                      : "bg-slate-100 text-slate-400 border border-slate-200"
+                  }`}
+                >
+                  {isPast ? <Check size={14} strokeWidth={3} /> : <StageIcon size={14} />}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className={`text-xs font-bold ${isCurrent ? "text-[#07182F]" : isPast ? "text-[#172236]" : "text-slate-500"}`}>
+                      {stage.label}
+                    </p>
+                    <span
+                      className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                        isCurrent
+                          ? "bg-amber-200 text-amber-900"
+                          : isPast
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {isCurrent ? "Current" : isPast ? "Done" : "Upcoming"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-[#94A3B8] font-medium block mt-0.5">
+                    {stage.location}
+                  </span>
+                  <p className="text-[10px] text-slate-600 mt-1 leading-snug">
+                    {stage.description}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop View: Horizontal Stepper Grid (>= md) */}
+        <div className="hidden md:block relative pt-2">
+          {/* Background Connecting Line */}
+          <div className="absolute top-7 left-10 right-10 h-1 bg-slate-100 z-0 rounded-full" />
           <div
-            className="hidden md:block absolute top-7 left-10 h-1 z-0 rounded-full transition-all duration-700"
+            className="absolute top-7 left-10 h-1 z-0 rounded-full transition-all duration-700"
             style={{
               width: `calc(${milestoneIndex * 25}% )`,
               background: "linear-gradient(90deg, #10B981, #F2901F)",
             }}
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 relative z-10">
+          <div className="grid grid-cols-5 gap-4 relative z-10">
             {MILESTONE_STAGES.map((stage, idx) => {
               const isPast = idx < milestoneIndex;
               const isCurrent = idx === milestoneIndex;
@@ -426,12 +547,10 @@ export default function ShipmentDetailsPage({
               return (
                 <div
                   key={stage.key}
-                  className={`flex md:flex-col items-center md:items-center gap-3.5 md:text-center p-3 md:p-2 rounded-2xl transition-all ${
+                  className={`flex flex-col items-center text-center p-2 rounded-2xl transition-all ${
                     isCurrent
                       ? "bg-amber-50/70 border border-amber-200/80 shadow-2xs"
-                      : isPast
-                      ? "bg-slate-50/50 md:bg-transparent"
-                      : "opacity-60 md:bg-transparent"
+                      : "bg-transparent"
                   }`}
                 >
                   {/* Step Marker */}
@@ -447,7 +566,7 @@ export default function ShipmentDetailsPage({
                     {isPast ? <Check size={16} strokeWidth={3} /> : <StageIcon size={16} />}
                   </div>
 
-                  <div className="min-w-0">
+                  <div className="min-w-0 mt-2">
                     <p
                       className={`text-xs font-bold leading-tight ${
                         isCurrent
@@ -462,7 +581,7 @@ export default function ShipmentDetailsPage({
                     <span className="text-[10px] text-[#94A3B8] block mt-0.5 font-medium">
                       {stage.location}
                     </span>
-                    <span className="text-[10px] text-slate-500 hidden md:block mt-1 leading-snug">
+                    <span className="text-[10px] text-slate-500 block mt-1 leading-snug">
                       {stage.description}
                     </span>
                   </div>
@@ -474,82 +593,82 @@ export default function ShipmentDetailsPage({
       </div>
 
       {/* ── CONSIGNMENT SPECIFICATIONS & SHIPPING FEE STATUS ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Left: Cargo Specifications (2 cols) */}
-        <div className="lg:col-span-2 bg-white rounded-3xl p-6 sm:p-7 border border-[#E5E7EB] shadow-xs space-y-5">
-          <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#355DAF] flex items-center justify-center border border-blue-200">
+        <div className="lg:col-span-2 bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 border border-[#E5E7EB] shadow-xs space-y-4 sm:space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9] gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#355DAF] flex items-center justify-center border border-blue-200 shrink-0">
                 <Package size={16} />
               </div>
-              <h3 className="text-sm font-bold text-[#172236]">Cargo Specifications</h3>
+              <h3 className="text-xs sm:text-sm font-bold text-[#172236] truncate">Cargo Specifications</h3>
             </div>
-            <span className="text-[11px] font-bold text-[#64748B]">
+            <span className="text-[10px] sm:text-[11px] font-bold text-[#64748B] shrink-0">
               Registered {shipment.registeredDate || "N/A"}
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5">
             {/* Weight */}
-            <div className="p-3.5 rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB]">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085] flex items-center gap-1 mb-1">
-                <Scale size={12} className="text-[#355DAF]" /> Weight
+            <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB]">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#667085] flex items-center gap-1 mb-1">
+                <Scale size={11} className="text-[#355DAF]" /> Weight
               </span>
-              <p className="font-extrabold text-sm sm:text-base text-[#172236]">
+              <p className="font-extrabold text-xs sm:text-base text-[#172236] truncate">
                 {shipment.weight ? `${shipment.weight} kg` : "Pending"}
               </p>
-              <span className="text-[10px] text-[#94A3B8]">Gross Cargo Weight</span>
+              <span className="text-[9px] sm:text-[10px] text-[#94A3B8] block truncate">Gross Weight</span>
             </div>
 
             {/* Quantity */}
-            <div className="p-3.5 rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB]">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085] flex items-center gap-1 mb-1">
-                <Boxes size={12} className="text-[#F2901F]" /> Packages
+            <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB]">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#667085] flex items-center gap-1 mb-1">
+                <Boxes size={11} className="text-[#F2901F]" /> Packages
               </span>
-              <p className="font-extrabold text-sm sm:text-base text-[#172236]">
+              <p className="font-extrabold text-xs sm:text-base text-[#172236] truncate">
                 {shipment.quantity ? `${shipment.quantity} Item(s)` : "1 Carton"}
               </p>
-              <span className="text-[10px] text-[#94A3B8]">Total Package Count</span>
+              <span className="text-[9px] sm:text-[10px] text-[#94A3B8] block truncate">Package Count</span>
             </div>
 
             {/* Shipping Method */}
-            <div className="p-3.5 rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB]">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085] flex items-center gap-1 mb-1">
-                <TransitIcon size={12} className="text-emerald-600" /> Mode
+            <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB]">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#667085] flex items-center gap-1 mb-1">
+                <TransitIcon size={11} className="text-emerald-600" /> Mode
               </span>
-              <p className="font-extrabold text-sm sm:text-base text-[#172236] truncate">
+              <p className="font-extrabold text-xs sm:text-base text-[#172236] truncate">
                 {isAirFreight ? "Air Cargo" : "Sea Freight"}
               </p>
-              <span className="text-[10px] text-[#94A3B8]">{isAirFreight ? "7-10 Days" : "25-35 Days"}</span>
+              <span className="text-[9px] sm:text-[10px] text-[#94A3B8] block truncate">{isAirFreight ? "7-10 Days" : "25-35 Days"}</span>
             </div>
 
             {/* Batch Info */}
-            <div className="p-3.5 rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB]">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085] flex items-center gap-1 mb-1">
-                <FileText size={12} className="text-purple-600" /> Batch
+            <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB]">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#667085] flex items-center gap-1 mb-1">
+                <FileText size={11} className="text-purple-600" /> Batch
               </span>
-              <p className="font-extrabold text-sm sm:text-base text-[#172236] font-mono truncate">
+              <p className="font-extrabold text-xs sm:text-base text-[#172236] font-mono truncate">
                 {shipment.batch || "Unassigned"}
               </p>
-              <span className="text-[10px] text-[#94A3B8] truncate block">
-                {shipment.batchStageLabel || "Standard Dispatch"}
+              <span className="text-[9px] sm:text-[10px] text-[#94A3B8] truncate block">
+                {shipment.batchStageLabel || "Standard"}
               </span>
             </div>
           </div>
 
           {/* Consignee & Details List */}
-          <div className="space-y-2 text-xs pt-1">
-            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-              <span className="text-[#64748B] font-medium">Consignee Name:</span>
+          <div className="space-y-1.5 text-xs pt-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2 border-b border-gray-100 gap-1">
+              <span className="text-[#64748B] font-medium text-[11px] sm:text-xs">Consignee Name:</span>
               <span className="font-bold text-[#172236]">{shipment.customerName || "Portal Customer"}</span>
             </div>
-            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-              <span className="text-[#64748B] font-medium">Customer Identifier:</span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2 border-b border-gray-100 gap-1">
+              <span className="text-[#64748B] font-medium text-[11px] sm:text-xs">Customer Identifier:</span>
               <span className="font-mono font-bold text-[#141B47]">{shipment.customerId}</span>
             </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-[#64748B] font-medium">Description of Goods:</span>
-              <span className="font-semibold text-[#172236] text-right max-w-xs truncate">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2 gap-1">
+              <span className="text-[#64748B] font-medium text-[11px] sm:text-xs">Description of Goods:</span>
+              <span className="font-semibold text-[#172236] sm:text-right break-words max-w-sm">
                 {shipment.description || "General Merchandise"}
               </span>
             </div>
@@ -557,40 +676,40 @@ export default function ShipmentDetailsPage({
         </div>
 
         {/* Right: Financial / Shipping Fee Status (1 col) */}
-        <div className="bg-white rounded-3xl p-6 sm:p-7 border border-[#E5E7EB] shadow-xs flex flex-col justify-between space-y-4">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 border border-[#E5E7EB] shadow-xs flex flex-col justify-between space-y-4">
           <div className="space-y-3">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9] gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200 shrink-0">
                   <CreditCard size={16} />
                 </div>
-                <h3 className="text-sm font-bold text-[#172236]">Shipping Fee</h3>
+                <h3 className="text-xs sm:text-sm font-bold text-[#172236] truncate">Shipping Fee</h3>
               </div>
               <span
-                className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full ${
+                className={`text-[9px] sm:text-[10px] font-bold uppercase px-2 sm:px-2.5 py-0.5 rounded-full shrink-0 ${
                   isOutstanding
                     ? "bg-amber-50 text-amber-800 border border-amber-200"
                     : "bg-emerald-50 text-emerald-800 border border-emerald-200"
                 }`}
               >
-                {isOutstanding ? "Pending Payment" : "Settled in Full"}
+                {isOutstanding ? "Pending" : "Settled"}
               </span>
             </div>
 
             {/* Fee Figures */}
-            <div className="p-4 rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB] space-y-2">
+            <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB] space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-[#64748B]">Total Shipping Fee</span>
                 <span className="font-bold text-[#172236]">{formatGHS(shipment.fee)}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B]">Amount Paid to Date</span>
+                <span className="text-[#64748B]">Amount Paid</span>
                 <span className="font-bold text-emerald-600">{formatGHS(shipment.paidAmount)}</span>
               </div>
               <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                <span className="text-xs font-bold text-[#141B47]">Outstanding Balance</span>
+                <span className="text-xs font-bold text-[#141B47]">Balance</span>
                 <span
-                  className={`text-base font-extrabold ${
+                  className={`text-sm sm:text-base font-extrabold ${
                     isOutstanding ? "text-amber-600" : "text-emerald-700"
                   }`}
                 >
@@ -600,24 +719,26 @@ export default function ShipmentDetailsPage({
             </div>
 
             {isOutstanding ? (
-              <div className="space-y-3 pt-1">
-                <p className="text-[11px] text-[#64748B] leading-relaxed">
-                  Pay with Mobile Money (MTN, Telecel, AT) or Bank Card via Paystack for instant automated release.
+              <div className="space-y-2.5 pt-1">
+                <p className="text-[10px] sm:text-[11px] text-[#64748B] leading-relaxed">
+                  Pay with Mobile Money (MTN, Telecel, AT) or Bank Card via Paystack for automated release.
                 </p>
-                <ShippingPayNowButton shipmentId={shipment.id} />
+                <div className="w-full">
+                  <ShippingPayNowButton shipmentId={shipment.id} />
+                </div>
               </div>
             ) : (
-              <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-900 text-xs space-y-2">
+              <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-900 text-xs space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold">
-                  <CheckCircle2 size={15} className="text-emerald-600" />
+                  <CheckCircle2 size={14} className="text-emerald-600" />
                   <span>Shipping Fee Paid</span>
                 </div>
-                <p className="text-[11px] text-emerald-700">
+                <p className="text-[10px] sm:text-[11px] text-emerald-700 leading-relaxed">
                   This consignment is cleared for delivery upon arrival at the destination hub.
                 </p>
                 <Link
                   href="/portal/payments"
-                  className="text-[11px] font-bold text-emerald-800 hover:underline flex items-center gap-1"
+                  className="text-[11px] font-bold text-emerald-800 hover:underline flex items-center gap-1 pt-0.5"
                 >
                   View Receipts in Payments →
                 </Link>
@@ -630,7 +751,7 @@ export default function ShipmentDetailsPage({
               href={whatsappInquiryUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-2.5 px-4 rounded-xl text-xs font-bold border border-emerald-200 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-800 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-bold border border-emerald-200 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-800 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-2xs min-h-[42px]"
             >
               <MessageSquare size={14} className="text-emerald-600" />
               <span>Inquire via WhatsApp Desk</span>
@@ -640,33 +761,33 @@ export default function ShipmentDetailsPage({
       </div>
 
       {/* ── HIGH-DEFINITION CARGO INSPECTION PHOTOS ── */}
-      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-[#E5E7EB] shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 border border-[#E5E7EB] shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9] gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shrink-0">
               <Camera size={16} />
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-[#172236]">Cargo Inspection &amp; Package Photos</h3>
-              <p className="text-[11px] text-[#667085]">
-                High-definition photos captured during intake and weighing in Guangzhou
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-bold text-[#172236] truncate">Inspection &amp; Package Photos</h3>
+              <p className="text-[10px] sm:text-[11px] text-[#667085] truncate">
+                HD photos captured during intake in Guangzhou
               </p>
             </div>
           </div>
           {shipment.photos && shipment.photos.length > 0 && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-[#141B47]">
+            <span className="text-[10px] sm:text-xs font-bold px-2.5 py-0.5 sm:py-1 rounded-full bg-slate-100 text-[#141B47] shrink-0">
               {shipment.photos.length} Photo(s)
             </span>
           )}
         </div>
 
         {shipment.photos && shipment.photos.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-4 pt-1">
             {shipment.photos.map((photo, pIdx) => (
               <div
                 key={photo.id || pIdx}
                 onClick={() => setActivePhotoModal({ url: photo.url, filename: photo.filename })}
-                className="group relative rounded-2xl overflow-hidden border border-[#E5E7EB] aspect-square bg-slate-100 cursor-pointer shadow-2xs hover:shadow-md transition-all"
+                className="group relative rounded-xl sm:rounded-2xl overflow-hidden border border-[#E5E7EB] aspect-square bg-slate-100 cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-95"
               >
                 <img
                   src={photo.url}
@@ -674,21 +795,21 @@ export default function ShipmentDetailsPage({
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                   loading="lazy"
                 />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-bold backdrop-blur-2xs">
-                  <ZoomIn size={16} />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 text-white text-xs font-bold backdrop-blur-2xs">
+                  <ZoomIn size={14} />
                   <span>Inspect</span>
                 </div>
-                <div className="absolute bottom-2 left-2 right-2 bg-black/60 backdrop-blur-xs text-white text-[10px] px-2 py-1 rounded-lg truncate">
+                <div className="absolute bottom-1.5 left-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded truncate">
                   {photo.filename || `Photo #${pIdx + 1}`}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="py-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-2">
-            <Camera size={28} className="mx-auto text-slate-300" />
+          <div className="py-8 sm:py-10 text-center bg-slate-50 rounded-xl sm:rounded-2xl border border-dashed border-slate-200 space-y-1.5 px-3">
+            <Camera size={24} className="mx-auto text-slate-300 sm:w-7 sm:h-7" />
             <p className="text-xs font-bold text-[#172236]">No Intake Photos Uploaded Yet</p>
-            <p className="text-[11px] text-[#667085] max-w-sm mx-auto">
+            <p className="text-[10px] sm:text-[11px] text-[#667085] max-w-sm mx-auto leading-relaxed">
               Our Guangzhou warehouse team captures and uploads package photos upon intake, inspection, and weighing.
             </p>
           </div>
@@ -696,21 +817,21 @@ export default function ShipmentDetailsPage({
       </div>
 
       {/* ── REAL-TIME CHECKPOINTS & TIMELINE ── */}
-      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-[#E5E7EB] shadow-xs space-y-5">
-        <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#355DAF] flex items-center justify-center border border-blue-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 border border-[#E5E7EB] shadow-xs space-y-4 sm:space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9] gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#355DAF] flex items-center justify-center border border-blue-200 shrink-0">
               <Radio size={16} />
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-[#172236]">Live Journey Timeline &amp; Checkpoints</h3>
-              <p className="text-[11px] text-[#667085]">Verified logistical milestones updated from Operations Ctrl Room</p>
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-bold text-[#172236] truncate">Journey Timeline &amp; Checkpoints</h3>
+              <p className="text-[10px] sm:text-[11px] text-[#667085] truncate">Verified milestones updated from Operations</p>
             </div>
           </div>
           {lastUpdated && (
-            <span className="text-[11px] font-semibold text-[#64748B] flex items-center gap-1">
+            <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] flex items-center gap-1 shrink-0">
               <Clock size={11} />
-              <span>Synced {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              <span>{lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             </span>
           )}
         </div>
@@ -722,43 +843,44 @@ export default function ShipmentDetailsPage({
       {/* ── PHOTO LIGHTBOX / INSPECTION MODAL ── */}
       {activePhotoModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/90 backdrop-blur-sm animate-in fade-in"
           onClick={() => setActivePhotoModal(null)}
         >
           <div
-            className="max-w-3xl w-full bg-slate-900 rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative"
+            className="max-w-3xl w-full bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 flex items-center justify-between border-b border-white/10 text-white">
-              <span className="text-xs font-mono font-bold truncate max-w-md">
+            <div className="p-3 sm:p-4 flex items-center justify-between border-b border-white/10 text-white gap-2">
+              <span className="text-xs font-mono font-bold truncate max-w-[200px] sm:max-w-md">
                 {activePhotoModal.filename || "Cargo Inspection Photo"}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <a
                   href={activePhotoModal.url}
                   download={activePhotoModal.filename || "cargo-photo.jpg"}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                  className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer min-h-[36px]"
                 >
                   <Download size={13} />
-                  <span>Download</span>
+                  <span className="hidden xs:inline">Download</span>
                 </a>
                 <button
                   type="button"
                   onClick={() => setActivePhotoModal(null)}
-                  className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
+                  aria-label="Close photo preview"
                 >
                   <X size={18} />
                 </button>
               </div>
             </div>
 
-            <div className="p-4 bg-black flex items-center justify-center max-h-[75vh] overflow-hidden">
+            <div className="p-2 sm:p-4 bg-black flex items-center justify-center max-h-[75vh] overflow-hidden">
               <img
                 src={activePhotoModal.url}
                 alt="Cargo Full HD Preview"
-                className="max-h-[70vh] w-auto max-w-full object-contain rounded-xl"
+                className="max-h-[70vh] w-auto max-w-full object-contain rounded-lg sm:rounded-xl"
               />
             </div>
           </div>

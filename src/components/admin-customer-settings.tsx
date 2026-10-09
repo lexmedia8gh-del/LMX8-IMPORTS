@@ -1042,12 +1042,12 @@ export default function AdminCustomerSettings() {
                 </ul>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-2 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setEmailModal((prev) => ({ ...prev, open: false }))}
                   disabled={emailModal.sending}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer disabled:opacity-50"
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer disabled:opacity-50 text-center"
                 >
                   Cancel
                 </button>
@@ -1055,7 +1055,7 @@ export default function AdminCustomerSettings() {
                   type="button"
                   onClick={handleSendCredentialsEmailFromModal}
                   disabled={emailModal.sending || !emailModal.pinInput.trim()}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#141B47] hover:bg-[#355DAF] text-white transition-all inline-flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-[#141B47] hover:bg-[#355DAF] text-white transition-all inline-flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50 text-center"
                 >
                   {emailModal.sending ? (
                     <>
@@ -1183,11 +1183,11 @@ export default function AdminCustomerSettings() {
                   <strong>Access Security:</strong> When the PIN is included, the client can sign in right away. Clients can change their PIN anytime in the portal under My Profile &gt; Change PIN.
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-2">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => setWhatsAppModal((prev) => ({ ...prev, open: false }))}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer"
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer text-center"
                   >
                     Cancel
                   </button>
@@ -1199,7 +1199,7 @@ export default function AdminCustomerSettings() {
                       showToast("Opening WhatsApp with credentials message...");
                       setWhatsAppModal((prev) => ({ ...prev, open: false }));
                     }}
-                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#10B981] hover:bg-[#059669] text-white transition-all inline-flex items-center gap-2 cursor-pointer shadow-xs"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-[#10B981] hover:bg-[#059669] text-white transition-all inline-flex items-center justify-center gap-2 cursor-pointer shadow-xs text-center"
                   >
                     <MessageSquare size={14} /> Open in WhatsApp
                   </a>
