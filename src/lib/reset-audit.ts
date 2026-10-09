@@ -4,41 +4,71 @@ import { prisma } from "@/lib/prisma";
 let resetAuditSchemaEnsured = false;
 
 /**
+ * Checks whether the public.ResetAudit table exists in the PostgreSQL database.
+ */
+export async function isResetAuditTableAvailable(): Promise<boolean> {
+  try {
+    const result = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(`
+      SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+          AND (table_name = 'ResetAudit' OR table_name = 'resetaudit')
+      ) as "exists";
+    `);
+    return Boolean(result?.[0]?.exists);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Ensures the ResetAudit table exists in PostgreSQL.
  * Survives any reset operations and persists complete forensic history.
  */
 export async function ensureResetAuditSchema(): Promise<boolean> {
   if (resetAuditSchemaEnsured) return true;
 
-  try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "public"."ResetAudit" (
-        "id" TEXT NOT NULL,
-        "operationId" TEXT NOT NULL,
-        "adminId" TEXT NOT NULL,
-        "adminName" TEXT NOT NULL,
-        "adminEmail" TEXT NOT NULL,
-        "resetMode" TEXT NOT NULL,
-        "selectedCategories" TEXT[] NOT NULL,
-        "countsBefore" JSONB NOT NULL,
-        "countsAfter" JSONB NOT NULL,
-        "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "completedAt" TIMESTAMP(3),
-        "status" TEXT NOT NULL,
-        "pendingCleanup" JSONB,
-        "errorMessage" TEXT,
-        "metadata" JSONB,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "ResetAudit_pkey" PRIMARY KEY ("id")
-      );
+  const ddlStatements: string[] = [
+    `CREATE TABLE IF NOT EXISTS "public"."ResetAudit" (
+      "id" TEXT NOT NULL,
+      "operationId" TEXT NOT NULL,
+      "adminId" TEXT NOT NULL,
+      "adminName" TEXT NOT NULL,
+      "adminEmail" TEXT NOT NULL,
+      "resetMode" TEXT NOT NULL,
+      "selectedCategories" TEXT[] NOT NULL,
+      "countsBefore" JSONB NOT NULL,
+      "countsAfter" JSONB NOT NULL,
+      "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "completedAt" TIMESTAMP(3),
+      "status" TEXT NOT NULL,
+      "pendingCleanup" JSONB,
+      "errorMessage" TEXT,
+      "metadata" JSONB,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "ResetAudit_pkey" PRIMARY KEY ("id")
+    );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "ResetAudit_operationId_key" ON "public"."ResetAudit"("operationId");`,
+    `CREATE INDEX IF NOT EXISTS "ResetAudit_adminId_idx" ON "public"."ResetAudit"("adminId");`,
+    `CREATE INDEX IF NOT EXISTS "ResetAudit_status_idx" ON "public"."ResetAudit"("status");`,
+    `CREATE INDEX IF NOT EXISTS "ResetAudit_createdAt_idx" ON "public"."ResetAudit"("createdAt");`
+  ];
 
-      CREATE UNIQUE INDEX IF NOT EXISTS "ResetAudit_operationId_key" ON "public"."ResetAudit"("operationId");
-      CREATE INDEX IF NOT EXISTS "ResetAudit_adminId_idx" ON "public"."ResetAudit"("adminId");
-      CREATE INDEX IF NOT EXISTS "ResetAudit_status_idx" ON "public"."ResetAudit"("status");
-      CREATE INDEX IF NOT EXISTS "ResetAudit_createdAt_idx" ON "public"."ResetAudit"("createdAt");
-    `);
-    resetAuditSchemaEnsured = true;
-    return true;
+  try {
+    for (const stmt of ddlStatements) {
+      try {
+        await prisma.$executeRawUnsafe(stmt);
+      } catch (stmtErr: any) {
+        console.warn("[ResetAudit Service] Statement notice:", stmtErr?.message || stmtErr);
+      }
+    }
+
+    const exists = await isResetAuditTableAvailable();
+    if (exists) {
+      resetAuditSchemaEnsured = true;
+    }
+    return exists;
   } catch (err: any) {
     console.warn("[ResetAudit Service] Unable to ensure ResetAudit table via raw SQL:", err?.message || err);
     return false;

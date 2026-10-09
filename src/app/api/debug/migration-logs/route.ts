@@ -48,10 +48,10 @@ export async function GET(req: Request) {
       failedMigrations,
       allMigrations: Array.isArray(allMigrations) ? allMigrations : [],
       existingTables,
-      emailLogExists: existingTables.includes("EmailLog"),
-      resetAuditExists: existingTables.includes("ResetAudit"),
-      systemSettingsExists: existingTables.includes("SystemSettings"),
-      brandSettingsExists: existingTables.includes("BrandSettings"),
+      emailLogExists: existingTables.some((t: string) => t.toLowerCase() === "emaillog"),
+      resetAuditExists: existingTables.some((t: string) => t.toLowerCase() === "resetaudit"),
+      systemSettingsExists: existingTables.some((t: string) => t.toLowerCase() === "systemsettings"),
+      brandSettingsExists: existingTables.some((t: string) => t.toLowerCase() === "brandsettings"),
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

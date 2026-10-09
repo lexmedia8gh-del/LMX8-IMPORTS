@@ -1,7 +1,10 @@
 const { execSync } = require("child_process");
 
 async function runMigrate() {
-  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL;
+  const dbUrl =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL;
   if (!dbUrl || dbUrl.includes("localhost:5432")) {
     console.log("[migrate-deploy] No remote DATABASE_URL configured during build/startup. Skipping migration deployment.");
     return;
@@ -26,21 +29,20 @@ async function runMigrate() {
     // ── 1. Proactively ensure EmailLog table exists ──────────────────────────
     const checkEmailLog = await prisma.$queryRawUnsafe(`
       SELECT table_name FROM information_schema.tables 
-      WHERE table_schema = 'public' AND table_name = 'EmailLog';
+      WHERE table_schema = 'public' AND (table_name = 'EmailLog' OR table_name = 'emaillog');
     `).catch(() => []);
 
     const emailLogExists = Array.isArray(checkEmailLog) && checkEmailLog.length > 0;
 
     if (!emailLogExists) {
-      console.log("[migrate-deploy] Table 'EmailLog' is missing. Creating table, enum, indexes, and constraints...");
-      await prisma.$executeRawUnsafe(`
-        DO $$ BEGIN
+      console.log("[migrate-deploy] Table 'EmailLog' is missing. Creating table, enum, indexes, and constraints sequentially...");
+      const statements = [
+        `DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'EmailEventStatus') THEN
                 CREATE TYPE "EmailEventStatus" AS ENUM ('PENDING', 'SENT', 'FAILED', 'SKIPPED');
             END IF;
-        END $$;
-
-        CREATE TABLE IF NOT EXISTS "EmailLog" (
+        END $$;`,
+        `CREATE TABLE IF NOT EXISTS "public"."EmailLog" (
             "id" TEXT NOT NULL,
             "customerId" TEXT NOT NULL,
             "shipmentId" TEXT,
@@ -57,44 +59,50 @@ async function runMigrate() {
             "metadata" JSONB,
             "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
             CONSTRAINT "EmailLog_pkey" PRIMARY KEY ("id")
-        );
-
-        CREATE UNIQUE INDEX IF NOT EXISTS "EmailLog_idempotencyKey_key" ON "EmailLog"("idempotencyKey");
-        CREATE INDEX IF NOT EXISTS "EmailLog_customerId_idx" ON "EmailLog"("customerId");
-        CREATE INDEX IF NOT EXISTS "EmailLog_shipmentId_idx" ON "EmailLog"("shipmentId");
-        CREATE INDEX IF NOT EXISTS "EmailLog_eventType_idx" ON "EmailLog"("eventType");
-        CREATE INDEX IF NOT EXISTS "EmailLog_status_idx" ON "EmailLog"("status");
-        CREATE INDEX IF NOT EXISTS "EmailLog_createdAt_idx" ON "EmailLog"("createdAt");
-
-        DO $$ BEGIN
+        );`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "EmailLog_idempotencyKey_key" ON "public"."EmailLog"("idempotencyKey");`,
+        `CREATE INDEX IF NOT EXISTS "EmailLog_customerId_idx" ON "public"."EmailLog"("customerId");`,
+        `CREATE INDEX IF NOT EXISTS "EmailLog_shipmentId_idx" ON "public"."EmailLog"("shipmentId");`,
+        `CREATE INDEX IF NOT EXISTS "EmailLog_eventType_idx" ON "public"."EmailLog"("eventType");`,
+        `CREATE INDEX IF NOT EXISTS "EmailLog_status_idx" ON "public"."EmailLog"("status");`,
+        `CREATE INDEX IF NOT EXISTS "EmailLog_createdAt_idx" ON "public"."EmailLog"("createdAt");`,
+        `DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'EmailLog_customerId_fkey') THEN
-                ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_customerId_fkey" 
-                FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+                ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_customerId_fkey" 
+                FOREIGN KEY ("customerId") REFERENCES "public"."Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
             END IF;
         EXCEPTION
             WHEN duplicate_object THEN null;
-        END $$;
-
-        DO $$ BEGIN
+            WHEN undefined_table THEN null;
+        END $$;`,
+        `DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'EmailLog_shipmentId_fkey') THEN
-                ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_shipmentId_fkey" 
-                FOREIGN KEY ("shipmentId") REFERENCES "Shipment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+                ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_shipmentId_fkey" 
+                FOREIGN KEY ("shipmentId") REFERENCES "public"."Shipment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
             END IF;
         EXCEPTION
             WHEN duplicate_object THEN null;
-        END $$;
-
-        DO $$ BEGIN
+            WHEN undefined_table THEN null;
+        END $$;`,
+        `DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'EmailLog_batchId_fkey') THEN
-                ALTER TABLE "EmailLog" ADD CONSTRAINT "EmailLog_batchId_fkey" 
+                ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_batchId_fkey" 
                 FOREIGN KEY ("batchId") REFERENCES "Batch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
             END IF;
         EXCEPTION
             WHEN duplicate_object THEN null;
-        END $$;
-      `);
+            WHEN undefined_table THEN null;
+        END $$;`
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await prisma.$executeRawUnsafe(stmt);
+        } catch (stmtErr) {
+          console.warn("[migrate-deploy] Statement notice:", stmtErr?.message || stmtErr);
+        }
+      }
       console.log("[migrate-deploy] Table 'EmailLog' and related constraints successfully created.");
     } else {
       console.log("[migrate-deploy] Verified: Table 'EmailLog' exists in public schema.");

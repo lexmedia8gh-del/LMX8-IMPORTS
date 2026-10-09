@@ -1771,10 +1771,13 @@ export async function executeOperationalResetAction(params: {
   }
 
   try {
-    const { ensureResetAuditSchema } = await import("@/lib/reset-audit");
+    const { ensureResetAuditSchema, isResetAuditTableAvailable } = await import("@/lib/reset-audit");
     await ensureResetAuditSchema();
-    const { ensureEmailLogSchema } = await import("@/lib/email-log-schema");
-    await ensureEmailLogSchema();
+    const hasResetAuditTable = await isResetAuditTableAvailable();
+
+    const { ensureEmailLogSchema, isEmailLogTableAvailable } = await import("@/lib/email-log-schema");
+    await ensureEmailLogSchema(true);
+    const hasEmailLogTable = await isEmailLogTableAvailable();
 
     // 1. Snapshot counts before
     const [
@@ -1796,7 +1799,7 @@ export async function executeOperationalResetAction(params: {
       prisma.batch.count(),
       prisma.creditTransaction.count(),
       prisma.payment.count(),
-      prisma.emailLog.count().catch(() => 0),
+      hasEmailLogTable ? prisma.emailLog.count().catch(() => 0) : Promise.resolve(0),
       prisma.notification.count(),
       prisma.auditLog.count(),
     ]);
@@ -1829,7 +1832,9 @@ export async function executeOperationalResetAction(params: {
     await prisma.$transaction(async (tx) => {
       // Step A: Email logs & notifications
       if (activeCategories.includes("EMAIL_LOGS_NOTIFICATIONS")) {
-        await tx.emailLog.deleteMany({});
+        if (hasEmailLogTable) {
+          await tx.emailLog.deleteMany({});
+        }
         await tx.notification.deleteMany({});
       }
 
@@ -1873,10 +1878,12 @@ export async function executeOperationalResetAction(params: {
           where: { shipmentId: { not: null } },
           data: { shipmentId: null },
         });
-        await tx.emailLog.updateMany({
-          where: { shipmentId: { not: null } },
-          data: { shipmentId: null },
-        });
+        if (hasEmailLogTable) {
+          await tx.emailLog.updateMany({
+            where: { shipmentId: { not: null } },
+            data: { shipmentId: null },
+          });
+        }
         await tx.notification.updateMany({
           where: { shipmentId: { not: null } },
           data: { shipmentId: null },
@@ -1892,10 +1899,12 @@ export async function executeOperationalResetAction(params: {
           where: { batchId: { not: null } },
           data: { batchId: null },
         });
-        await tx.emailLog.updateMany({
-          where: { batchId: { not: null } },
-          data: { batchId: null },
-        });
+        if (hasEmailLogTable) {
+          await tx.emailLog.updateMany({
+            where: { batchId: { not: null } },
+            data: { batchId: null },
+          });
+        }
         await tx.batch.deleteMany({});
       }
 
@@ -1918,7 +1927,7 @@ export async function executeOperationalResetAction(params: {
       }
     }
 
-    // 4. Snapshot counts after
+    // 5. Snapshot counts after
     const [
       aShipments,
       aTracking,
@@ -1938,7 +1947,7 @@ export async function executeOperationalResetAction(params: {
       prisma.batch.count(),
       prisma.creditTransaction.count(),
       prisma.payment.count(),
-      prisma.emailLog.count().catch(() => 0),
+      hasEmailLogTable ? prisma.emailLog.count().catch(() => 0) : Promise.resolve(0),
       prisma.notification.count(),
       prisma.auditLog.count(),
     ]);
@@ -1956,23 +1965,29 @@ export async function executeOperationalResetAction(params: {
       auditLogs: aAudits,
     };
 
-    // 5. Persist permanent ResetAudit record (survives any reset)
-    await prisma.resetAudit.create({
-      data: {
-        operationId,
-        adminId: admin.id,
-        adminName: admin.name,
-        adminEmail: admin.email,
-        resetMode: mode,
-        selectedCategories: activeCategories,
-        countsBefore,
-        countsAfter,
-        startedAt,
-        completedAt: new Date(),
-        status: "SUCCESS",
-        pendingCleanup: pendingCleanup.length > 0 ? (pendingCleanup as unknown as import("@prisma/client").Prisma.InputJsonValue) : undefined,
-      },
-    });
+    // 6. Persist permanent ResetAudit record (survives any reset)
+    if (hasResetAuditTable) {
+      try {
+        await prisma.resetAudit.create({
+          data: {
+            operationId,
+            adminId: admin.id,
+            adminName: admin.name,
+            adminEmail: admin.email,
+            resetMode: mode,
+            selectedCategories: activeCategories,
+            countsBefore,
+            countsAfter,
+            startedAt,
+            completedAt: new Date(),
+            status: "SUCCESS",
+            pendingCleanup: pendingCleanup.length > 0 ? (pendingCleanup as unknown as import("@prisma/client").Prisma.InputJsonValue) : undefined,
+          },
+        });
+      } catch (auditErr) {
+        console.warn("[executeOperationalResetAction] Notice persisting success ResetAudit:", auditErr);
+      }
+    }
 
     isResetInProgress = false;
 
@@ -1998,22 +2013,26 @@ export async function executeOperationalResetAction(params: {
 
     // Record failure in ResetAudit
     try {
-      await prisma.resetAudit.create({
-        data: {
-          operationId,
-          adminId: admin.id,
-          adminName: admin.name,
-          adminEmail: admin.email,
-          resetMode: mode,
-          selectedCategories: activeCategories,
-          countsBefore: {},
-          countsAfter: {},
-          startedAt,
-          completedAt: new Date(),
-          status: "FAILED",
-          errorMessage: err?.message || String(err),
-        },
-      });
+      const { isResetAuditTableAvailable } = await import("@/lib/reset-audit");
+      const hasResetAuditTable = await isResetAuditTableAvailable();
+      if (hasResetAuditTable) {
+        await prisma.resetAudit.create({
+          data: {
+            operationId,
+            adminId: admin.id,
+            adminName: admin.name,
+            adminEmail: admin.email,
+            resetMode: mode,
+            selectedCategories: activeCategories,
+            countsBefore: {},
+            countsAfter: {},
+            startedAt,
+            completedAt: new Date(),
+            status: "FAILED",
+            errorMessage: err?.message || String(err),
+          },
+        });
+      }
     } catch {}
 
     return {
