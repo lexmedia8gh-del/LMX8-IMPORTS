@@ -938,7 +938,64 @@ export async function deactivateCustomerSafeAction(customerId: string) {
     },
   });
 
-  return { success: true, status: newStatus };
+  return { success: true, status: newStatus, customerIdentifier: customer.customerIdentifier };
+}
+
+/**
+ * Safe Bulk Customer Deactivation Action
+ */
+export async function bulkDeactivateCustomersAction(
+  customerIdentifiersOrIds: string[],
+  targetStatus: "INACTIVE" | "ACTIVE" = "INACTIVE"
+) {
+  const admin = await requireAdminSession();
+
+  if (!Array.isArray(customerIdentifiersOrIds) || customerIdentifiersOrIds.length === 0) {
+    return { error: "No customer records selected for deactivation." };
+  }
+
+  const customers = await prisma.customer.findMany({
+    where: {
+      OR: [
+        { id: { in: customerIdentifiersOrIds } },
+        { customerIdentifier: { in: customerIdentifiersOrIds } },
+      ],
+    },
+  });
+
+  if (customers.length === 0) {
+    return { error: "No matching customer records found." };
+  }
+
+  const customerIds = customers.map((c) => c.id);
+  const customerIdentifiers = customers.map((c) => c.customerIdentifier);
+
+  await prisma.customer.updateMany({
+    where: { id: { in: customerIds } },
+    data: { status: targetStatus },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      action: targetStatus === "INACTIVE" ? "CUSTOMER_BULK_DEACTIVATED" : "CUSTOMER_BULK_ACTIVATED",
+      entityType: "Customer",
+      entityId: customerIds.join(","),
+      description: `Bulk ${targetStatus === "INACTIVE" ? "deactivated" : "activated"} ${customers.length} customer(s) (${customerIdentifiers.join(", ")}) by ${admin.name}`,
+      adminId: admin.id,
+      metadata: {
+        count: customers.length,
+        customerIdentifiers,
+        status: targetStatus,
+      },
+    },
+  });
+
+  return {
+    success: true,
+    deactivatedCount: customers.length,
+    identifiers: customerIdentifiers,
+    status: targetStatus,
+  };
 }
 
 /**
@@ -982,6 +1039,9 @@ export async function deleteCustomerSafeAction(
   if (customer.payments.length > 0 || customer.shipments.length > 0 || customer.sourcingRequests.length > 0) {
     return {
       error: `Customer '${customer.customerIdentifier}' cannot be deleted because historical shipments (${customer.shipments.length}) or payments (${customer.payments.length}) exist. Please use 'Deactivate Customer' instead to preserve financial records.`,
+      canDeactivate: true,
+      customerId: customer.id,
+      customerIdentifier: customer.customerIdentifier,
     };
   }
 
@@ -1427,6 +1487,9 @@ export async function deleteSelectedDataRecordsAction(
         const details = blockedCustomers.map((c) => `'${c.customerIdentifier}'`).join(", ");
         return {
           error: `Cannot delete selected customer(s). The following account(s) have historical shipments/payments: ${details}. Please use 'Deactivate Customer' instead to preserve financial records.`,
+          canDeactivate: true,
+          blockedCustomerIds: blockedCustomers.map((c) => c.id),
+          blockedCustomerIdentifiers: blockedCustomers.map((c) => c.customerIdentifier),
         };
       }
 

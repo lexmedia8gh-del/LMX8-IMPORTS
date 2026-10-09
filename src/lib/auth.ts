@@ -103,6 +103,10 @@ export async function getCurrentCustomer() {
       }
     }
 
+    if (customer && customer.status !== "ACTIVE") {
+      return null;
+    }
+
     return customer;
   } catch (error) {
     console.error("[auth] Error in getCurrentCustomer:", error);
@@ -126,7 +130,7 @@ export async function getCurrentAdmin() {
 
 export async function requireCustomerSession() {
   const customer = await getCurrentCustomer();
-  if (!customer) {
+  if (!customer || customer.status !== "ACTIVE") {
     redirect("/login");
   }
   return customer;

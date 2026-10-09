@@ -17,6 +17,7 @@ import {
   deleteBatchSafeAction,
   deleteCustomerSafeAction,
   deactivateCustomerSafeAction,
+  bulkDeactivateCustomersAction,
   deleteTrackingEventSafeAction,
   deleteNotificationSafeAction,
   deletePaymentSafeAction,
@@ -76,6 +77,17 @@ export default function AdminDataManagementPage() {
   const [bulkAdminPin, setBulkAdminPin] = useState<string>("");
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+  const [isBulkDeactivating, setIsBulkDeactivating] = useState<boolean>(false);
+
+  // Blocked Customer Deactivation State
+  const [deleteBlockedCustomerInfo, setDeleteBlockedCustomerInfo] = useState<{
+    canDeactivate: boolean;
+    customerId?: string;
+    customerIdentifier?: string;
+    blockedCustomerIds?: string[];
+    blockedCustomerIdentifiers?: string[];
+  } | null>(null);
+  const [isDeactivatingBlocked, setIsDeactivatingBlocked] = useState<boolean>(false);
 
   // Operational Data Reset System State
   const [resetMode, setResetMode] = useState<"ALL_OPERATIONAL" | "SELECTED_CATEGORIES">("SELECTED_CATEGORIES");
@@ -367,12 +379,23 @@ export default function AdminDataManagementPage() {
 
       if (res?.error) {
         setDeleteError(res.error);
+        if (res.canDeactivate) {
+          setDeleteBlockedCustomerInfo({
+            canDeactivate: true,
+            customerId: res.customerId || recordToDelete.id,
+            customerIdentifier: res.customerIdentifier || recordToDelete.name,
+          });
+        } else {
+          setDeleteBlockedCustomerInfo(null);
+        }
         setIsDeleting(false);
       } else {
         showToast(`✓ ${recordToDelete.type} record (${recordToDelete.name}) safely deleted.`);
         setRecordToDelete(null);
         setDeleteConfirmationText("");
         setAdminPinInput("");
+        setDeleteError(null);
+        setDeleteBlockedCustomerInfo(null);
         setIsDeleting(false);
         setSelectedEntity(null);
         loadOverview();
@@ -401,12 +424,23 @@ export default function AdminDataManagementPage() {
 
       if (res?.error) {
         setBulkDeleteError(res.error);
+        if (res.canDeactivate) {
+          setDeleteBlockedCustomerInfo({
+            canDeactivate: true,
+            blockedCustomerIds: res.blockedCustomerIds,
+            blockedCustomerIdentifiers: res.blockedCustomerIdentifiers,
+          });
+        } else {
+          setDeleteBlockedCustomerInfo(null);
+        }
         setIsBulkDeleting(false);
       } else {
         showToast(`✓ Safely reset/deleted ${res.deletedCount} selected ${activeTab} record(s).`);
         setShowBulkDeleteModal(false);
         setBulkConfirmationText("");
         setBulkAdminPin("");
+        setBulkDeleteError(null);
+        setDeleteBlockedCustomerInfo(null);
         setSelectedIds(new Set());
         setIsBulkDeleting(false);
         loadOverview();
@@ -415,6 +449,77 @@ export default function AdminDataManagementPage() {
     } catch (err: any) {
       setBulkDeleteError(err?.message || "Bulk deletion execution failed.");
       setIsBulkDeleting(false);
+    }
+  };
+
+  // Deactivate blocked customer(s) offered when hard delete is rejected
+  const handleDeactivateBlockedCustomer = async () => {
+    if (!deleteBlockedCustomerInfo) return;
+    setIsDeactivatingBlocked(true);
+    try {
+      if (deleteBlockedCustomerInfo.customerId) {
+        const res = await deactivateCustomerSafeAction(deleteBlockedCustomerInfo.customerId);
+        if (res?.success) {
+          showToast(`✓ Customer ${res.customerIdentifier || deleteBlockedCustomerInfo.customerId} successfully deactivated (status: ${res.status}). Financial records preserved.`);
+          setRecordToDelete(null);
+          setDeleteConfirmationText("");
+          setAdminPinInput("");
+          setDeleteError(null);
+          setDeleteBlockedCustomerInfo(null);
+          setSelectedEntity(null);
+          loadOverview();
+          loadRecords("customers");
+        } else {
+          setDeleteError(res?.error || "Failed to deactivate customer.");
+        }
+      } else if (
+        deleteBlockedCustomerInfo.blockedCustomerIds &&
+        deleteBlockedCustomerInfo.blockedCustomerIds.length > 0
+      ) {
+        const res = await bulkDeactivateCustomersAction(
+          deleteBlockedCustomerInfo.blockedCustomerIds,
+          "INACTIVE"
+        );
+        if (res?.success) {
+          showToast(`✓ Successfully deactivated ${res.deactivatedCount} customer account(s). Financial records preserved.`);
+          setShowBulkDeleteModal(false);
+          setBulkConfirmationText("");
+          setBulkAdminPin("");
+          setBulkDeleteError(null);
+          setDeleteBlockedCustomerInfo(null);
+          setSelectedIds(new Set());
+          loadOverview();
+          loadRecords("customers");
+        } else {
+          setBulkDeleteError(res?.error || "Failed to deactivate customer accounts.");
+        }
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Deactivation failed.");
+    } finally {
+      setIsDeactivatingBlocked(false);
+    }
+  };
+
+  // Dedicated Bulk Deactivate Customers action
+  const handleBulkDeactivateCustomers = async () => {
+    if (selectedIds.size === 0 || activeTab !== "customers") return;
+    setIsBulkDeactivating(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const res = await bulkDeactivateCustomersAction(ids, "INACTIVE");
+      if (res?.success) {
+        showToast(`✓ Successfully deactivated ${res.deactivatedCount} customer(s). Financial and shipment records are preserved.`);
+        setSelectedIds(new Set());
+        loadOverview();
+        loadRecords("customers");
+      } else {
+        showToast(res?.error || "Bulk customer deactivation failed.");
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Bulk customer deactivation failed.");
+    } finally {
+      setIsBulkDeactivating(false);
     }
   };
 
@@ -724,6 +829,20 @@ export default function AdminDataManagementPage() {
                     )}
                     <span>Select All ({filteredRecords.length})</span>
                   </button>
+
+                  {activeTab === "customers" && selectedIds.size > 0 && (
+                    <button
+                      onClick={handleBulkDeactivateCustomers}
+                      disabled={isBulkDeactivating}
+                      className="h-10 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                      title="Safely deactivate selected customers to block login while preserving historical records"
+                    >
+                      <UserX size={14} />
+                      <span>
+                        {isBulkDeactivating ? "Deactivating..." : `Deactivate Selected (${selectedIds.size})`}
+                      </span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => setShowBulkDeleteModal(true)}
@@ -2277,8 +2396,24 @@ export default function AdminDataManagementPage() {
             </div>
 
             {deleteError && (
-              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700">
-                {deleteError}
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 space-y-2.5">
+                <div className="font-semibold">{deleteError}</div>
+                {(deleteBlockedCustomerInfo?.canDeactivate || deleteError.includes("Deactivate Customer")) && (
+                  <div className="pt-2 border-t border-red-200/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-white/60 p-2 rounded-lg">
+                    <span className="text-[11px] text-red-800 font-medium">
+                      Preserve historical records by safely deactivating this account.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDeactivateBlockedCustomer}
+                      disabled={isDeactivatingBlocked}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                    >
+                      <UserX size={13} />
+                      <span>{isDeactivatingBlocked ? "Deactivating..." : "Deactivate Customer Instead"}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2396,8 +2531,24 @@ export default function AdminDataManagementPage() {
             </div>
 
             {bulkDeleteError && (
-              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700">
-                {bulkDeleteError}
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 space-y-2.5">
+                <div className="font-semibold">{bulkDeleteError}</div>
+                {(deleteBlockedCustomerInfo?.canDeactivate || bulkDeleteError.includes("Deactivate Customer")) && (
+                  <div className="pt-2 border-t border-red-200/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-white/60 p-2 rounded-lg">
+                    <span className="text-[11px] text-red-800 font-medium">
+                      Preserve historical records by safely deactivating these customer accounts.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDeactivateBlockedCustomer}
+                      disabled={isDeactivatingBlocked}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                    >
+                      <UserX size={13} />
+                      <span>{isDeactivatingBlocked ? "Deactivating..." : "Deactivate Affected Accounts"}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
