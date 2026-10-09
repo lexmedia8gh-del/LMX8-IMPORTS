@@ -122,85 +122,8 @@ export function validateEmailEnv() {
   };
 }
 
-let emailLogSchemaEnsured = false;
-
-/**
- * Ensures the EmailLog table, EmailEventStatus enum, and indexes exist in PostgreSQL.
- * This directly prevents the production error:
- * "The table public.EmailLog does not exist in the current database"
- * when queries run before or alongside migrations.
- */
-export async function ensureEmailLogSchema(): Promise<boolean> {
-  if (emailLogSchemaEnsured) return true;
-
-  try {
-    await prisma.$executeRawUnsafe(`
-      DO $$ BEGIN
-          CREATE TYPE "public"."EmailEventStatus" AS ENUM ('PENDING', 'SENT', 'FAILED', 'SKIPPED');
-      EXCEPTION
-          WHEN duplicate_object THEN null;
-      END $$;
-
-      DO $$ BEGIN
-          CREATE TYPE "EmailEventStatus" AS ENUM ('PENDING', 'SENT', 'FAILED', 'SKIPPED');
-      EXCEPTION
-          WHEN duplicate_object THEN null;
-      END $$;
-
-      CREATE TABLE IF NOT EXISTS "public"."EmailLog" (
-          "id" TEXT NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text),
-          "customerId" TEXT NOT NULL,
-          "shipmentId" TEXT,
-          "batchId" TEXT,
-          "eventType" TEXT NOT NULL,
-          "status" "EmailEventStatus" NOT NULL DEFAULT 'PENDING',
-          "recipient" TEXT NOT NULL,
-          "subject" TEXT NOT NULL,
-          "providerMessageId" TEXT,
-          "idempotencyKey" TEXT NOT NULL,
-          "sentAt" TIMESTAMP(3),
-          "failedAt" TIMESTAMP(3),
-          "errorMessage" TEXT,
-          "metadata" JSONB,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-          CONSTRAINT "EmailLog_pkey" PRIMARY KEY ("id")
-      );
-
-      CREATE UNIQUE INDEX IF NOT EXISTS "EmailLog_idempotencyKey_key" ON "public"."EmailLog"("idempotencyKey");
-      CREATE INDEX IF NOT EXISTS "EmailLog_customerId_idx" ON "public"."EmailLog"("customerId");
-      CREATE INDEX IF NOT EXISTS "EmailLog_shipmentId_idx" ON "public"."EmailLog"("shipmentId");
-      CREATE INDEX IF NOT EXISTS "EmailLog_eventType_idx" ON "public"."EmailLog"("eventType");
-      CREATE INDEX IF NOT EXISTS "EmailLog_status_idx" ON "public"."EmailLog"("status");
-      CREATE INDEX IF NOT EXISTS "EmailLog_createdAt_idx" ON "public"."EmailLog"("createdAt");
-
-      DO $$ BEGIN
-          ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "public"."Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-      EXCEPTION
-          WHEN duplicate_object THEN null;
-      END $$;
-
-      DO $$ BEGIN
-          ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "public"."Shipment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-      EXCEPTION
-          WHEN duplicate_object THEN null;
-      END $$;
-
-      DO $$ BEGIN
-          ALTER TABLE "public"."EmailLog" ADD CONSTRAINT "EmailLog_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "public"."Batch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-      EXCEPTION
-          WHEN duplicate_object THEN null;
-      END $$;
-    `);
-
-    emailLogSchemaEnsured = true;
-    return true;
-  } catch (err: any) {
-    console.warn("[ensureEmailLogSchema] DDL notice:", err?.message || err);
-    return false;
-  }
-}
+import { ensureEmailLogSchema } from "@/lib/email-log-schema";
+export { ensureEmailLogSchema };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Low-Level Brevo HTTP Dispatcher

@@ -1610,6 +1610,8 @@ export async function getOperationalResetPreviewAction(): Promise<OperationalRes
     await requireAdminSession();
     const { ensureResetAuditSchema } = await import("@/lib/reset-audit");
     await ensureResetAuditSchema();
+    const { ensureEmailLogSchema } = await import("@/lib/email-log-schema");
+    await ensureEmailLogSchema();
 
     const [
       shipmentsCount,
@@ -1769,6 +1771,11 @@ export async function executeOperationalResetAction(params: {
   }
 
   try {
+    const { ensureResetAuditSchema } = await import("@/lib/reset-audit");
+    await ensureResetAuditSchema();
+    const { ensureEmailLogSchema } = await import("@/lib/email-log-schema");
+    await ensureEmailLogSchema();
+
     // 1. Snapshot counts before
     const [
       bShipments,
@@ -1809,25 +1816,16 @@ export async function executeOperationalResetAction(params: {
 
     const pendingCleanup: string[] = [];
 
-    // 2. Storage Cleanup for Shipment Photos if Shipments selected
+    // 2. Identify Shipment Photos for storage cleanup ONLY after the DB transaction succeeds
+    let photosToDelete: Array<{ objectPath: string; bucket: string }> = [];
     if (activeCategories.includes("SHIPMENTS")) {
-      const photos = await prisma.shipmentPhoto.findMany({
+      photosToDelete = await prisma.shipmentPhoto.findMany({
         where: { status: { not: "DELETED" } },
         select: { objectPath: true, bucket: true },
       });
-
-      for (const p of photos) {
-        if (p.objectPath && !p.objectPath.startsWith("http")) {
-          try {
-            await deleteFileFromStorage(p.objectPath, p.bucket);
-          } catch {
-            pendingCleanup.push(p.objectPath);
-          }
-        }
-      }
     }
 
-    // 3. Foreign-key safe database deletions
+    // 3. Foreign-key safe database deletions in a single atomic transaction
     await prisma.$transaction(async (tx) => {
       // Step A: Email logs & notifications
       if (activeCategories.includes("EMAIL_LOGS_NOTIFICATIONS")) {
@@ -1906,6 +1904,19 @@ export async function executeOperationalResetAction(params: {
         await tx.auditLog.deleteMany({});
       }
     });
+
+    // 4. Perform photo file storage cleanup only after DB transaction commits successfully
+    if (photosToDelete.length > 0) {
+      for (const p of photosToDelete) {
+        if (p.objectPath && !p.objectPath.startsWith("http")) {
+          try {
+            await deleteFileFromStorage(p.objectPath, p.bucket);
+          } catch {
+            pendingCleanup.push(p.objectPath);
+          }
+        }
+      }
+    }
 
     // 4. Snapshot counts after
     const [
