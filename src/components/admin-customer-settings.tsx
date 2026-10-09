@@ -72,8 +72,27 @@ export default function AdminCustomerSettings() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Credential Delivery State
+  // Credential Delivery State & PIN inclusion
+  const [credentialDeliveryPin, setCredentialDeliveryPin] = useState<string>("");
+  const [notifyViaEmailOnReset, setNotifyViaEmailOnReset] = useState<boolean>(true);
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+
+  const [emailModal, setEmailModal] = useState<{
+    open: boolean;
+    customer: CustomerRecord | null;
+    email: string;
+    pinInput: string;
+    sending: boolean;
+    error: string | null;
+  }>({
+    open: false,
+    customer: null,
+    email: "",
+    pinInput: "",
+    sending: false,
+    error: null,
+  });
+
   const [whatsAppModal, setWhatsAppModal] = useState<{
     open: boolean;
     customer: CustomerRecord | null;
@@ -82,6 +101,7 @@ export default function AdminCustomerSettings() {
     messageText: string;
     loading: boolean;
     error: string | null;
+    pinInput?: string;
   }>({
     open: false,
     customer: null,
@@ -90,6 +110,7 @@ export default function AdminCustomerSettings() {
     messageText: "",
     loading: false,
     error: null,
+    pinInput: "",
   });
 
   const showToast = (msg: string) => {
@@ -97,32 +118,58 @@ export default function AdminCustomerSettings() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleSendCredentialsEmail = async (customer: CustomerRecord) => {
+  const handleOpenEmailModal = (customer: CustomerRecord, specificPin?: string) => {
     if (!customer.email || customer.email === "N/A" || !customer.email.includes("@")) {
       showToast("Cannot send email: customer has no valid email address.");
       return;
     }
+    const pin = specificPin || (credentialDeliveryPin.trim() || Math.floor(100000 + Math.random() * 900000).toString());
+    setEmailModal({
+      open: true,
+      customer,
+      email: customer.email,
+      pinInput: pin,
+      sending: false,
+      error: null,
+    });
+  };
 
+  const handleSendCredentialsEmailFromModal = async () => {
+    if (!emailModal.customer) return;
+    const customer = emailModal.customer;
+    const pinToSend = emailModal.pinInput.trim() || Math.floor(100000 + Math.random() * 900000).toString();
+
+    setEmailModal((prev) => ({ ...prev, sending: true, error: null }));
     setSendingEmailId(customer.id);
     try {
-      const res = await sendCustomerCredentialsEmailAction(customer.id);
+      const res = await sendCustomerCredentialsEmailAction(customer.id, pinToSend);
       if (res.error) {
+        setEmailModal((prev) => ({ ...prev, sending: false, error: res.error || "Failed to send email." }));
         showToast(`Email delivery failed: ${res.error}`);
       } else {
-        showToast(res.message || `Credentials sent to ${customer.email}.`);
+        setEmailModal((prev) => ({ ...prev, sending: false, open: false }));
+        setCredentialDeliveryPin(res.pin || pinToSend);
+        showToast(res.message || `Credentials with Login PIN (${res.pin || pinToSend}) sent to ${customer.email}.`);
       }
     } catch (err: any) {
+      setEmailModal((prev) => ({ ...prev, sending: false, error: err?.message || "Failed to send email." }));
       showToast(err?.message || "Failed to send credential email.");
     } finally {
       setSendingEmailId(null);
     }
   };
 
-  const handleOpenWhatsAppReview = async (customer: CustomerRecord) => {
+  const handleSendCredentialsEmail = (customer: CustomerRecord, specificPin?: string) => {
+    handleOpenEmailModal(customer, specificPin);
+  };
+
+  const handleOpenWhatsAppReview = async (customer: CustomerRecord, specificPin?: string) => {
     if (!customer.phone || customer.phone === "N/A") {
       showToast("Cannot prepare WhatsApp: customer has no phone number.");
       return;
     }
+
+    const pinToInclude = specificPin || (credentialDeliveryPin.trim() || Math.floor(100000 + Math.random() * 900000).toString());
 
     setWhatsAppModal({
       open: true,
@@ -132,10 +179,11 @@ export default function AdminCustomerSettings() {
       messageText: "",
       loading: true,
       error: null,
+      pinInput: pinToInclude,
     });
 
     try {
-      const res = await prepareCustomerWhatsAppMessageAction(customer.id);
+      const res = await prepareCustomerWhatsAppMessageAction(customer.id, pinToInclude || undefined);
       if (res.error) {
         setWhatsAppModal((prev) => ({
           ...prev,
@@ -151,6 +199,7 @@ export default function AdminCustomerSettings() {
           messageText: res.messageText || "",
           loading: false,
           error: null,
+          pinInput: res.pin || pinToInclude,
         });
       }
     } catch (err: any) {
@@ -283,23 +332,26 @@ export default function AdminCustomerSettings() {
     setIsPinSubmitting(true);
 
     try {
+      const savedPin = pinForm.newPin;
       const res = await resetCustomerPinAction({
         customerId: editingCustomer.id,
         newPin: pinForm.newPin,
         confirmPin: pinForm.confirmPin,
+        notifyCustomer: notifyViaEmailOnReset,
       });
 
       if (res?.error) {
         setPinError(res.error);
         setIsPinSubmitting(false);
       } else {
-        setPinErrorSuccess("PIN changed successfully.");
+        setPinErrorSuccess(res.message || "PIN changed successfully.");
+        setCredentialDeliveryPin(savedPin);
         setPinForm({ newPin: "", confirmPin: "" });
         setIsPinSubmitting(false);
         setTimeout(() => {
           setShowPinReset(false);
           setPinErrorSuccess(null);
-        }, 2000);
+        }, 2200);
       }
     } catch (err: any) {
       setPinError(err?.message || "Unable to reset PIN.");
@@ -694,16 +746,47 @@ export default function AdminCustomerSettings() {
             )}
 
             {/* ── CREDENTIAL DELIVERY SECTION ── */}
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50/30 border border-slate-200 space-y-3">
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50/30 border border-slate-200 space-y-3.5">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-[#141B47] flex items-center gap-1.5">
                     <Send size={14} className="text-[#355DAF]" /> Account Credential Delivery
                   </h4>
                   <p className="text-[11px] text-[#667085] mt-0.5">
-                    Deliver official portal login instructions to the customer via Email or WhatsApp.
+                    Deliver official portal login credentials and PIN to the customer via Email or WhatsApp.
                   </p>
                 </div>
+              </div>
+
+              {/* Optional PIN inclusion input */}
+              <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-[#141B47] flex items-center gap-1.5">
+                    <Key size={13} className="text-[#F2901F]" /> Login PIN to Include in Outgoing Credentials
+                  </label>
+                  {credentialDeliveryPin ? (
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                      <CheckCircle2 size={11} className="text-emerald-600" /> PIN Attached
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-slate-500">
+                      Optional
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Enter 6-8 digit PIN to include (e.g. 123456)..."
+                  maxLength={8}
+                  value={credentialDeliveryPin}
+                  onChange={(e) => setCredentialDeliveryPin(e.target.value)}
+                  className="w-full h-9 px-3 rounded-lg text-xs font-mono tracking-wider border border-[#E5E7EB] bg-slate-50/70 focus:bg-white focus:outline-none focus:border-[#F2901F] text-[#172236]"
+                />
+                <p className="text-[10px] text-[#667085]">
+                  {credentialDeliveryPin
+                    ? "✓ Both Email and WhatsApp delivery will include this specific Login PIN for the client."
+                    : "Tip: If left blank, general sign-in instructions will be delivered."}
+                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
@@ -716,7 +799,7 @@ export default function AdminCustomerSettings() {
                 >
                   <div className="flex items-center justify-between w-full">
                     <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                      <Mail size={13} /> Email Instructions
+                      <Mail size={13} /> Email Credentials
                     </span>
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
                       Brevo
@@ -838,6 +921,16 @@ export default function AdminCustomerSettings() {
                     </div>
                   </div>
 
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-[#141B47] select-none pt-1">
+                    <input
+                      type="checkbox"
+                      checked={notifyViaEmailOnReset}
+                      onChange={(e) => setNotifyViaEmailOnReset(e.target.checked)}
+                      className="rounded text-[#F2901F] focus:ring-[#F2901F] w-4 h-4 cursor-pointer"
+                    />
+                    <span>Automatically send credentials email with this new Login PIN to customer</span>
+                  </label>
+
                   <div className="flex items-center justify-end gap-2 pt-1">
                     <button
                       type="button"
@@ -860,6 +953,124 @@ export default function AdminCustomerSettings() {
             </div>
           </form>
         </AdminDrawer>
+      )}
+
+      {/* ── EMAIL CREDENTIALS REVIEW MODAL ── */}
+      {emailModal.open && emailModal.customer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-[#E5E7EB] relative animate-in zoom-in-95">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#F1F5F9]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#355DAF] flex items-center justify-center shrink-0 border border-blue-200">
+                  <Mail size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#141B47]">Email Account Credentials</h3>
+                  <p className="text-xs text-[#667085] mt-0.5">
+                    Send portal access details &amp; Login PIN to {emailModal.customer.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmailModal((prev) => ({ ...prev, open: false }))}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {emailModal.error && (
+              <div className="p-3 rounded-xl bg-red-50 text-red-800 text-xs border border-red-200">
+                {emailModal.error}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
+                  <span className="text-[10px] uppercase font-bold text-gray-500 block">Customer ID</span>
+                  <span className="font-mono font-bold text-[#141B47] text-sm">{emailModal.customer.customerIdentifier}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
+                  <span className="text-[10px] uppercase font-bold text-gray-500 block">Recipient Email</span>
+                  <span className="font-semibold text-[#141B47] text-xs truncate block" title={emailModal.email}>{emailModal.email}</span>
+                </div>
+              </div>
+
+              {/* PIN Inclusion in Email */}
+              <div className="p-4 rounded-xl bg-gradient-to-br from-blue-50/80 to-amber-50/50 border border-blue-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[#141B47] flex items-center gap-1.5">
+                    <Key size={14} className="text-[#F2901F]" /> Login PIN to Deliver to Customer
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rand = Math.floor(100000 + Math.random() * 900000).toString();
+                      setEmailModal((prev) => ({ ...prev, pinInput: rand }));
+                      setCredentialDeliveryPin(rand);
+                    }}
+                    className="text-[11px] font-bold text-[#355DAF] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    ⚡ Generate New PIN
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    maxLength={8}
+                    value={emailModal.pinInput}
+                    onChange={(e) => setEmailModal((prev) => ({ ...prev, pinInput: e.target.value }))}
+                    placeholder="Enter 6-digit PIN..."
+                    className="w-full h-10 px-3 rounded-xl text-sm font-mono tracking-widest font-bold border border-[#E5E7EB] bg-white focus:outline-none focus:border-[#F2901F] text-[#172236] text-center shadow-2xs"
+                  />
+                </div>
+
+                <p className="text-[11px] text-[#64748B] leading-relaxed">
+                  ✓ The outgoing email will prominently display this <strong>Login PIN</strong> in a secure credentials badge, allowing the client to log in immediately.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-[#475569] space-y-1">
+                <p className="font-semibold text-[#141B47]">What the client receives:</p>
+                <ul className="list-disc list-inside space-y-0.5 text-[#64748B]">
+                  <li>Customer Identifier ({emailModal.customer.customerIdentifier})</li>
+                  <li>Login PIN ({emailModal.pinInput || "6-digit PIN"})</li>
+                  <li>Direct portal URL with step-by-step sign-in guide</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEmailModal((prev) => ({ ...prev, open: false }))}
+                  disabled={emailModal.sending}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendCredentialsEmailFromModal}
+                  disabled={emailModal.sending || !emailModal.pinInput.trim()}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#141B47] hover:bg-[#355DAF] text-white transition-all inline-flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  {emailModal.sending ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" /> Sending Email with PIN...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} /> Send Credentials Email Now
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── WHATSAPP ACCESS REVIEW MODAL ── */}
@@ -909,6 +1120,46 @@ export default function AdminCustomerSettings() {
                   </div>
                 </div>
 
+                {/* PIN Inclusion in WhatsApp message */}
+                <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5">
+                      <Key size={12} className="text-[#F2901F]" /> PIN to Include in WhatsApp Message
+                    </label>
+                    {whatsAppModal.pinInput ? (
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                        PIN Included
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-500">Optional</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter 6-8 digit PIN..."
+                      maxLength={8}
+                      value={whatsAppModal.pinInput || ""}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        setWhatsAppModal((prev) => ({ ...prev, pinInput: val }));
+                        setCredentialDeliveryPin(val);
+                        if (whatsAppModal.customer) {
+                          const res = await prepareCustomerWhatsAppMessageAction(whatsAppModal.customer.id, val || undefined);
+                          if (res.success && res.messageText && res.whatsappUrl) {
+                            setWhatsAppModal((prev) => ({
+                              ...prev,
+                              messageText: res.messageText!,
+                              whatsappUrl: res.whatsappUrl!,
+                            }));
+                          }
+                        }
+                      }}
+                      className="w-full h-9 px-3 rounded-lg text-xs font-mono tracking-wider border border-[#E5E7EB] bg-white focus:outline-none focus:border-[#F2901F] text-[#172236]"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <label className="font-bold text-[#172236]">Message Preview</label>
@@ -929,7 +1180,7 @@ export default function AdminCustomerSettings() {
                 </div>
 
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
-                  <strong>Security Note:</strong> Confidential PINs are never included in message URLs or application logs. Customers log in using their personal PIN or request a reset.
+                  <strong>Access Security:</strong> When the PIN is included, the client can sign in right away. Clients can change their PIN anytime in the portal under My Profile &gt; Change PIN.
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-2">

@@ -167,14 +167,14 @@ export async function createCustomerAction(formData: FormData) {
     revalidatePath("/portal/credits");
     revalidatePath("/portal/sourcing");
 
-    // Dispatch Welcome Email through Central Email Service (non-blocking)
+    // Dispatch Welcome Email through Central Email Service with Customer PIN (non-blocking)
     import("@/lib/email/brevo").then(({ sendCustomerCreatedEmail }) => {
-      sendCustomerCreatedEmail(createdCustomerId).catch((err) =>
-        console.error("[Brevo] Error dispatching welcome email:", err)
+      sendCustomerCreatedEmail(createdCustomerId, pin).catch((err) =>
+        console.error("[Brevo] Error dispatching welcome email with PIN:", err)
       );
     });
 
-    return { success: true, customerIdentifier, customerId: createdCustomerId };
+    return { success: true, customerIdentifier, customerId: createdCustomerId, pin };
   } catch (error: any) {
     console.error("[createCustomerAction] Error creating customer:", error);
     const friendlyError = parsePrismaError(error, "Unable to create customer account. Please try again.");
@@ -408,6 +408,7 @@ export async function resetCustomerPinAction(data: {
   customerId: string;
   newPin: string;
   confirmPin: string;
+  notifyCustomer?: boolean;
 }) {
   const admin = await requireAdminSession();
 
@@ -456,15 +457,28 @@ export async function resetCustomerPinAction(data: {
       action: "CUSTOMER_PIN_RESET",
       entityType: "Customer",
       entityId: customer.id,
-      description: `PIN reset for customer ${customer.customerIdentifier} (${customer.name}) by ${admin.name || admin.email}`,
+      description: `PIN reset for customer ${customer.customerIdentifier} (${customer.name}) by ${admin.name || admin.email}${data.notifyCustomer ? " (credentials email dispatched)" : ""}`,
       adminId: admin.id,
     },
   });
 
+  // Automatically dispatch credentials email with the new PIN if requested
+  if (data.notifyCustomer && customer.email && customer.email.includes("@")) {
+    import("@/lib/email/brevo").then(({ sendCustomerCredentialsEmail }) => {
+      sendCustomerCredentialsEmail(customer.id, newPin).catch((err) =>
+        console.error("[Brevo] Error dispatching credentials email after PIN reset:", err)
+      );
+    });
+  }
+
   revalidatePath("/admin/settings");
   revalidatePath("/admin/customers");
 
-  return { success: true, message: "PIN changed successfully." };
+  return {
+    success: true,
+    message: `PIN changed successfully.${data.notifyCustomer ? " Email with new PIN has been dispatched." : ""}`,
+    newPin,
+  };
 }
 
 export async function toggleCustomerStatusAction(customerId: string, targetStatus: "ACTIVE" | "INACTIVE") {
@@ -505,7 +519,7 @@ export async function toggleCustomerStatusAction(customerId: string, targetStatu
   };
 }
 
-export async function sendCustomerCredentialsEmailAction(customerId: string) {
+export async function sendCustomerCredentialsEmailAction(customerId: string, pin?: string) {
   try {
     const admin = await requireAdminSession();
 
@@ -514,22 +528,24 @@ export async function sendCustomerCredentialsEmailAction(customerId: string) {
     }
 
     const { sendCustomerCredentialsEmail } = await import("@/lib/email/brevo");
-    const result = await sendCustomerCredentialsEmail(customerId);
+    const result = await sendCustomerCredentialsEmail(customerId, pin);
 
     if (result.success) {
+      const deliveredPin = result.pin || pin;
       await prisma.auditLog.create({
         data: {
           action: "CUSTOMER_CREDENTIALS_EMAIL_SENT",
           entityType: "Customer",
           entityId: customerId,
-          description: `Account credentials email dispatched to ${result.recipient} by ${admin.name || admin.email}`,
+          description: `Account credentials email with PIN (${deliveredPin || "N/A"}) dispatched to ${result.recipient} by ${admin.name || admin.email}`,
           adminId: admin.id,
         },
       });
 
       return {
         success: true,
-        message: `Account credentials sent to ${result.recipient}.`,
+        pin: deliveredPin,
+        message: `Account credentials with Login PIN (${deliveredPin}) sent to ${result.recipient}.`,
         messageId: result.messageId,
       };
     } else {
@@ -543,7 +559,7 @@ export async function sendCustomerCredentialsEmailAction(customerId: string) {
   }
 }
 
-export async function prepareCustomerWhatsAppMessageAction(customerId: string) {
+export async function prepareCustomerWhatsAppMessageAction(customerId: string, pin?: string) {
   try {
     const admin = await requireAdminSession();
 
@@ -565,6 +581,23 @@ export async function prepareCustomerWhatsAppMessageAction(customerId: string) {
       return { error: "Customer does not have a registered phone number for WhatsApp delivery." };
     }
 
+    // Determine or generate guaranteed login PIN
+    let effectivePin = pin ? pin.trim() : "";
+    if (!effectivePin) {
+      effectivePin = Math.floor(100000 + Math.random() * 900000).toString();
+    }
+
+    // Synchronize customer's PIN hash so this PIN is immediately active
+    const pinHash = await bcrypt.hash(effectivePin, 10);
+    await prisma.customer.update({
+      where: { id: customer.id },
+      data: {
+        pinHash,
+        loginAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+
     // Clean phone number for international WhatsApp format
     let cleanPhone = customer.phone.replace(/[^\d+]/g, "");
     if (cleanPhone.startsWith("+")) {
@@ -577,19 +610,25 @@ export async function prepareCustomerWhatsAppMessageAction(customerId: string) {
     const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "https://lmx8imports.com";
     const loginUrl = `${appUrl.replace(/\/$/, "")}/login`;
 
+    const pinLine = `• Login PIN: *${effectivePin}*`;
+    const step3 = `3. Enter your secret Login PIN: *${effectivePin}*`;
+
     const messageText = `Hello ${customer.name},
 
-Here are your official LMX8 IMPORTS Customer Portal access details:
+Here are your official LMX8 IMPORTS Customer Portal access credentials:
 
 • Customer ID: ${customer.customerIdentifier}
+• Registered Phone: ${customer.phone}
+${pinLine}
 • Portal Login: ${loginUrl}
 
 How to Sign In:
-1. Open the portal login link above
+1. Open the portal login link: ${loginUrl}
 2. Enter your Customer ID (${customer.customerIdentifier}) or registered phone
-3. Enter your confidential 6-digit access PIN
+${step3}
+4. Track live shipments, submit product sourcing requests, and pay shipping fees!
 
-Security Reminder: Never share your PIN with anyone. LMX8 representatives will never ask for your secret PIN. You can change your PIN anytime inside My Profile > Change PIN.
+Security Notice: Never share your PIN with anyone. You can change your PIN anytime inside My Profile > Change PIN.
 
 LMX8 IMPORTS — Your Goods. Our Priority.`;
 
@@ -598,22 +637,24 @@ LMX8 IMPORTS — Your Goods. Our Priority.`;
 
     await prisma.auditLog.create({
       data: {
-        action: "CUSTOMER_WHATSAPP_CREDENTIALS_PREPARED",
+        action: "CUSTOMER_WHATSAPP_PREPARED",
         entityType: "Customer",
         entityId: customer.id,
-        description: `WhatsApp credential access instructions generated for ${customer.customerIdentifier} (${cleanPhone}) by ${admin.name || admin.email}`,
+        description: `WhatsApp login credentials with PIN (${effectivePin}) prepared for ${customer.name} by ${admin.name || admin.email}`,
         adminId: admin.id,
       },
     });
 
     return {
       success: true,
+      pin: effectivePin,
       phone: customer.phone,
       formattedPhone: cleanPhone,
-      whatsappUrl,
       messageText,
+      whatsappUrl,
       customerName: customer.name,
       customerIdentifier: customer.customerIdentifier,
+      pinIncluded: Boolean(effectivePin),
     };
   } catch (err: any) {
     console.error("[prepareCustomerWhatsAppMessageAction] Error:", err);

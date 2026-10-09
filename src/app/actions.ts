@@ -51,9 +51,18 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
     ? s.batch.arrival.toISOString().split("T")[0]
     : undefined;
 
+  const successfulPayments = (s.payments || []).filter(
+    (p: any) => p.type === "SHIPPING_FEE" && p.status === "SUCCESS"
+  );
+  const paidAmount = successfulPayments.reduce((acc: number, p: any) => acc + (p.amount || 0), 0);
+  const feeAmount = typeof s.fee === "number" ? s.fee : parseFloat(s.fee) || 0;
+  const outstanding = Math.max(0, feeAmount - paidAmount);
+  const isPaid = feeAmount > 0 ? outstanding === 0 : true;
+
   return {
     id: s.trackingNumber,
     customerId: s.customer?.customerIdentifier || s.customerId,
+    customerName: s.customer?.name,
     description: s.description,
     batch: s.batch?.batchNumber,
     batchName: s.batch?.name,
@@ -62,8 +71,13 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
     status: effectiveStatus,
     registeredDate: s.createdAt.toISOString().split("T")[0],
     lastUpdated: s.updatedAt.toISOString().split("T")[0],
-    fee: s.fee,
-    origin: s.origin || "Shenzhen, China",
+    fee: feeAmount,
+    paidAmount,
+    outstanding,
+    isPaid,
+    weight: s.weight ?? null,
+    quantity: s.quantity ?? null,
+    origin: s.origin || "Guangzhou, China",
     destination: s.destination || "Accra, Ghana",
     shippingMethod: s.shippingMethod || (s.batch?.description?.toLowerCase().includes("air") ? "Air Freight" : "Sea Freight"),
     estimatedArrival: estimatedArrivalStr,
@@ -91,7 +105,7 @@ export async function getShipmentsAction(): Promise<UIShipment[]> {
     let shipments;
     if (session.type === "admin") {
       shipments = await prisma.shipment.findMany({
-        include: { trackingEvents: true, photos: true, customer: true, batch: true },
+        include: { trackingEvents: true, photos: true, customer: true, batch: true, payments: true },
         orderBy: { updatedAt: "desc" },
       });
     } else {
@@ -105,7 +119,7 @@ export async function getShipmentsAction(): Promise<UIShipment[]> {
             { customerId: session.id },
           ],
         },
-        include: { trackingEvents: true, photos: true, customer: true, batch: true },
+        include: { trackingEvents: true, photos: true, customer: true, batch: true, payments: true },
         orderBy: { updatedAt: "desc" },
       });
     }
@@ -130,7 +144,7 @@ export async function getShipmentByIdAction(trackingNumber: string): Promise<UIS
           { trackingNumber: trackingNumber.toUpperCase() },
         ],
       },
-      include: { trackingEvents: true, photos: true, customer: true, batch: true },
+      include: { trackingEvents: true, photos: true, customer: true, batch: true, payments: true },
     });
 
     if (!shipment) return null;
@@ -164,7 +178,7 @@ export async function getPublicShipmentAction(trackingNumber: string): Promise<U
           { trackingNumber: trackingNumber.trim() },
         ],
       },
-      include: { trackingEvents: true, photos: true, customer: true, batch: true },
+      include: { trackingEvents: true, photos: true, customer: true, batch: true, payments: true },
     });
 
     if (!shipment) return null;

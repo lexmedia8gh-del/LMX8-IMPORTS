@@ -219,6 +219,11 @@ export function CreateCustomerDrawer({
           </div>
         </div>
 
+        <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-[11px] text-blue-900 flex items-start gap-2">
+          <CheckCircle2 size={14} className="text-blue-600 shrink-0 mt-0.5" />
+          <span>This Login PIN will be automatically included in the official account credentials email sent to the client upon creation.</span>
+        </div>
+
         <div className="space-y-1.5">
           <label className="text-xs font-bold uppercase tracking-wider text-[#141B47]">Account Status</label>
           <select

@@ -21,6 +21,7 @@ export type ShipmentPhoto = {
 export type Shipment = {
   id: string;
   customerId: string;
+  customerName?: string;
   description: string;
   batch?: string;
   batchName?: string;
@@ -30,6 +31,11 @@ export type Shipment = {
   registeredDate: string;
   lastUpdated: string;
   fee: number;
+  paidAmount?: number;
+  outstanding?: number;
+  isPaid?: boolean;
+  weight?: number | null;
+  quantity?: number | null;
   origin?: string;
   destination?: string;
   shippingMethod?: string;

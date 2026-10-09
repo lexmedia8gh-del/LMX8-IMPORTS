@@ -355,23 +355,61 @@ export async function wrapInBrandedLayout(title: string, bodyContent: string, fo
 }
 
 // Template Generators
-export async function generateCustomerWelcomeHtml(data: { customerName: string; customerIdentifier: string; portalUrl: string }): Promise<string> {
+export async function generateCustomerWelcomeHtml(data: {
+  customerName: string;
+  customerIdentifier: string;
+  portalUrl: string;
+  phone?: string;
+  pin?: string;
+}): Promise<string> {
   const content = `
     <p class="greeting">Hello ${data.customerName},</p>
-    <p class="lead">Welcome to LMX8 IMPORTS! Your customer account has been created successfully.</p>
-    <div class="status-card">
-      <div class="status-badge">Account Confirmed</div>
-      <p style="font-size: 14px; font-weight: 600; color: #141B47; margin: 0 0 16px 0;">Here is your unique Customer ID for reference:</p>
-      <table>
+    <p class="lead">Welcome to <strong>LMX8 IMPORTS</strong>! Your customer account has been created successfully. Below are your official account credentials and portal access details.</p>
+    
+    <div class="status-card" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+      <div class="status-badge" style="background: #141B47; color: #FFFFFF; font-weight: 700; margin-bottom: 14px;">ACCOUNT CREDENTIALS</div>
+      <table style="width: 100%; border-collapse: collapse;">
         <tr>
-          <td class="label">Customer ID</td>
-          <td class="val" style="color: #141B47; font-size: 15px; font-family: monospace;">${data.customerIdentifier}</td>
+          <td class="label" style="padding: 9px 0; color: #64748B; font-size: 13px;">Customer ID</td>
+          <td class="val" style="padding: 9px 0; color: #141B47; font-size: 15px; font-weight: 800; font-family: monospace; text-align: right;">${data.customerIdentifier}</td>
+        </tr>
+        ${data.phone ? `
+        <tr>
+          <td class="label" style="padding: 9px 0; color: #64748B; font-size: 13px;">Registered Phone</td>
+          <td class="val" style="padding: 9px 0; color: #0F172A; font-weight: 600; text-align: right; font-size: 13px;">${data.phone}</td>
+        </tr>` : ""}
+        ${data.pin ? `
+        <tr>
+          <td class="label" style="padding: 10px 0; color: #64748B; font-size: 13px; font-weight: 700;">Login PIN</td>
+          <td class="val" style="padding: 10px 0; text-align: right;">
+            <span style="display: inline-block; background: #07182F; color: #F2901F; font-family: monospace; font-size: 18px; font-weight: 800; letter-spacing: 3px; padding: 5px 14px; border-radius: 6px;">
+              ${data.pin}
+            </span>
+          </td>
+        </tr>` : ""}
+        <tr>
+          <td class="label" style="padding: 9px 0; color: #64748B; font-size: 13px;">Portal Login URL</td>
+          <td class="val" style="padding: 9px 0; text-align: right;"><a href="${data.portalUrl}" style="color: #F2901F; font-weight: 700; text-decoration: none;">${data.portalUrl}</a></td>
         </tr>
       </table>
     </div>
-    <p class="lead">You can log in to your portal using your Phone Number and the secure PIN provided by your administrator.</p>
-    <div style="text-align: center;">
-      <a href="${data.portalUrl}" class="btn">Log In to Customer Portal</a>
+
+    <div style="background: #EFF6FF; border-left: 4px solid #355DAF; padding: 16px 20px; border-radius: 8px; margin-bottom: 24px;">
+      <h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 700; color: #1E3A8A;">How to Sign In:</h3>
+      <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #1E293B; line-height: 1.6;">
+        <li>Visit the portal login page at <a href="${data.portalUrl}" style="color: #355DAF; font-weight: 600;">${data.portalUrl}</a>.</li>
+        <li>Enter your <strong>Customer ID (${data.customerIdentifier})</strong> or your registered phone number.</li>
+        <li>Enter your <strong>Login PIN${data.pin ? ` (${data.pin})` : ""}</strong>.</li>
+        <li>Track your live shipments, submit product sourcing requests, and pay shipping fees directly.</li>
+      </ol>
+    </div>
+
+    <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 14px; margin-bottom: 24px; font-size: 12px; color: #78350F; line-height: 1.5;">
+      <strong>Security Notice:</strong> Keep your PIN confidential. You can update your PIN anytime after logging in by visiting <strong>My Profile &gt; Change PIN</strong>.
+    </div>
+
+    <div style="text-align: center; margin: 24px 0 10px 0;">
+      <a href="${data.portalUrl}" class="btn" style="background: #F2901F; color: #FFFFFF; font-weight: 800; font-size: 14px; padding: 14px 32px; text-decoration: none; border-radius: 10px; display: inline-block;">Log In to Customer Portal</a>
     </div>
   `;
   return wrapInBrandedLayout("Welcome to LMX8 IMPORTS", content);
@@ -381,42 +419,53 @@ export async function generateCustomerCredentialsHtml(data: {
   customerName: string;
   customerIdentifier: string;
   phone?: string;
+  pin?: string;
   loginUrl: string;
 }): Promise<string> {
   const content = `
     <p class="greeting">Hello ${data.customerName || "Valued Customer"},</p>
     <p class="lead">Here are your official LMX8 IMPORTS customer portal credentials and access instructions.</p>
     
-    <div class="status-card" style="background: #F8FAFC; border-color: #E2E8F0;">
-      <div class="status-badge" style="background: #141B47;">Account Access Details</div>
-      <table>
+    <div class="status-card" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+      <div class="status-badge" style="background: #141B47; color: #FFFFFF; font-weight: 700; margin-bottom: 12px;">ACCOUNT ACCESS CREDENTIALS</div>
+      <table style="width: 100%; border-collapse: collapse;">
         <tr>
-          <td class="label">Customer ID</td>
-          <td class="val" style="color: #141B47; font-size: 15px; font-weight: 800; font-family: monospace;">${data.customerIdentifier}</td>
+          <td class="label" style="padding: 8px 0; color: #64748B; font-size: 13px;">Customer ID</td>
+          <td class="val" style="padding: 8px 0; color: #141B47; font-size: 15px; font-weight: 800; font-family: monospace; text-align: right;">${data.customerIdentifier}</td>
         </tr>
         ${data.phone ? `
         <tr>
-          <td class="label">Registered Phone</td>
-          <td class="val" style="font-family: monospace; color: #172236;">${data.phone}</td>
+          <td class="label" style="padding: 8px 0; color: #64748B; font-size: 13px;">Registered Phone</td>
+          <td class="val" style="padding: 8px 0; font-family: monospace; color: #172236; text-align: right; font-size: 13px;">${data.phone}</td>
+        </tr>` : ""}
+        ${data.pin ? `
+        <tr>
+          <td class="label" style="padding: 10px 0; color: #64748B; font-size: 13px; font-weight: 700;">Login PIN</td>
+          <td class="val" style="padding: 10px 0; text-align: right;">
+            <span style="font-family: monospace; font-size: 18px; font-weight: 800; letter-spacing: 3px; color: #F2901F; background: #07182F; padding: 5px 14px; border-radius: 6px; display: inline-block;">
+              ${data.pin}
+            </span>
+          </td>
         </tr>` : ""}
         <tr>
-          <td class="label">Portal URL</td>
-          <td class="val"><a href="${data.loginUrl}" style="color: #F2901F; font-weight: 700; text-decoration: none;">${data.loginUrl}</a></td>
+          <td class="label" style="padding: 8px 0; color: #64748B; font-size: 13px;">Portal URL</td>
+          <td class="val" style="padding: 8px 0; text-align: right;"><a href="${data.loginUrl}" style="color: #F2901F; font-weight: 700; text-decoration: none;">${data.loginUrl}</a></td>
         </tr>
       </table>
     </div>
 
-    <div style="margin: 20px 0; padding: 16px; background: #FFFFFF; border-radius: 12px; border: 1px solid #E2E8F0;">
-      <p style="font-size: 14px; font-weight: 700; color: #141B47; margin: 0 0 10px 0;">How to Sign In to Your Portal:</p>
-      <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #475569; line-height: 1.6;">
-        <li>Go to the portal login page: <strong>${data.loginUrl}</strong></li>
+    <div style="background: #EFF6FF; border-left: 4px solid #355DAF; padding: 16px 20px; border-radius: 8px; margin-bottom: 24px;">
+      <h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 700; color: #1E3A8A;">How to Sign In to Your Portal:</h3>
+      <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #1E293B; line-height: 1.6;">
+        <li>Go to the portal login page: <a href="${data.loginUrl}" style="color: #355DAF; font-weight: 600;">${data.loginUrl}</a></li>
         <li>Enter your <strong>Customer ID</strong> (<code>${data.customerIdentifier}</code>) or registered phone number.</li>
-        <li>Enter your secret 6-8 digit Customer PIN.</li>
+        <li>Enter your ${data.pin ? `Login PIN: <strong>${data.pin}</strong>` : "secret 6-digit Login PIN"}.</li>
+        <li>Track your live shipments, submit product sourcing requests, and pay shipping fees directly.</li>
       </ol>
     </div>
 
-    <div style="margin: 16px 0; padding: 14px; background: #FFFBEB; border-radius: 12px; border: 1px solid #FDE68A; font-size: 13px; color: #92400E; line-height: 1.5;">
-      <strong>Account Security Guidance:</strong>
+    <div style="margin: 16px 0; padding: 14px; background: #FFFBEB; border-radius: 12px; border: 1px solid #FDE68A; font-size: 12px; color: #92400E; line-height: 1.5;">
+      <strong>Account Security Notice:</strong>
       <ul style="margin: 6px 0 0 0; padding-left: 18px;">
         <li>Never share your PIN with anyone, including staff members.</li>
         <li>You can change your PIN anytime inside your Customer Profile settings.</li>
@@ -425,7 +474,7 @@ export async function generateCustomerCredentialsHtml(data: {
     </div>
 
     <div style="text-align: center; margin: 24px 0 8px 0;">
-      <a href="${data.loginUrl}" class="btn" style="background: #F2901F; color: #FFFFFF;">Log In to Customer Portal</a>
+      <a href="${data.loginUrl}" class="btn" style="background: #F2901F; color: #FFFFFF; font-weight: 800; font-size: 14px; padding: 14px 32px; text-decoration: none; border-radius: 10px; display: inline-block;">Log In to Customer Portal</a>
     </div>
   `;
   return wrapInBrandedLayout("Your LMX8 IMPORTS Portal Credentials", content);
@@ -790,7 +839,10 @@ export async function generateShippingFeeReminderHtml(data: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 1. Customer Welcome
-export async function sendCustomerCreatedEmail(customerId: string): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
+export async function sendCustomerCreatedEmail(
+  customerId: string,
+  pin?: string
+): Promise<{ success: boolean; skipped?: boolean; reason?: string; error?: string }> {
   try {
     await ensureEmailLogSchema();
     const customer = await prisma.customer.findUnique({
@@ -814,6 +866,8 @@ export async function sendCustomerCreatedEmail(customerId: string): Promise<{ su
       customerName: customer.name,
       customerIdentifier: customer.customerIdentifier,
       portalUrl,
+      phone: customer.phone || undefined,
+      pin: pin || undefined,
     });
 
     const subject = "Welcome to LMX8 IMPORTS — Your Account Details";
@@ -1535,6 +1589,7 @@ export async function generateCustomerCredentialsEmailHtml(data: {
   customerName: string;
   customerIdentifier: string;
   phone?: string;
+  pin?: string;
   loginUrl: string;
 }): Promise<string> {
   const content = `
@@ -1558,6 +1613,16 @@ export async function generateCustomerCredentialsEmailHtml(data: {
           <td class="val" style="padding: 8px 0; color: #0F172A; font-weight: 600; text-align: right; font-size: 13px;">${data.phone}</td>
         </tr>
         ` : ""}
+        ${data.pin ? `
+        <tr>
+          <td class="label" style="padding: 10px 0; color: #64748B; font-size: 13px; font-weight: 700;">Login PIN</td>
+          <td class="val" style="padding: 10px 0; text-align: right;">
+            <span style="font-family: monospace; font-size: 18px; font-weight: 800; letter-spacing: 3px; color: #F2901F; background: #07182F; padding: 5px 14px; border-radius: 6px; display: inline-block;">
+              ${data.pin}
+            </span>
+          </td>
+        </tr>
+        ` : ""}
       </table>
     </div>
 
@@ -1566,7 +1631,7 @@ export async function generateCustomerCredentialsEmailHtml(data: {
       <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #1E293B; line-height: 1.6;">
         <li>Visit the portal login at <a href="${data.loginUrl}" style="color: #355DAF; font-weight: 600;">${data.loginUrl}</a>.</li>
         <li>Enter your <strong>Customer ID (${data.customerIdentifier})</strong> or your registered phone number.</li>
-        <li>Enter your confidential 6-digit access PIN provided to you.</li>
+        <li>Enter your ${data.pin ? `confidential access PIN: <strong>${data.pin}</strong>` : "confidential 6-digit access PIN provided to you"}.</li>
         <li>Once signed in, you can update your PIN anytime under <strong>My Profile &gt; Change PIN</strong>.</li>
       </ol>
     </div>
@@ -1583,8 +1648,12 @@ export async function generateCustomerCredentialsEmailHtml(data: {
   return wrapInBrandedLayout("Your LMX8 IMPORTS Account Access Credentials", content);
 }
 
-export async function sendCustomerCredentialsEmail(customerId: string): Promise<{
+export async function sendCustomerCredentialsEmail(
+  customerId: string,
+  pin?: string
+): Promise<{
   success: boolean;
+  pin?: string;
   messageId?: string;
   recipient?: string;
   error?: string;
@@ -1604,6 +1673,43 @@ export async function sendCustomerCredentialsEmail(customerId: string): Promise<
       return { success: false, error: "Customer has no verified email address configured." };
     }
 
+    // Determine or generate guaranteed login PIN
+    let effectivePin = pin ? pin.trim() : "";
+    if (!effectivePin) {
+      // Auto-generate secure 6-digit numeric PIN
+      effectivePin = Math.floor(100000 + Math.random() * 900000).toString();
+      try {
+        const bcrypt = (await import("bcryptjs")).default;
+        const pinHash = await bcrypt.hash(effectivePin, 10);
+        await prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            pinHash,
+            loginAttempts: 0,
+            lockedUntil: null,
+          },
+        });
+      } catch (hashErr) {
+        console.error("[sendCustomerCredentialsEmail] Error hashing auto-generated PIN:", hashErr);
+      }
+    } else {
+      // If a specific PIN was provided, ensure customer.pinHash is synchronized to it
+      try {
+        const bcrypt = (await import("bcryptjs")).default;
+        const pinHash = await bcrypt.hash(effectivePin, 10);
+        await prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            pinHash,
+            loginAttempts: 0,
+            lockedUntil: null,
+          },
+        });
+      } catch (syncErr) {
+        console.error("[sendCustomerCredentialsEmail] Error synchronizing PIN hash:", syncErr);
+      }
+    }
+
     const recipient = customer.email.trim();
     const portalBase = getPortalBaseUrl();
     const loginUrl = `${portalBase}/login`;
@@ -1613,6 +1719,7 @@ export async function sendCustomerCredentialsEmail(customerId: string): Promise<
       customerName: customer.name,
       customerIdentifier: customer.customerIdentifier,
       phone: customer.phone || undefined,
+      pin: effectivePin,
       loginUrl,
     });
 
@@ -1629,6 +1736,7 @@ export async function sendCustomerCredentialsEmail(customerId: string): Promise<
         metadata: {
           customerIdentifier: customer.customerIdentifier,
           action: "ADMIN_CREDENTIAL_DELIVERY",
+          pinIncluded: Boolean(effectivePin),
         },
       },
     });
@@ -1651,6 +1759,7 @@ export async function sendCustomerCredentialsEmail(customerId: string): Promise<
 
       return {
         success: true,
+        pin: effectivePin,
         messageId: result.messageId,
         recipient,
       };
