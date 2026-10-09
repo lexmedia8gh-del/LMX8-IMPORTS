@@ -7,6 +7,8 @@ import { getPublicShipmentAction } from "@/app/actions";
 import { Shipment } from "@/lib/db";
 import { ShipmentStatusBadge, ShipmentTimeline } from "@/components/shipment-status";
 import { useShipmentRealtime } from "@/hooks/use-shipment-realtime";
+import { BrandLogo } from "@/components/brand-logo";
+import { useBrandSettings } from "@/components/brand-provider";
 import {
   Search,
   MapPin,
@@ -21,6 +23,12 @@ import {
 } from "lucide-react";
 
 function TrackContent() {
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
+  const primaryColor = branding?.primaryColor || "#07182F";
+  const secondaryColor = branding?.secondaryColor || "#0B1F44";
+  const accentColor = branding?.accentColor || "#FFB800";
+
   const searchParams = useSearchParams();
   const queryId =
     searchParams.get("id") ||
@@ -114,7 +122,10 @@ function TrackContent() {
               placeholder="Enter Tracking No. (e.g. LMX8-00125 / SHP-001)"
               value={trackingId}
               onChange={(e) => setTrackingId(e.target.value)}
-              className="w-full pl-11 pr-4 h-12 rounded-xl text-xs sm:text-sm text-white placeholder:text-gray-500 focus:outline-hidden focus:border-[#FFB800] transition-colors bg-[#0B1F44] border border-white/15"
+              className="w-full pl-11 pr-4 h-12 rounded-xl text-xs sm:text-sm text-white placeholder:text-gray-500 focus:outline-hidden transition-colors border border-white/15"
+              style={{
+                background: secondaryColor,
+              }}
             />
             <Search
               size={18}
@@ -124,7 +135,11 @@ function TrackContent() {
           <button
             type="submit"
             disabled={loading || !trackingId.trim()}
-            className="w-full h-12 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm bg-[#FFB800] text-[#07182F] disabled:opacity-50 cursor-pointer"
+            className="w-full h-12 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm disabled:opacity-50 cursor-pointer"
+            style={{
+              background: accentColor,
+              color: primaryColor,
+            }}
           >
             {loading ? (
               <>
@@ -238,7 +253,7 @@ function TrackContent() {
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="font-bold text-sm text-[#172236] flex items-center gap-2">
-                    <Radio size={14} className="text-[#FFB800]" />
+                    <Radio size={14} style={{ color: accentColor }} />
                     <span>Real-Time Journey Timeline</span>
                   </h4>
                   {lastUpdated && (
@@ -263,8 +278,14 @@ function TrackContent() {
 }
 
 export default function TrackPage() {
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
+  const primaryColor = branding?.primaryColor || "#07182F";
+  const secondaryColor = branding?.secondaryColor || "#0B1F44";
+  const accentColor = branding?.accentColor || "#FFB800";
+
   return (
-    <div className="min-h-screen flex" style={{ background: "#07182F" }}>
+    <div className="min-h-screen flex" style={{ background: primaryColor }}>
       {/* ── LEFT PANEL (Marketing & Value Proposition) ── */}
       <div className="hidden lg:flex w-[45%] relative flex-col justify-between p-12 overflow-hidden">
         <div
@@ -283,36 +304,13 @@ export default function TrackPage() {
         />
 
         <Link href="/" className="relative z-10 flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-xl"
-            style={{
-              background: "#FFB800",
-              color: "#07182F",
-              fontFamily: "var(--font-poppins)",
-            }}
-          >
-            L
-          </div>
-          <div>
-            <div
-              className="text-xl font-bold tracking-wider text-white leading-none"
-              style={{ fontFamily: "var(--font-poppins)" }}
-            >
-              LMX<span style={{ color: "#FFB800" }}>8</span>
-            </div>
-            <div
-              className="text-[10px] tracking-[0.2em] uppercase mt-0.5"
-              style={{ color: "#94A3B8" }}
-            >
-              Imports
-            </div>
-          </div>
+          <BrandLogo variant="light" height={40} />
         </Link>
 
         <div className="relative z-10 space-y-5">
-          <span className="gold-line"></span>
+          <span className="gold-line" style={{ background: accentColor }}></span>
           <h2
-            style={{ fontFamily: "var(--font-poppins)" }}
+            style={{ fontFamily: "var(--font-heading, var(--font-poppins))" }}
             className="text-4xl md:text-5xl font-bold text-white leading-tight"
           >
             More Than Just
@@ -321,7 +319,7 @@ export default function TrackPage() {
           </h2>
           <h3
             className="text-3xl font-bold"
-            style={{ color: "#FFB800", fontFamily: "var(--font-poppins)" }}
+            style={{ color: accentColor, fontFamily: "var(--font-heading, var(--font-poppins))" }}
           >
             We Bring Your
             <br />
@@ -330,19 +328,19 @@ export default function TrackPage() {
 
           <div className="space-y-4 pt-6 mt-6 border-t border-white/10">
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="text-[#FFB800] shrink-0" size={20} />
+              <CheckCircle2 style={{ color: accentColor }} className="shrink-0" size={20} />
               <p className="text-sm font-medium text-white">
                 Track your goods in real-time with instant updates
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="text-[#FFB800] shrink-0" size={20} />
+              <CheckCircle2 style={{ color: accentColor }} className="shrink-0" size={20} />
               <p className="text-sm font-medium text-white">
                 Request product sourcing from verified suppliers in China
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="text-[#FFB800] shrink-0" size={20} />
+              <CheckCircle2 style={{ color: accentColor }} className="shrink-0" size={20} />
               <p className="text-sm font-medium text-white">
                 Secure payments and milestone notifications
               </p>
@@ -354,7 +352,7 @@ export default function TrackPage() {
           <p className="text-sm italic text-[#667085]">
             From China to Ghana.
             <br />
-            <span className="text-[#FFB800]">Your Goods. Our Priority.</span>
+            <span style={{ color: accentColor }}>{branding?.tagline || "Your Goods. Our Priority."}</span>
           </p>
         </div>
       </div>
@@ -362,32 +360,18 @@ export default function TrackPage() {
       {/* ── RIGHT PANEL (Tracking Interface) ── */}
       <div
         className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 md:p-12 overflow-y-auto"
-        style={{ background: "#0B1F44" }}
+        style={{ background: secondaryColor }}
       >
         {/* Mobile Logo */}
         <div className="w-full max-w-lg mb-6 lg:hidden flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-base"
-              style={{
-                background: "#FFB800",
-                color: "#07182F",
-                fontFamily: "var(--font-poppins)",
-              }}
-            >
-              L
-            </div>
-            <span
-              className="text-lg font-bold text-white"
-              style={{ fontFamily: "var(--font-poppins)" }}
-            >
-              LMX<span style={{ color: "#FFB800" }}>8</span>
-            </span>
+            <BrandLogo variant="light" height={32} />
           </Link>
 
           <Link
             href="/login"
-            className="text-xs font-bold text-[#FFB800] hover:underline"
+            className="text-xs font-bold hover:underline"
+            style={{ color: accentColor }}
           >
             Customer Portal →
           </Link>
@@ -395,8 +379,8 @@ export default function TrackPage() {
 
         <Suspense
           fallback={
-            <div className="w-full max-w-lg p-8 rounded-2xl bg-[#07182F] text-center text-white text-sm">
-              <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-[#FFB800]" />
+            <div className="w-full max-w-lg p-8 rounded-2xl text-center text-white text-sm" style={{ background: primaryColor }}>
+              <RefreshCw size={24} className="animate-spin mx-auto mb-2" style={{ color: accentColor }} />
               <p>Loading real-time tracking...</p>
             </div>
           }

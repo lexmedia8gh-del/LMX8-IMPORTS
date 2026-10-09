@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ArrowLeft, Camera, Radio, RefreshCw, Clock } from "lucide-react";
 import { ShipmentStatusBadge, ShipmentTimeline } from "@/components/shipment-status";
 import { useShipmentRealtime } from "@/hooks/use-shipment-realtime";
+import { useBrandSettings } from "@/components/brand-provider";
 
 export default function ShipmentDetailsPage({
   params,
@@ -16,6 +17,12 @@ export default function ShipmentDetailsPage({
   const { id } = use(params);
   const [initialData, setInitialData] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const brandContext = useBrandSettings();
+  const branding = brandContext?.branding;
+  const primaryColor = branding?.primaryColor || "#141B47";
+  const secondaryColor = branding?.secondaryColor || "#355DAF";
+  const accentColor = branding?.accentColor || "#F2901F";
 
   // Hook for Supabase Realtime synchronization
   const {
@@ -44,7 +51,10 @@ export default function ShipmentDetailsPage({
   if (loading) {
     return (
       <div className="py-16 flex flex-col items-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
+        <div
+          className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: `${accentColor} transparent ${accentColor} ${accentColor}` }}
+        />
         <p className="text-sm text-[#667085]">Loading shipment…</p>
       </div>
     );
@@ -58,8 +68,8 @@ export default function ShipmentDetailsPage({
         </p>
         <Link
           href="/portal/shipments"
-          className="mt-4 inline-flex items-center gap-2 text-sm font-semibold"
-          style={{ color: "var(--accent)" }}
+          className="mt-4 inline-flex items-center gap-2 text-sm font-semibold transition-opacity hover:opacity-80"
+          style={{ color: accentColor }}
         >
           <ArrowLeft size={16} /> Back to Shipments
         </Link>
@@ -223,7 +233,7 @@ export default function ShipmentDetailsPage({
                 className="font-bold text-sm sm:text-base flex items-center gap-2"
                 style={{ color: "#172236" }}
               >
-                <Radio size={16} style={{ color: "var(--accent)" }} />
+                <Radio size={16} style={{ color: accentColor }} />
                 <span>Shipment Timeline</span>
               </h3>
               {lastUpdated && (

@@ -165,7 +165,7 @@ export default function ShipmentsPage() {
                         <Link href={`/portal/shipments/${s.id}`}>
                           <button
                             className="inline-flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                            style={{ color: "var(--primary)" }}
+                            style={{ color: branding?.primaryColor || "var(--primary)" }}
                           >
                             <ArrowRight size={16} />
                           </button>
