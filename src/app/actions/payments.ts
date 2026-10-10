@@ -105,31 +105,55 @@ export async function initializeCreditPurchaseAction(packageId: keyof typeof CRE
 
 export async function initializeShippingPaymentAction(shipmentId: string, callbackUrl: string) {
   const customer = await requireCustomerSession();
-  
-  const shipment = await prisma.shipment.findUnique({
-    where: { id: shipmentId },
-    include: { payments: true },
+  const cleanId = (shipmentId || "").trim();
+
+  if (!cleanId) {
+    return { error: "Shipment identifier is required." };
+  }
+
+  // Resolve shipment by internal UUID or tracking number
+  const shipment = await prisma.shipment.findFirst({
+    where: {
+      OR: [
+        { id: cleanId },
+        { trackingNumber: cleanId },
+        { trackingNumber: cleanId.toUpperCase() },
+      ],
+    },
+    include: {
+      customer: true,
+      payments: true,
+    },
   });
 
   if (!shipment) {
     return { error: "Shipment not found." };
   }
 
-  if (shipment.customerId !== customer.id) {
-    return { error: "Unauthorized." };
+  // Verify authorization: check by customer UUID or customer identifier
+  const isAuthorized =
+    shipment.customerId === customer.id ||
+    shipment.customer?.customerIdentifier === customer.customerIdentifier ||
+    shipment.customer?.id === customer.id;
+
+  if (!isAuthorized) {
+    return { error: "You are not authorized to make payments for this shipment." };
   }
 
-  if (!shipment.fee || shipment.fee <= 0) {
+  const feeAmount = typeof shipment.fee === "number" ? shipment.fee : parseFloat(String(shipment.fee || 0)) || 0;
+  if (feeAmount <= 0) {
     return { error: "No shipping fee has been set for this shipment." };
   }
 
-  // Calculate outstanding amount
-  const successfulPayments = shipment.payments.filter(p => p.status === "SUCCESS" && p.type === "SHIPPING_FEE");
-  const paidAmount = successfulPayments.reduce((acc, p) => acc + p.amount, 0);
-  const outstanding = Math.max(0, shipment.fee - paidAmount);
+  // Calculate outstanding amount from verified successful payments
+  const successfulPayments = (shipment.payments || []).filter(
+    (p) => p.status === "SUCCESS" && p.type === "SHIPPING_FEE"
+  );
+  const paidAmount = successfulPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
+  const outstanding = Math.max(0, feeAmount - paidAmount);
 
   if (outstanding <= 0) {
-    return { error: "This shipment's fee has already been paid." };
+    return { error: "This shipment's fee has already been fully paid." };
   }
 
   const reference = `SHP-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
@@ -143,7 +167,12 @@ export async function initializeShippingPaymentAction(shipmentId: string, callba
         status: "PENDING",
         type: "SHIPPING_FEE",
         customerId: customer.id,
-        shipmentId: shipment.id,
+        shipmentId: shipment.id, // Canonical UUID
+        metadata: {
+          trackingNumber: shipment.trackingNumber,
+          customerIdentifier: customer.customerIdentifier,
+          shipmentId: shipment.id,
+        },
       },
     });
 

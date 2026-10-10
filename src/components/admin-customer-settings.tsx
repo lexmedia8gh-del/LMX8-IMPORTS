@@ -388,86 +388,119 @@ export default function AdminCustomerSettings() {
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pb-4 border-b border-[#E5E7EB]">
         <div>
-          <h2 className="text-xl font-bold text-[#141B47]">Customers</h2>
-          <p className="text-xs text-[#667085] mt-0.5">View and edit customer accounts.</p>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#141B47]">Customers</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-[#F1F5F9] text-[#141B47] border border-[#E2E8F0]">
+              {customers.length}
+            </span>
+          </div>
+          <p className="text-xs text-[#667085] mt-1">View, manage, and edit customer accounts and access credentials.</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Action Buttons: Responsive 2-column grid on small mobile, flex on desktop */}
+        <div className="grid grid-cols-2 gap-2.5 sm:flex sm:items-center sm:gap-3 w-full sm:w-auto">
           <button
             onClick={loadCustomers}
-            className="px-3.5 h-10 rounded-xl text-xs font-bold border border-[#E5E7EB] bg-white hover:bg-gray-50 text-[#141B47] flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+            disabled={loading}
+            className="flex-1 sm:flex-none justify-center px-4 h-11 sm:h-10 rounded-xl text-xs sm:text-sm font-bold border border-[#E5E7EB] bg-white hover:bg-gray-50 text-[#141B47] flex items-center gap-2 cursor-pointer transition-colors shadow-xs disabled:opacity-60 min-h-[44px]"
             title="Refresh customer list"
           >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            <span className="hidden sm:inline">Refresh</span>
+            <RefreshCw size={15} className={loading ? "animate-spin text-[#F2901F]" : "text-[#141B47]"} />
+            <span>Refresh</span>
           </button>
           <button
             onClick={() => setIsCreateOpen(true)}
-            className="px-4 h-10 rounded-xl text-xs font-bold bg-[#F2901F] hover:bg-[#F2901F]/90 text-white flex items-center gap-2 cursor-pointer transition-all shadow-xs"
+            className="flex-1 sm:flex-none justify-center px-4 h-11 sm:h-10 rounded-xl text-xs sm:text-sm font-bold bg-[#F2901F] hover:bg-[#F2901F]/90 text-white flex items-center gap-2 cursor-pointer transition-all shadow-xs min-h-[44px]"
           >
-            <UserPlus size={15} /> Add Customer
+            <UserPlus size={16} /> <span>Add Customer</span>
           </button>
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="relative max-w-md">
-        <input
-          type="text"
-          placeholder="Search customers..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 h-11 rounded-xl text-xs border border-[#E5E7EB] bg-[#F7F9FC] focus:bg-white focus:outline-none focus:border-[#F2901F] text-[#172236] transition-colors"
-        />
-        <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+      {/* Search Bar & Result Counter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative w-full max-w-md">
+          <input
+            type="text"
+            placeholder="Search by ID, name, phone, or email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-9 h-11 rounded-xl text-xs sm:text-sm border border-[#E5E7EB] bg-white focus:bg-white focus:outline-none focus:border-[#F2901F] text-[#172236] transition-colors shadow-2xs"
+          />
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[#94A3B8] hover:text-[#172236] cursor-pointer"
+              title="Clear search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <div className="text-xs font-semibold text-[#667085] flex items-center gap-1.5 self-start sm:self-center">
+          <span>Showing <strong className="text-[#141B47]">{filteredCustomers.length}</strong> of {customers.length} customer{customers.length === 1 ? "" : "s"}</span>
+        </div>
       </div>
 
-      {/* ── DESKTOP CUSTOMER TABLE (>= md) ── */}
+      {/* ── DESKTOP & TABLET CUSTOMER TABLE (>= md) ── */}
       <div className="hidden md:block overflow-x-auto border border-[#E5E7EB] rounded-2xl bg-white shadow-xs">
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-left border-collapse min-w-[760px]">
           <thead>
             <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
-              <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Customer ID</th>
+              <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085] whitespace-nowrap">Customer ID</th>
               <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Name</th>
               <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Phone</th>
               <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Email</th>
-              <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">Status</th>
-              <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085] text-right">Action</th>
+              <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085] whitespace-nowrap">Status</th>
+              <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#667085] text-right whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#F1F5F9]">
             {loading ? (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
-                  <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading customers...
+                <td colSpan={6} className="py-14 text-center text-xs text-[#667085]">
+                  <RefreshCw className="animate-spin inline-block mr-2 text-[#F2901F]" size={18} /> Loading customer accounts...
                 </td>
               </tr>
             ) : filteredCustomers.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-xs text-[#667085]">
-                  No customers found.
+                <td colSpan={6} className="py-14 text-center text-xs text-[#667085]">
+                  {search ? `No customers matched "${search}".` : "No registered customers found."}
                 </td>
               </tr>
             ) : (
               filteredCustomers.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50/60 transition-colors">
-                  <td className="px-5 py-4 font-mono font-bold text-xs text-[#141B47]">
-                    <span className="px-2.5 py-1 rounded-md bg-[#F1F5F9] border border-[#E5E7EB]">
+                <tr key={c.id} className="hover:bg-gray-50/70 transition-colors">
+                  <td className="px-5 py-4 font-mono font-bold text-xs text-[#141B47] whitespace-nowrap">
+                    <span className="px-2.5 py-1 rounded-md bg-[#F1F5F9] border border-[#E5E7EB] inline-block tracking-wide">
                       {c.customerIdentifier}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-xs font-bold text-[#172236]">
+                  <td className="px-5 py-4 text-xs font-bold text-[#172236] max-w-[200px] break-words">
                     {c.name}
                   </td>
-                  <td className="px-5 py-4 text-xs text-[#667085]">
-                    {c.phone}
+                  <td className="px-5 py-4 text-xs text-[#475569] whitespace-nowrap">
+                    {c.phone && c.phone !== "N/A" ? (
+                      <a href={`tel:${c.phone}`} className="hover:underline hover:text-[#141B47] font-medium">
+                        {c.phone}
+                      </a>
+                    ) : (
+                      <span className="text-gray-400">N/A</span>
+                    )}
                   </td>
-                  <td className="px-5 py-4 text-xs text-[#667085]">
-                    {c.email}
+                  <td className="px-5 py-4 text-xs text-[#475569] max-w-[240px] break-all">
+                    {c.email && c.email !== "N/A" ? (
+                      <a href={`mailto:${c.email}`} className="hover:underline hover:text-[#141B47]">
+                        {c.email}
+                      </a>
+                    ) : (
+                      <span className="text-gray-400">N/A</span>
+                    )}
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-4 whitespace-nowrap">
                     <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
                         c.status === "ACTIVE"
                           ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
                           : "bg-red-50 text-red-800 border border-red-200"
@@ -477,7 +510,7 @@ export default function AdminCustomerSettings() {
                       {c.status}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-right">
+                  <td className="px-5 py-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1.5">
                       {c.email && c.email !== "N/A" && (
                         <button
@@ -488,7 +521,7 @@ export default function AdminCustomerSettings() {
                           className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-blue-200 bg-blue-50/70 text-blue-700 hover:bg-blue-100 transition-all inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                         >
                           <Send size={12} className={sendingEmailId === c.id ? "animate-pulse" : ""} />
-                          <span className="hidden lg:inline">{sendingEmailId === c.id ? "Sending..." : "Email"}</span>
+                          <span className="hidden xl:inline">{sendingEmailId === c.id ? "Sending..." : "Email"}</span>
                         </button>
                       )}
 
@@ -500,7 +533,7 @@ export default function AdminCustomerSettings() {
                           className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-emerald-200 bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100 transition-all inline-flex items-center gap-1 cursor-pointer"
                         >
                           <MessageSquare size={12} />
-                          <span className="hidden lg:inline">WhatsApp</span>
+                          <span className="hidden xl:inline">WhatsApp</span>
                         </button>
                       )}
 
@@ -520,25 +553,30 @@ export default function AdminCustomerSettings() {
       </div>
 
       {/* ── MOBILE CUSTOMER CARDS (< md) ── */}
-      <div className="block md:hidden space-y-3">
+      <div className="block md:hidden space-y-3.5">
         {loading ? (
-          <div className="py-12 text-center text-xs text-[#667085]">
-            <RefreshCw className="animate-spin inline-block mr-2" size={16} /> Loading customers...
+          <div className="py-14 text-center text-xs text-[#667085] bg-white rounded-2xl border border-[#E5E7EB] shadow-2xs">
+            <RefreshCw className="animate-spin inline-block mr-2 text-[#F2901F]" size={18} /> Loading customer accounts...
           </div>
         ) : filteredCustomers.length === 0 ? (
-          <div className="py-12 text-center text-xs text-[#667085] bg-gray-50 rounded-2xl border border-[#E5E7EB]">
-            No customers found.
+          <div className="py-12 px-4 text-center text-xs text-[#667085] bg-white rounded-2xl border border-[#E5E7EB] shadow-2xs">
+            <Users size={32} className="mx-auto text-gray-300 mb-2.5" />
+            <p className="font-bold text-sm text-[#172236]">No customers found</p>
+            <p className="text-xs text-[#667085] mt-1">
+              {search ? `No customer matched your search "${search}".` : "No registered customers yet."}
+            </p>
           </div>
         ) : (
           filteredCustomers.map((c) => (
-            <div key={c.id} className="p-4 rounded-2xl border border-[#E5E7EB] bg-white space-y-3 shadow-xs">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <span className="font-mono font-bold text-xs text-[#141B47] px-2 py-0.5 rounded bg-[#F1F5F9] border border-[#E5E7EB] inline-block">
-                    {c.customerIdentifier}
-                  </span>
-                  <h3 className="font-bold text-sm text-[#172236] mt-2">{c.name}</h3>
-                </div>
+            <div
+              key={c.id}
+              className="p-4 sm:p-5 rounded-2xl border border-[#E5E7EB] bg-white shadow-2xs space-y-3.5 transition-all hover:border-[#CBD5E1]"
+            >
+              {/* Card Header: Customer ID Badge & Status */}
+              <div className="flex items-start justify-between gap-2.5">
+                <span className="font-mono font-bold text-xs text-[#141B47] px-2.5 py-1 rounded-lg bg-[#F1F5F9] border border-[#E2E8F0] tracking-wide shrink-0 whitespace-nowrap">
+                  {c.customerIdentifier}
+                </span>
                 <span
                   className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${
                     c.status === "ACTIVE"
@@ -546,54 +584,108 @@ export default function AdminCustomerSettings() {
                       : "bg-red-50 text-red-800 border border-red-200"
                   }`}
                 >
+                  {c.status === "ACTIVE" ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
                   {c.status}
                 </span>
               </div>
 
-              <div className="space-y-1 text-xs text-[#667085] pt-2 border-t border-[#F1F5F9]">
-                <p className="flex items-center gap-2">
-                  <Phone size={13} className="text-[#94A3B8]" /> {c.phone}
-                </p>
-                <p className="flex items-center gap-2 truncate">
-                  <Mail size={13} className="text-[#94A3B8]" /> <span className="truncate">{c.email}</span>
-                </p>
+              {/* Customer Name */}
+              <div>
+                <h3 className="font-bold text-base text-[#172236] leading-snug break-words">
+                  {c.name}
+                </h3>
               </div>
 
-              <div className="pt-2 border-t border-[#F1F5F9] flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold text-[#667085]">
-                  {c.shipmentsCount} shipment(s) · {c.credits} credit(s)
-                </span>
-                <div className="flex items-center gap-1.5">
-                  {c.email && c.email !== "N/A" && (
-                    <button
-                      type="button"
-                      onClick={() => handleSendCredentialsEmail(c)}
-                      disabled={sendingEmailId === c.id}
-                      title="Send Access Email"
-                      className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors inline-flex items-center gap-1 cursor-pointer min-h-[36px]"
+              {/* Complete Contact Details without clipping or truncation */}
+              <div className="space-y-2 text-xs text-[#475569] pt-2 border-t border-[#F1F5F9]">
+                <div className="flex items-start gap-2.5">
+                  <Phone size={14} className="text-[#94A3B8] shrink-0 mt-0.5" />
+                  {c.phone && c.phone !== "N/A" ? (
+                    <a
+                      href={`tel:${c.phone}`}
+                      className="font-medium text-[#172236] hover:text-[#141B47] hover:underline break-all"
                     >
-                      <Send size={12} className={sendingEmailId === c.id ? "animate-pulse" : ""} />
-                      <span className="text-[11px]">Email</span>
-                    </button>
+                      {c.phone}
+                    </a>
+                  ) : (
+                    <span className="text-gray-400">No phone provided</span>
                   )}
-                  {c.phone && c.phone !== "N/A" && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenWhatsAppReview(c)}
-                      title="Send WhatsApp Access"
-                      className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors inline-flex items-center gap-1 cursor-pointer min-h-[36px]"
-                    >
-                      <MessageSquare size={12} />
-                      <span className="text-[11px]">WhatsApp</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleOpenEdit(c)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#355DAF] transition-colors inline-flex items-center gap-1.5 cursor-pointer shrink-0 min-h-[36px]"
-                  >
-                    <Edit3 size={13} /> Edit
-                  </button>
                 </div>
+                <div className="flex items-start gap-2.5">
+                  <Mail size={14} className="text-[#94A3B8] shrink-0 mt-0.5" />
+                  {c.email && c.email !== "N/A" ? (
+                    <a
+                      href={`mailto:${c.email}`}
+                      className="font-medium text-[#172236] hover:text-[#141B47] hover:underline break-all"
+                    >
+                      {c.email}
+                    </a>
+                  ) : (
+                    <span className="text-gray-400">No email provided</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Account Stats Summary */}
+              <div className="pt-2 border-t border-[#F1F5F9] flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-[#667085]">
+                <span>{c.shipmentsCount} shipment{c.shipmentsCount === 1 ? "" : "s"}</span>
+                <span>•</span>
+                <span>{c.credits} credit{c.credits === 1 ? "" : "s"}</span>
+                <span>•</span>
+                <span>{c.paymentsCount} payment{c.paymentsCount === 1 ? "" : "s"}</span>
+              </div>
+
+              {/* Accessible Action Buttons: Touch-friendly min-h-[40px] without overflow */}
+              <div className="pt-3 border-t border-[#F1F5F9] grid grid-cols-3 gap-2">
+                {c.email && c.email !== "N/A" ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSendCredentialsEmail(c)}
+                    disabled={sendingEmailId === c.id}
+                    title="Send Access Email"
+                    className="w-full justify-center px-2 py-2 rounded-xl text-xs font-semibold border border-blue-200 bg-blue-50/80 text-blue-700 hover:bg-blue-100 transition-colors inline-flex items-center gap-1.5 cursor-pointer min-h-[40px] disabled:opacity-50"
+                  >
+                    <Send size={13} className={sendingEmailId === c.id ? "animate-pulse" : ""} />
+                    <span>Email</span>
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full justify-center px-2 py-2 rounded-xl text-xs font-semibold border border-gray-100 bg-gray-50 text-gray-400 inline-flex items-center gap-1.5 min-h-[40px] cursor-not-allowed opacity-60"
+                  >
+                    <Mail size={13} />
+                    <span>No Email</span>
+                  </button>
+                )}
+
+                {c.phone && c.phone !== "N/A" ? (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenWhatsAppReview(c)}
+                    title="Send WhatsApp Access"
+                    className="w-full justify-center px-2 py-2 rounded-xl text-xs font-semibold border border-emerald-200 bg-emerald-50/80 text-emerald-700 hover:bg-emerald-100 transition-colors inline-flex items-center gap-1.5 cursor-pointer min-h-[40px]"
+                  >
+                    <MessageSquare size={13} />
+                    <span>WhatsApp</span>
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full justify-center px-2 py-2 rounded-xl text-xs font-semibold border border-gray-100 bg-gray-50 text-gray-400 inline-flex items-center gap-1.5 min-h-[40px] cursor-not-allowed opacity-60"
+                  >
+                    <Phone size={13} />
+                    <span>No Phone</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenEdit(c)}
+                  className="w-full justify-center px-3 py-2 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#355DAF] transition-colors inline-flex items-center gap-1.5 cursor-pointer min-h-[40px] shadow-2xs"
+                >
+                  <Edit3 size={13} />
+                  <span>Edit</span>
+                </button>
               </div>
             </div>
           ))

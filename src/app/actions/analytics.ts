@@ -38,15 +38,61 @@ export interface RecentLoginItem {
   createdAt: string;
 }
 
+export interface MonthlyRevenuePoint {
+  month: string;
+  displayMonth: string;
+  revenue: number;
+  transactionsCount: number;
+  shippingFeeRevenue: number;
+  creditPurchaseRevenue: number;
+}
+
+export interface ShipmentStatusCount {
+  status: string;
+  label: string;
+  count: number;
+}
+
 export interface AnalyticsSummary {
   period: AnalyticsPeriod;
+  dateRange: {
+    start: string;
+    end: string;
+  };
+  // Customers
   registeredCustomers: number;
+  newCustomersInPeriod: number;
+
+  // Shipments / Logistics
+  totalShipments: number;
+  activeShipments: number;
+  completedShipments: number;
+  inTransitShipments: number;
+  shipmentsInPeriod: number;
+  shipmentsByStatus: ShipmentStatusCount[];
+
+  // Financials (Verified Only)
+  totalRevenue: number;
+  periodRevenue: number;
+  shippingFeeRevenue: number;
+  creditPurchaseRevenue: number;
+  successfulPaymentsCount: number;
+  pendingPaymentsCount: number;
+  pendingPaymentsAmount: number;
+  outstandingBalances: number;
+  monthlyRevenue: MonthlyRevenuePoint[];
+
+  // Sourcing
+  totalSourcingRequests: number;
+  pendingSourcingRequests: number;
+
+  // Engagement & Activity
   totalSuccessfulLogins: number;
   uniqueCustomersLoggedIn: number;
   totalPageViews: number;
   uniqueActiveCustomers: number;
   failedLoginAttempts: number;
-  dailyActivity: DailyActivityPoint[];
+  dailyActivity: (DailyActivityPoint & { revenue: number })[];
   mostVisitedPages: PageVisitItem[];
   recentActiveCustomers: ActiveCustomerItem[];
   recentLogins: RecentLoginItem[];
@@ -60,6 +106,18 @@ const PATH_LABELS: Record<string, string> = {
   "/portal/credits": "Credits Balance",
   "/portal/notifications": "Notifications",
   "/portal/profile": "Customer Profile",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  SHIPMENT_CREATED: "Intake Created",
+  PREPARING_SHIPMENT: "Preparing Dispatch",
+  SHIPPED: "Departed China Terminal",
+  IN_TRANSIT: "International Transit",
+  ARRIVED_AT_DESTINATION: "Arrived Destination Hub",
+  CUSTOMS_CLEARANCE: "Customs Clearance",
+  OUT_FOR_DELIVERY: "Out for Delivery",
+  DELIVERED: "Delivered / Completed",
+  ON_HOLD: "On Hold",
 };
 
 /**
@@ -109,7 +167,6 @@ export async function recordCustomerPageViewAction(path: string, title?: string)
 
     return { success: true };
   } catch (err: any) {
-    // Fail silently so page view tracking never interferes with customer experience
     console.warn("[recordCustomerPageViewAction] Tracking notice:", err?.message || err);
     return { error: err?.message };
   }
@@ -143,7 +200,7 @@ export async function recordCustomerLoginEvent(params: {
 }
 
 /**
- * Admin action to fetch aggregated customer login and page visit metrics.
+ * Admin action to fetch live customer metrics, shipment stats, financial revenue, and activity.
  */
 export async function getCustomerAnalyticsAction(
   period: AnalyticsPeriod = "7d",
@@ -165,16 +222,156 @@ export async function getCustomerAnalyticsAction(
   } else if (period === "30d") {
     startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   } else {
-    // all time: 1 year ago default
+    // all time: default to 1 year
     startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
   }
 
   const endDate = customEnd ? new Date(customEnd) : now;
 
-  // 1. Registered Customers
-  const registeredCustomers = await prisma.customer.count();
+  // 1. Registered Customers & New in Period
+  const [registeredCustomers, newCustomersInPeriod] = await Promise.all([
+    prisma.customer.count(),
+    prisma.customer.count({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+    }),
+  ]);
 
-  // 2. Successful Logins within range
+  // 2. Shipments overview
+  const [
+    totalShipments,
+    activeShipments,
+    completedShipments,
+    inTransitShipments,
+    shipmentsInPeriod,
+    allShipmentsWithStatus,
+  ] = await Promise.all([
+    prisma.shipment.count(),
+    prisma.shipment.count({
+      where: { status: { notIn: ["DELIVERED", "ON_HOLD"] } },
+    }),
+    prisma.shipment.count({
+      where: { status: "DELIVERED" },
+    }),
+    prisma.shipment.count({
+      where: { status: "IN_TRANSIT" },
+    }),
+    prisma.shipment.count({
+      where: { createdAt: { gte: startDate, lte: endDate } },
+    }),
+    prisma.shipment.groupBy({
+      by: ["status"],
+      _count: { id: true },
+    }),
+  ]);
+
+  const shipmentsByStatus: ShipmentStatusCount[] = allShipmentsWithStatus.map((g) => ({
+    status: g.status,
+    label: STATUS_LABELS[g.status] || g.status,
+    count: g._count.id,
+  }));
+
+  // 3. Financials: Verified Successful Payments Only
+  const allSuccessfulPayments = await prisma.payment.findMany({
+    where: { status: "SUCCESS" },
+    select: {
+      amount: true,
+      type: true,
+      createdAt: true,
+      currency: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const totalRevenue = allSuccessfulPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
+
+  const shippingFeeRevenue = allSuccessfulPayments
+    .filter((p) => p.type === "SHIPPING_FEE")
+    .reduce((acc, p) => acc + (p.amount || 0), 0);
+
+  const creditPurchaseRevenue = allSuccessfulPayments
+    .filter((p) => p.type === "CREDIT_PURCHASE")
+    .reduce((acc, p) => acc + (p.amount || 0), 0);
+
+  const periodRevenue = allSuccessfulPayments
+    .filter((p) => p.createdAt >= startDate && p.createdAt <= endDate)
+    .reduce((acc, p) => acc + (p.amount || 0), 0);
+
+  const successfulPaymentsCount = allSuccessfulPayments.length;
+
+  // Pending Payments
+  const pendingPayments = await prisma.payment.findMany({
+    where: { status: "PENDING" },
+    select: { amount: true },
+  });
+  const pendingPaymentsCount = pendingPayments.length;
+  const pendingPaymentsAmount = pendingPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
+
+  // Outstanding Balances on Shipments with fee > 0
+  const shipmentsWithFee = await prisma.shipment.findMany({
+    where: { fee: { gt: 0 } },
+    select: {
+      fee: true,
+      payments: {
+        where: { status: "SUCCESS", type: "SHIPPING_FEE" },
+        select: { amount: true },
+      },
+    },
+  });
+
+  const outstandingBalances = shipmentsWithFee.reduce((acc, s) => {
+    const paid = s.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const balance = Math.max(0, (s.fee || 0) - paid);
+    return acc + balance;
+  }, 0);
+
+  // Monthly Revenue Grouping (last 6 to 12 months)
+  const monthlyMap: Record<
+    string,
+    { revenue: number; count: number; shippingFee: number; creditPurchase: number; displayMonth: string }
+  > = {};
+
+  allSuccessfulPayments.forEach((p) => {
+    const key = `${p.createdAt.getFullYear()}-${String(p.createdAt.getMonth() + 1).padStart(2, "0")}`;
+    const displayMonth = p.createdAt.toLocaleDateString("en-GH", { month: "short", year: "numeric" });
+    if (!monthlyMap[key]) {
+      monthlyMap[key] = {
+        revenue: 0,
+        count: 0,
+        shippingFee: 0,
+        creditPurchase: 0,
+        displayMonth,
+      };
+    }
+    monthlyMap[key].revenue += p.amount || 0;
+    monthlyMap[key].count += 1;
+    if (p.type === "SHIPPING_FEE") {
+      monthlyMap[key].shippingFee += p.amount || 0;
+    } else if (p.type === "CREDIT_PURCHASE") {
+      monthlyMap[key].creditPurchase += p.amount || 0;
+    }
+  });
+
+  const monthlyRevenue: MonthlyRevenuePoint[] = Object.entries(monthlyMap)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-12)
+    .map(([month, val]) => ({
+      month,
+      displayMonth: val.displayMonth,
+      revenue: val.revenue,
+      transactionsCount: val.count,
+      shippingFeeRevenue: val.shippingFee,
+      creditPurchaseRevenue: val.creditPurchase,
+    }));
+
+  // 4. Sourcing Requests
+  const [totalSourcingRequests, pendingSourcingRequests] = await Promise.all([
+    prisma.sourcingRequest.count(),
+    prisma.sourcingRequest.count({ where: { status: "PENDING" } }),
+  ]);
+
+  // 5. Auth Events within period
   const successfulLogins = await prisma.customerLoginLog.findMany({
     where: {
       status: "SUCCESS",
@@ -192,7 +389,6 @@ export async function getCustomerAnalyticsAction(
     successfulLogins.map((l) => l.customerId).filter(Boolean)
   ).size;
 
-  // 3. Failed Logins within range
   const failedLoginAttempts = await prisma.customerLoginLog.count({
     where: {
       status: "FAILED",
@@ -200,7 +396,7 @@ export async function getCustomerAnalyticsAction(
     },
   });
 
-  // 4. Page Views within range
+  // Page Views within period
   const pageViews = await prisma.customerPageView.findMany({
     where: {
       createdAt: { gte: startDate, lte: endDate },
@@ -215,13 +411,13 @@ export async function getCustomerAnalyticsAction(
 
   const totalPageViews = pageViews.length;
 
-  // 5. Unique Active Customers (Logged in or viewed a page)
+  // Unique Active Customers (Logged in or viewed page)
   const activeCustomerIds = new Set<string>();
   successfulLogins.forEach((l) => { if (l.customerId) activeCustomerIds.add(l.customerId); });
   pageViews.forEach((p) => { if (p.customerId) activeCustomerIds.add(p.customerId); });
   const uniqueActiveCustomers = activeCustomerIds.size;
 
-  // 6. Most Visited Pages Aggregation
+  // Most Visited Pages Aggregation
   const pathCounts: Record<string, number> = {};
   pageViews.forEach((pv) => {
     pathCounts[pv.path] = (pathCounts[pv.path] || 0) + 1;
@@ -236,15 +432,18 @@ export async function getCustomerAnalyticsAction(
       label: PATH_LABELS[path] || path,
     }));
 
-  // 7. Daily Activity Data points (last 7 or up to 14 days)
-  const daysDiff = Math.max(1, Math.min(30, Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000))));
-  const dailyMap: Record<string, { logins: number; pageViews: number; displayDate: string }> = {};
+  // Daily Activity points (Logins, Page Views, and Revenue)
+  const daysDiff = Math.max(
+    1,
+    Math.min(30, Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
+  );
+  const dailyMap: Record<string, { logins: number; pageViews: number; revenue: number; displayDate: string }> = {};
 
   for (let i = 0; i < daysDiff; i++) {
     const d = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
     const key = d.toISOString().split("T")[0];
     const display = d.toLocaleDateString("en-GH", { month: "short", day: "numeric" });
-    dailyMap[key] = { logins: 0, pageViews: 0, displayDate: display };
+    dailyMap[key] = { logins: 0, pageViews: 0, revenue: 0, displayDate: display };
   }
 
   successfulLogins.forEach((l) => {
@@ -257,14 +456,22 @@ export async function getCustomerAnalyticsAction(
     if (dailyMap[key]) dailyMap[key].pageViews++;
   });
 
-  const dailyActivity: DailyActivityPoint[] = Object.entries(dailyMap).map(([date, val]) => ({
+  allSuccessfulPayments
+    .filter((p) => p.createdAt >= startDate && p.createdAt <= endDate)
+    .forEach((p) => {
+      const key = p.createdAt.toISOString().split("T")[0];
+      if (dailyMap[key]) dailyMap[key].revenue += p.amount || 0;
+    });
+
+  const dailyActivity = Object.entries(dailyMap).map(([date, val]) => ({
     date,
     displayDate: val.displayDate,
     logins: val.logins,
     pageViews: val.pageViews,
+    revenue: val.revenue,
   }));
 
-  // 8. Recent Active Customers
+  // Recent Active Customers
   const recentViews = await prisma.customerPageView.findMany({
     take: 40,
     orderBy: { createdAt: "desc" },
@@ -298,7 +505,7 @@ export async function getCustomerAnalyticsAction(
 
   const recentActiveCustomers = Object.values(customerMap).slice(0, 10);
 
-  // 9. Recent Logins List
+  // Recent Logins
   const recentLoginRecords = await prisma.customerLoginLog.findMany({
     take: 15,
     orderBy: { createdAt: "desc" },
@@ -323,7 +530,29 @@ export async function getCustomerAnalyticsAction(
 
   return {
     period,
+    dateRange: {
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
+    },
     registeredCustomers,
+    newCustomersInPeriod,
+    totalShipments,
+    activeShipments,
+    completedShipments,
+    inTransitShipments,
+    shipmentsInPeriod,
+    shipmentsByStatus,
+    totalRevenue,
+    periodRevenue,
+    shippingFeeRevenue,
+    creditPurchaseRevenue,
+    successfulPaymentsCount,
+    pendingPaymentsCount,
+    pendingPaymentsAmount,
+    outstandingBalances,
+    monthlyRevenue,
+    totalSourcingRequests,
+    pendingSourcingRequests,
     totalSuccessfulLogins,
     uniqueCustomersLoggedIn,
     totalPageViews,

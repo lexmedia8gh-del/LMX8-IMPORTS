@@ -4,8 +4,8 @@ import { requireAdminSession } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Customer Analytics | LMX8 CTRL ROOM",
-  description: "Monitor customer logins, page views, and activity across the customer portal.",
+  title: "Live Analytics & Revenue | LMX8 CTRL ROOM",
+  description: "Monitor live customer metrics, financial revenue, shipment milestones, and portal activity.",
 };
 
 export default async function AdminAnalyticsPage() {
