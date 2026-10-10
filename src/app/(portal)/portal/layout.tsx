@@ -456,11 +456,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <Menu size={20} />
             </button>
             <div className="flex items-center gap-2">
-              <span className="hidden sm:flex text-sm font-bold text-white items-center gap-2">
-                <BrandLogo variant="symbol" height={24} />
+              <span className="text-sm font-bold text-white items-center gap-2 flex">
                 {branding?.shortName || "LMX8"}
               </span>
-              <span className="hidden sm:block text-gray-500 mx-2">/</span>
+              <span className="text-gray-500 mx-1">/</span>
               <span className="text-sm font-semibold text-white capitalize truncate block">
                 {pathname === "/portal" ? "Dashboard" : pathname.split("/").pop()}
               </span>

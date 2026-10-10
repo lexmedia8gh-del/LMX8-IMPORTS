@@ -19,20 +19,30 @@ export function Footer() {
   const tagline = branding?.tagline || "Your Goods. Our Priority.";
 
   const isLoginPage = pathname === "/login" || pathname === "/admin-login";
+  const isTrackingPage = pathname === "/track" || pathname.startsWith("/track/");
 
-  // Dedicated minimal customer login footer without duplicate logo or public clutter
-  if (isLoginPage) {
+  // Dedicated minimal footer for tracking and login pages without duplicate logo or public clutter
+  if (isLoginPage || isTrackingPage) {
     return (
       <footer
-        className="w-full py-4 px-6 border-t text-center"
+        className="w-full py-5 px-6 border-t text-center"
         style={{
           background: primaryBg,
           borderColor: "rgba(255,255,255,0.06)",
         }}
       >
-        <p className="text-xs text-[#667085]">
-          &copy; {new Date().getFullYear()} {businessName}. All rights reserved.
-        </p>
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#94A3B8]">
+          <p>
+            &copy; {new Date().getFullYear()} <strong className="text-white font-semibold">{businessName}</strong>. All rights reserved.
+          </p>
+          <div className="flex items-center gap-4 text-xs">
+            <Link href="/" className="hover:text-white transition-colors">Home</Link>
+            <Link href="/how-it-works" className="hover:text-white transition-colors">How It Works</Link>
+            <a href={CONTACT_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Support Desk</a>
+            <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
+            <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+          </div>
+        </div>
       </footer>
     );
   }
