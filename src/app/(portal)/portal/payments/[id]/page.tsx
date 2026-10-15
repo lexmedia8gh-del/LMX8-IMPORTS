@@ -103,12 +103,41 @@ export default async function PaymentCheckoutPage({
             <h3 className="text-sm font-semibold" style={{ color: "#172236" }}>
               Fee breakdown
             </h3>
-            <div className="flex items-center justify-between text-sm">
-              <span style={{ color: "#667085" }}>Shipping fee</span>
-              <span className="font-medium" style={{ color: "#172236" }}>
-                {formatCurrency(shipment.fee)}
-              </span>
-            </div>
+            {shipment.discountPercent && shipment.discountPercent > 0 ? (
+              <>
+                <div className="flex items-center justify-between text-sm">
+                  <span style={{ color: "#667085" }}>Original shipping fee</span>
+                  <span className="font-semibold line-through text-[#94A3B8]">
+                    {formatCurrency(shipment.originalFee ?? shipment.fee)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span style={{ color: "#667085" }}>Shipping discount</span>
+                  <span className="font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full text-xs">
+                    {shipment.discountPercent}% OFF
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-emerald-700 font-medium">You save</span>
+                  <span className="font-bold text-emerald-700">
+                    − {formatCurrency(shipment.discountAmount ?? 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm pt-1 border-t border-slate-100">
+                  <span className="font-bold" style={{ color: "#172236" }}>Shipping fee to pay</span>
+                  <span className="font-bold text-base" style={{ color: "#172236" }}>
+                    {formatCurrency(shipment.fee)}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between text-sm">
+                <span style={{ color: "#667085" }}>Shipping fee</span>
+                <span className="font-medium" style={{ color: "#172236" }}>
+                  {formatCurrency(shipment.fee)}
+                </span>
+              </div>
+            )}
             {paidAmount > 0 && (
               <div className="flex items-center justify-between text-sm">
                 <span style={{ color: "#667085" }}>Previously paid</span>

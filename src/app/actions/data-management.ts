@@ -139,6 +139,9 @@ export async function getDataRecordsAction(
           description: s.description || "N/A",
           status: s.status || "SHIPMENT_CREATED",
           fee: s.fee ?? 0,
+          originalFee: s.originalFee ?? s.fee ?? 0,
+          discountPercent: s.discountPercent ?? 0,
+          discountAmount: s.discountAmount ?? 0,
           weight: s.weight ?? null,
           quantity: s.quantity ?? null,
           createdAt: s.createdAt ? s.createdAt.toISOString() : new Date().toISOString(),
@@ -534,6 +537,9 @@ export async function updateDataRecordAction(
         if (data.trackingNumber !== undefined && data.trackingNumber.trim()) updateData.trackingNumber = String(data.trackingNumber).trim();
         if (data.status !== undefined && data.status) updateData.status = data.status;
         if (data.fee !== undefined) updateData.fee = parseFloat(data.fee) || 0;
+        if (data.originalFee !== undefined) updateData.originalFee = parseFloat(data.originalFee) || 0;
+        if (data.discountPercent !== undefined) updateData.discountPercent = parseFloat(data.discountPercent) || 0;
+        if (data.discountAmount !== undefined) updateData.discountAmount = parseFloat(data.discountAmount) || 0;
         if (data.weight !== undefined) updateData.weight = data.weight !== "" && data.weight !== null ? parseFloat(data.weight) : null;
         if (data.quantity !== undefined) updateData.quantity = data.quantity !== "" && data.quantity !== null ? parseInt(data.quantity) : null;
         if (data.batchId !== undefined) updateData.batchId = data.batchId ? String(data.batchId) : null;

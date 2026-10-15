@@ -172,6 +172,10 @@ export async function initializeShippingPaymentAction(shipmentId: string, callba
           trackingNumber: shipment.trackingNumber,
           customerIdentifier: customer.customerIdentifier,
           shipmentId: shipment.id,
+          originalFee: shipment.originalFee ?? shipment.fee,
+          discountPercent: shipment.discountPercent ?? 0,
+          discountAmount: shipment.discountAmount ?? 0,
+          finalFee: shipment.fee,
         },
       },
     });

@@ -40,49 +40,99 @@ export async function getAllPaymentsAction() {
 
 // ── Admin: set or update shipping fee ────────────────────────────────────────
 
-export async function setShippingFeeAction(trackingNumber: string, fee: number) {
+export async function setShippingFeeAction(
+  trackingNumber: string,
+  feeOrOriginalFee: number,
+  discountPercent: number = 0
+) {
   const admin = await requireAdminSession();
 
-  if (fee < 0) {
-    return { error: "Shipping fee cannot be negative." };
+  if (typeof feeOrOriginalFee !== "number" || isNaN(feeOrOriginalFee) || feeOrOriginalFee < 0) {
+    return { error: "Original shipping fee cannot be negative." };
+  }
+
+  const rawPercent = typeof discountPercent === "number" ? discountPercent : parseFloat(String(discountPercent)) || 0;
+  if (isNaN(rawPercent) || rawPercent < 0 || rawPercent > 100) {
+    return { error: "Discount percentage must be between 0% and 100%." };
   }
 
   const shipment = await prisma.shipment.findUnique({
     where: { trackingNumber },
+    include: { payments: { where: { type: "SHIPPING_FEE", status: "SUCCESS" } } },
   });
 
   if (!shipment) {
     return { error: "Shipment not found." };
   }
 
+  // Precise 2-decimal calculations to avoid floating point inaccuracies
+  const cleanOriginalFee = Math.round(feeOrOriginalFee * 100) / 100;
+  const cleanDiscountPercent = Math.round(rawPercent * 100) / 100;
+  const discountAmount = cleanDiscountPercent > 0 
+    ? Math.round(cleanOriginalFee * (cleanDiscountPercent / 100) * 100) / 100 
+    : 0;
+  const finalFee = Math.max(0, Math.round((cleanOriginalFee - discountAmount) * 100) / 100);
+
   const oldFee = shipment.fee;
+  const oldOriginalFee = shipment.originalFee ?? oldFee;
+  const oldDiscountPercent = shipment.discountPercent ?? 0;
+
+  // Check existing payments
+  const totalPaid = (shipment.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+  const remainingOutstanding = Math.max(0, finalFee - totalPaid);
 
   const updated = await prisma.shipment.update({
     where: { id: shipment.id },
-    data: { fee },
+    data: {
+      fee: finalFee,
+      originalFee: cleanOriginalFee,
+      discountPercent: cleanDiscountPercent,
+      discountAmount: discountAmount,
+    },
   });
+
+  const discountSummary = cleanDiscountPercent > 0
+    ? ` (${cleanDiscountPercent}% discount applied to original fee of GHS ${cleanOriginalFee.toFixed(2)}, saved GHS ${discountAmount.toFixed(2)})`
+    : cleanOriginalFee !== finalFee
+    ? ` (reset discount to 0%)`
+    : "";
 
   await prisma.auditLog.create({
     data: {
       action: "SHIPPING_FEE_SET",
       entityType: "Shipment",
       entityId: shipment.id,
-      description: `Shipping fee for ${trackingNumber} updated from GHS ${oldFee.toFixed(2)} to GHS ${fee.toFixed(2)} by ${admin.name}`,
+      description: `Shipping fee for ${trackingNumber} updated from GHS ${oldFee.toFixed(2)} to GHS ${finalFee.toFixed(2)}${discountSummary} by ${admin.name}`,
       adminId: admin.id,
-      metadata: { trackingNumber, oldFee, newFee: fee },
+      metadata: {
+        trackingNumber,
+        oldFee,
+        oldOriginalFee,
+        oldDiscountPercent,
+        newFinalFee: finalFee,
+        originalFee: cleanOriginalFee,
+        discountPercent: cleanDiscountPercent,
+        discountAmount,
+        totalPaid,
+        remainingOutstanding,
+      },
     },
   });
 
-  if (fee > 0 && fee !== oldFee) {
+  if (finalFee > 0 && finalFee !== oldFee) {
     try {
       const { createNotificationInternal } = await import("@/app/actions/notifications");
+      const notifMsg = cleanDiscountPercent > 0
+        ? `A shipping fee of GHS ${finalFee.toFixed(2)} (${cleanDiscountPercent}% discount applied — you saved GHS ${discountAmount.toFixed(2)}) has been set for your shipment ${trackingNumber}.`
+        : `A shipping fee of GHS ${finalFee.toFixed(2)} has been set for your shipment ${trackingNumber}.`;
+
       await createNotificationInternal({
         customerId: shipment.customerId,
         type: "PAYMENT",
-        title: "Shipping Fee Due",
-        message: `A shipping fee of GHS ${fee.toFixed(2)} has been set for your shipment ${trackingNumber}.`,
+        title: cleanDiscountPercent > 0 ? "Shipping Fee Discount Applied" : "Shipping Fee Due",
+        message: notifMsg,
         actionUrl: `/portal/payments`,
-        idempotencyKey: `shipping-fee-${shipment.id}-${fee}`,
+        idempotencyKey: `shipping-fee-${shipment.id}-${finalFee}-${cleanDiscountPercent}`,
         shipmentId: shipment.id,
       });
     } catch (err) {
@@ -90,7 +140,15 @@ export async function setShippingFeeAction(trackingNumber: string, fee: number) 
     }
   }
 
-  return { success: true, fee: updated.fee };
+  return {
+    success: true,
+    fee: updated.fee,
+    originalFee: updated.originalFee ?? updated.fee,
+    discountPercent: updated.discountPercent ?? 0,
+    discountAmount: updated.discountAmount ?? 0,
+    outstanding: remainingOutstanding,
+    isPaid: finalFee > 0 ? remainingOutstanding === 0 : true,
+  };
 }
 
 // ── Admin: trigger server-side re-verification of a payment ──────────────────

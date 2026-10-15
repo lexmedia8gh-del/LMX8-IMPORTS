@@ -121,6 +121,9 @@ model Shipment {
   shippingMethod   String?
   estimatedArrival DateTime?
   fee              Float           @default(0.0)
+  originalFee      Float?
+  discountPercent  Float?          @default(0.0)
+  discountAmount   Float?          @default(0.0)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 

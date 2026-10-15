@@ -56,6 +56,11 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
   );
   const paidAmount = successfulPayments.reduce((acc: number, p: any) => acc + (p.amount || 0), 0);
   const feeAmount = typeof s.fee === "number" ? s.fee : parseFloat(s.fee) || 0;
+  const originalFeeAmount = s.originalFee != null
+    ? (typeof s.originalFee === "number" ? s.originalFee : parseFloat(s.originalFee) || feeAmount)
+    : feeAmount;
+  const discountPercent = typeof s.discountPercent === "number" ? s.discountPercent : parseFloat(s.discountPercent) || 0;
+  const discountAmount = typeof s.discountAmount === "number" ? s.discountAmount : parseFloat(s.discountAmount) || 0;
   const outstanding = Math.max(0, feeAmount - paidAmount);
   const isPaid = feeAmount > 0 ? outstanding === 0 : true;
 
@@ -72,6 +77,9 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
     registeredDate: s.createdAt.toISOString().split("T")[0],
     lastUpdated: s.updatedAt.toISOString().split("T")[0],
     fee: feeAmount,
+    originalFee: originalFeeAmount,
+    discountPercent,
+    discountAmount,
     paidAmount,
     outstanding,
     isPaid,

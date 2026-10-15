@@ -14,7 +14,7 @@ import {
 import { setShippingFeeAction } from "@/app/actions/admin-payments";
 import { Shipment } from "@/lib/db";
 import { ShipmentStatusBadge, STATUS_ORDER, ShipmentStatus, ShipmentTimeline, SHIPMENT_STATUS_ADMIN_LABELS, TimelineEvent } from "@/components/shipment-status";
-import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign, Plus, Mail, Send, CheckCircle2, Trash2, Edit3 } from "lucide-react";
+import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign, Plus, Mail, Send, CheckCircle2, Trash2, Edit3, Tag, RotateCcw, Percent } from "lucide-react";
 import { AddTrackingEventDrawer } from "@/components/drawers/add-tracking-event-drawer";
 import { EditTrackingEventDrawer } from "@/components/drawers/edit-tracking-event-drawer";
 import Link from "next/link";
@@ -42,8 +42,9 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Shipping fee state
+  // Shipping fee and discount state
   const [feeInput, setFeeInput] = useState<string>("");
+  const [discountPercentInput, setDiscountPercentInput] = useState<string>("0");
   const [updatingFee, setUpdatingFee] = useState(false);
   const [feeMessage, setFeeMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -67,7 +68,11 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
       if (found) {
         setShipment(found);
         setNewStatus(found.status);
-        setFeeInput(found.fee > 0 ? String(found.fee) : "");
+        const originalFeeVal = found.originalFee != null && found.originalFee > 0
+          ? found.originalFee
+          : (found.fee > 0 ? found.fee : 0);
+        setFeeInput(originalFeeVal > 0 ? String(originalFeeVal) : "");
+        setDiscountPercentInput(found.discountPercent != null && found.discountPercent > 0 ? String(found.discountPercent) : "0");
       }
       setEmailLogs(logs || []);
     } catch (e) {
@@ -96,20 +101,42 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
     }
   };
 
+  // Real-time calculated live preview values
+  const parsedOriginalFee = parseFloat(feeInput) || 0;
+  const parsedDiscountPercent = parseFloat(discountPercentInput) || 0;
+  const isDiscountValid = !isNaN(parsedDiscountPercent) && parsedDiscountPercent >= 0 && parsedDiscountPercent <= 100;
+  const isFeeValid = !isNaN(parsedOriginalFee) && parsedOriginalFee >= 0;
+
+  const cleanOriginalFee = Math.max(0, Math.round(parsedOriginalFee * 100) / 100);
+  const cleanDiscountPercent = isDiscountValid ? Math.round(parsedDiscountPercent * 100) / 100 : 0;
+  const calculatedDiscountAmount = cleanDiscountPercent > 0 
+    ? Math.round(cleanOriginalFee * (cleanDiscountPercent / 100) * 100) / 100 
+    : 0;
+  const calculatedFinalFee = Math.max(0, Math.round((cleanOriginalFee - calculatedDiscountAmount) * 100) / 100);
+
   const handleUpdateFee = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = parseFloat(feeInput);
-    if (isNaN(parsed) || parsed < 0) {
-      setFeeMessage({ type: "error", text: "Please enter a valid fee amount." });
+    if (!isFeeValid) {
+      setFeeMessage({ type: "error", text: "Please enter a valid original fee amount." });
       return;
     }
+    if (!isDiscountValid) {
+      setFeeMessage({ type: "error", text: "Discount percentage must be between 0% and 100%." });
+      return;
+    }
+
     setUpdatingFee(true);
     setFeeMessage(null);
-    const result = await setShippingFeeAction(id, parsed);
+    const result = await setShippingFeeAction(id, cleanOriginalFee, cleanDiscountPercent);
     if ("error" in result && result.error) {
       setFeeMessage({ type: "error", text: result.error });
-    } else {
-      setFeeMessage({ type: "success", text: `Fee updated to GHS ${parsed.toFixed(2)}` });
+    } else if ("fee" in result && typeof result.fee === "number") {
+      const finalFeeNum = result.fee;
+      const successText = result.discountAmount && result.discountAmount > 0
+        ? `Fee updated to GHS ${finalFeeNum.toFixed(2)} (${result.discountPercent}% OFF applied, saved GHS ${result.discountAmount.toFixed(2)})`
+        : `Shipping fee updated to GHS ${finalFeeNum.toFixed(2)}`;
+      setFeeMessage({ type: "success", text: successText });
+      showToast(successText);
       await loadData();
     }
     setUpdatingFee(false);
@@ -299,56 +326,220 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
               </div>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-[#667085] mb-1">Shipping Fee</p>
-                <p className="font-semibold text-sm text-[#172236]">GHS {shipment.fee.toFixed(2)}</p>
+                {shipment.discountPercent && shipment.discountPercent > 0 ? (
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="line-through text-[#94A3B8] text-xs font-mono font-medium">
+                        GHS {(shipment.originalFee ?? shipment.fee).toFixed(2)}
+                      </span>
+                      <span className="font-extrabold text-sm text-[#141B47] font-mono">
+                        GHS {shipment.fee.toFixed(2)}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        {shipment.discountPercent}% OFF
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      Saved: GHS {(shipment.discountAmount ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="font-semibold text-sm text-[#172236] font-mono">GHS {shipment.fee.toFixed(2)}</p>
+                )}
               </div>
             </div>
 
-            {/* Shipping fee editor */}
-            <form onSubmit={handleUpdateFee} className="mt-6 pt-5 border-t border-[#F1F5F9] space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-[#172236] flex items-center gap-2">
-                  <DollarSign size={15} className="text-[#667085]" /> Set / Update Shipping Fee
-                </h3>
+            {/* Shipping fee & discount editor */}
+            <form onSubmit={handleUpdateFee} className="mt-6 pt-5 border-t border-[#F1F5F9] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-[#172236] flex items-center gap-2">
+                    <DollarSign size={16} className="text-[#667085]" /> Shipping Fee &amp; Discount Management
+                  </h3>
+                  <p className="text-xs text-[#667085] mt-0.5">
+                    Set the base fee and apply percentage-based promotional or client discounts.
+                  </p>
+                </div>
                 {shipment.fee > 0 && (
                   <button
                     type="button"
                     onClick={handleSendReminder}
                     disabled={sendingReminder}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#141B47] text-white hover:bg-[#202B6D] transition-colors disabled:opacity-50 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#141B47] text-white hover:bg-[#202B6D] transition-colors disabled:opacity-50 cursor-pointer self-start sm:self-auto shrink-0"
                   >
                     <Mail size={13} />
                     {sendingReminder ? "Sending..." : "Send Fee Statement Email"}
                   </button>
                 )}
               </div>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#667085]">GHS</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={feeInput}
-                    onChange={(e) => setFeeInput(e.target.value)}
-                    className="w-full pl-12 pr-4 h-10 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 transition-colors bg-white"
-                    style={{ borderColor: "#E5E7EB" }}
-                  />
+
+              {/* Input Fields Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Original Fee Input */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#667085]">
+                    Original Shipping Fee *
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#667085]">
+                      GHS
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={feeInput}
+                      onChange={(e) => setFeeInput(e.target.value)}
+                      className="w-full pl-12 pr-4 h-10 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 transition-colors bg-white font-mono text-[#172236]"
+                      style={{ borderColor: !isFeeValid ? "#EF4444" : "#E5E7EB" }}
+                    />
+                  </div>
                 </div>
+
+                {/* Discount Percentage Input */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-[#667085]">
+                      Discount Percentage
+                    </label>
+                    {cleanDiscountPercent > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setDiscountPercentInput("0")}
+                        className="text-[11px] font-semibold text-red-600 hover:text-red-700 flex items-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw size={11} /> Reset to 0%
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="100"
+                      placeholder="0"
+                      value={discountPercentInput}
+                      onChange={(e) => setDiscountPercentInput(e.target.value)}
+                      className="w-full pl-4 pr-10 h-10 rounded-xl text-sm border focus:outline-none focus:border-yellow-400 transition-colors bg-white font-mono text-[#172236]"
+                      style={{ borderColor: !isDiscountValid ? "#EF4444" : "#E5E7EB" }}
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#667085]">
+                      %
+                    </span>
+                  </div>
+                  {!isDiscountValid && (
+                    <p className="text-[11px] text-red-600 font-medium">
+                      Discount percentage must be between 0% and 100%.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] font-bold text-[#667085] mr-1 flex items-center gap-1">
+                  <Tag size={12} /> Quick Presets:
+                </span>
+                {[
+                  { label: "0% (None)", val: "0" },
+                  { label: "5%", val: "5" },
+                  { label: "10%", val: "10" },
+                  { label: "15%", val: "15" },
+                  { label: "20%", val: "20" },
+                  { label: "25%", val: "25" },
+                  { label: "50%", val: "50" },
+                ].map((preset) => {
+                  const isActive = discountPercentInput === preset.val;
+                  return (
+                    <button
+                      key={preset.val}
+                      type="button"
+                      onClick={() => setDiscountPercentInput(preset.val)}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-[#141B47] text-white border-[#141B47] shadow-xs"
+                          : "bg-white text-[#172236] border-[#E5E7EB] hover:bg-gray-50"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Live Preview Card */}
+              <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold uppercase tracking-wider text-[#667085]">Live Fee Calculation</span>
+                  {cleanDiscountPercent > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      {cleanDiscountPercent}% Discount Applied
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                  <div className="p-2.5 rounded-lg bg-white border border-[#E5E7EB]">
+                    <p className="text-[10px] uppercase font-bold text-[#64748B]">Original Fee</p>
+                    <p className="text-sm font-bold text-[#172236] font-mono mt-0.5">
+                      GHS {cleanOriginalFee.toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-white border border-[#E5E7EB]">
+                    <p className="text-[10px] uppercase font-bold text-[#64748B]">Discount %</p>
+                    <p className="text-sm font-bold text-[#172236] font-mono mt-0.5">
+                      {cleanDiscountPercent}%
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-white border border-[#E5E7EB]">
+                    <p className="text-[10px] uppercase font-bold text-[#64748B]">Amount Saved</p>
+                    <p className={`text-sm font-bold font-mono mt-0.5 ${calculatedDiscountAmount > 0 ? "text-emerald-600" : "text-[#64748B]"}`}>
+                      {calculatedDiscountAmount > 0 ? `−GHS ${calculatedDiscountAmount.toFixed(2)}` : "GHS 0.00"}
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <p className="text-[10px] uppercase font-bold text-emerald-800">Final Fee to Pay</p>
+                    <p className="text-sm font-black text-emerald-900 font-mono mt-0.5">
+                      GHS {calculatedFinalFee.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                {shipment.paidAmount && shipment.paidAmount > 0 ? (
+                  <div className="text-[11px] text-[#475569] bg-amber-50/70 border border-amber-200 p-2.5 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span>
+                      Previously paid: <strong className="text-emerald-700">GHS {shipment.paidAmount.toFixed(2)}</strong>
+                    </span>
+                    <span>
+                      Remaining to pay: <strong className="text-[#141B47]">GHS {Math.max(0, calculatedFinalFee - shipment.paidAmount).toFixed(2)}</strong>
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Save Button & Feedback */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
                 <button
                   type="submit"
-                  disabled={updatingFee}
-                  className="px-5 h-10 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ background: "#0B1F44", color: "white" }}
+                  disabled={updatingFee || !isDiscountValid || !isFeeValid}
+                  className="px-6 h-11 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed bg-[#0B1F44] text-white cursor-pointer shadow-sm"
                 >
-                  {updatingFee ? "Saving..." : <><Save size={14} /> Save Fee</>}
+                  {updatingFee ? "Saving..." : <><Save size={15} /> Save Fee &amp; Discount</>}
                 </button>
+
+                {feeMessage && (
+                  <p className={`text-xs font-semibold flex items-center gap-1.5 ${feeMessage.type === "success" ? "text-emerald-600" : "text-red-600"}`}>
+                    {feeMessage.type === "success" && <CheckCircle2 size={14} />}
+                    {feeMessage.text}
+                  </p>
+                )}
               </div>
-              {feeMessage && (
-                <p className={`text-xs font-medium ${feeMessage.type === "success" ? "text-green-600" : "text-red-600"}`}>
-                  {feeMessage.text}
-                </p>
-              )}
+
               {reminderFeedback && (
                 <p className={`text-xs font-medium ${reminderFeedback.type === "success" ? "text-emerald-600" : "text-amber-600"}`}>
                   {reminderFeedback.text}

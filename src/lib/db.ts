@@ -31,6 +31,9 @@ export type Shipment = {
   registeredDate: string;
   lastUpdated: string;
   fee: number;
+  originalFee?: number | null;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
   paidAmount?: number;
   outstanding?: number;
   isPaid?: boolean;

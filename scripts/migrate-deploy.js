@@ -192,6 +192,16 @@ async function runMigrate() {
       console.log("[migrate-deploy] Analytics tables verified successfully.");
     }
 
+    // ── 1c. Proactively ensure Shipment discount columns exist ───────────────
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "public"."Shipment" ADD COLUMN IF NOT EXISTS "originalFee" DOUBLE PRECISION;`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "public"."Shipment" ADD COLUMN IF NOT EXISTS "discountPercent" DOUBLE PRECISION DEFAULT 0.0;`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "public"."Shipment" ADD COLUMN IF NOT EXISTS "discountAmount" DOUBLE PRECISION DEFAULT 0.0;`);
+      console.log("[migrate-deploy] Shipment discount columns verified successfully.");
+    } catch (colErr) {
+      console.warn("[migrate-deploy] Shipment discount columns notice:", colErr?.message || colErr);
+    }
+
     // ── 2. Diagnose & clean up _prisma_migrations table state ────────────────
     const migrationsTableExists = await prisma.$queryRawUnsafe(`
       SELECT table_name FROM information_schema.tables 

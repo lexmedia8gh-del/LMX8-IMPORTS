@@ -697,17 +697,44 @@ export default function ShipmentDetailsPage({
             </div>
 
             {/* Fee Figures */}
-            <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB] space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B]">Total Shipping Fee</span>
-                <span className="font-bold text-[#172236]">{formatGHS(shipment.fee)}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B]">Amount Paid</span>
-                <span className="font-bold text-emerald-600">{formatGHS(shipment.paidAmount)}</span>
-              </div>
+            <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB] space-y-2.5">
+              {shipment.discountPercent && shipment.discountPercent > 0 ? (
+                <>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#64748B]">Original shipping fee</span>
+                    <span className="line-through text-[#94A3B8] font-semibold">{formatGHS(shipment.originalFee ?? shipment.fee)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#64748B]">Shipping discount</span>
+                    <span className="font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full text-[10px] tracking-wide uppercase">
+                      {shipment.discountPercent}% OFF
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-emerald-700 font-medium">You save</span>
+                    <span className="font-bold text-emerald-700">−{formatGHS(shipment.discountAmount ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
+                    <span className="font-bold text-[#141B47]">Shipping fee to pay</span>
+                    <span className="font-black text-sm text-[#141B47]">{formatGHS(shipment.fee)}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#64748B]">Total Shipping Fee</span>
+                  <span className="font-bold text-[#172236]">{formatGHS(shipment.fee)}</span>
+                </div>
+              )}
+
+              {typeof shipment.paidAmount === "number" && shipment.paidAmount > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#64748B]">Amount Paid</span>
+                  <span className="font-bold text-emerald-600">{formatGHS(shipment.paidAmount)}</span>
+                </div>
+              )}
+
               <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                <span className="text-xs font-bold text-[#141B47]">Balance</span>
+                <span className="text-xs font-bold text-[#141B47]">Balance Due</span>
                 <span
                   className={`text-sm sm:text-base font-extrabold ${
                     isOutstanding ? "text-amber-600" : "text-emerald-700"

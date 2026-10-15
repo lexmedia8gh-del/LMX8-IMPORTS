@@ -75,7 +75,18 @@ export default async function PaymentsPage() {
                     <h3 className="font-semibold text-sm" style={{ color: "#172236" }}>{s.trackingNumber}</h3>
                     <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "#667085" }}>{s.description}</p>
                     <p className="text-xs mt-1 font-medium" style={{ color: "#667085" }}>
-                      Fee: <span style={{ color: "#172236" }}>{formatCurrency(s.fee)}</span>
+                      Fee:{" "}
+                      {s.discountPercent && s.discountPercent > 0 ? (
+                        <>
+                          <span className="line-through text-[#94A3B8] mr-1.5">{formatCurrency(s.originalFee ?? s.fee)}</span>
+                          <span style={{ color: "#172236" }} className="font-bold">{formatCurrency(s.fee)}</span>
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                            {s.discountPercent}% OFF
+                          </span>
+                        </>
+                      ) : (
+                        <span style={{ color: "#172236" }}>{formatCurrency(s.fee)}</span>
+                      )}
                       {s.paidAmount > 0 && (
                         <> · Paid: <span className="text-green-600">{formatCurrency(s.paidAmount)}</span></>
                       )}

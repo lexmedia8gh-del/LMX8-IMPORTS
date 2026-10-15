@@ -156,6 +156,21 @@ export default function AdminShipmentsPage() {
                       <td className="px-6 py-4">
                         <p className="text-sm text-[#172236] font-medium">{s.description}</p>
                         <p className="text-[11px] text-[#667085] mt-0.5">{s.origin} → {s.destination}</p>
+                        {s.fee > 0 && (
+                          <div className="mt-1 flex items-center gap-1.5 text-xs font-mono">
+                            {s.discountPercent && s.discountPercent > 0 ? (
+                              <>
+                                <span className="line-through text-[#94A3B8] text-[11px]">GHS {(s.originalFee ?? s.fee).toFixed(2)}</span>
+                                <span className="font-bold text-[#141B47]">GHS {s.fee.toFixed(2)}</span>
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                  {s.discountPercent}% OFF
+                                </span>
+                              </>
+                            ) : (
+                              <span className="font-bold text-[#141B47]">GHS {s.fee.toFixed(2)}</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         {s.batch ? (
@@ -204,6 +219,21 @@ export default function AdminShipmentsPage() {
                   <div>
                     <p className="text-xs font-medium text-[#172236]">{s.description}</p>
                     <p className="text-[11px] text-[#667085] mt-0.5">{s.origin} → {s.destination}</p>
+                    {s.fee > 0 && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs font-mono">
+                        {s.discountPercent && s.discountPercent > 0 ? (
+                          <>
+                            <span className="line-through text-[#94A3B8] text-[11px]">GHS {(s.originalFee ?? s.fee).toFixed(2)}</span>
+                            <span className="font-bold text-[#141B47]">GHS {s.fee.toFixed(2)}</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              {s.discountPercent}% OFF
+                            </span>
+                          </>
+                        ) : (
+                          <span className="font-bold text-[#141B47]">GHS {s.fee.toFixed(2)}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between pt-1">

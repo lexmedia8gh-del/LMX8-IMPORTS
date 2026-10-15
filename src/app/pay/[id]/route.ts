@@ -72,6 +72,10 @@ export async function GET(
           trackingNumber: shipment.trackingNumber,
           customerIdentifier: shipment.customer?.customerIdentifier || null,
           directEmailCheckout: true,
+          originalFee: shipment.originalFee ?? shipment.fee,
+          discountPercent: shipment.discountPercent ?? 0,
+          discountAmount: shipment.discountAmount ?? 0,
+          finalFee: shipment.fee,
         },
       },
     });
