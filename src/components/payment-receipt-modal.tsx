@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { formatCurrency } from "@/lib/currency";
+import { getBrandSettingsAction } from "@/app/actions/branding";
 import { 
   X, Printer, CheckCircle2, Building, Calendar, Hash, User, 
   CreditCard, ShieldCheck, FileText, ArrowDownRight, Tag
@@ -48,8 +49,50 @@ interface PaymentReceiptModalProps {
   receipt: ReceiptData | null;
 }
 
+interface BrandSettingsInfo {
+  businessName: string;
+  shortName: string;
+  tagline: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  mainLogoUrl: string | null;
+  lightLogoUrl: string | null;
+}
+
 export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceiptModalProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [branding, setBranding] = useState<BrandSettingsInfo>({
+    businessName: "LMX8 IMPORTS",
+    shortName: "LMX8",
+    tagline: "Your Goods. Our Priority.",
+    primaryColor: "#141B47",
+    secondaryColor: "#355DAF",
+    accentColor: "#F2901F",
+    mainLogoUrl: null,
+    lightLogoUrl: null,
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      getBrandSettingsAction()
+        .then((data) => {
+          if (data) {
+            setBranding({
+              businessName: data.businessName || "LMX8 IMPORTS",
+              shortName: data.shortName || "LMX8",
+              tagline: data.tagline || "Your Goods. Our Priority.",
+              primaryColor: data.primaryColor || "#141B47",
+              secondaryColor: data.secondaryColor || "#355DAF",
+              accentColor: data.accentColor || "#F2901F",
+              mainLogoUrl: data.mainLogoUrl || data.lightLogoUrl || null,
+              lightLogoUrl: data.lightLogoUrl || null,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen || !receipt) return null;
 
@@ -77,6 +120,13 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
   const customerId = receipt.customer?.customerIdentifier || receipt.customer?.id || "N/A";
   const customerName = receipt.customer?.name || receipt.payerName || "Valued Customer";
   const methodLabel = receipt.paymentMethodLabel || (receipt.isOffline ? "Offline Payment" : "Paystack Online");
+
+  const primaryColor = branding.primaryColor || "#141B47";
+  const accentColor = branding.accentColor || "#F2901F";
+
+  const totalPaidToDate = receipt.shipment?.totalPaid ?? receipt.amount;
+  const outstandingBalance = receipt.shipment?.outstanding ?? 0;
+  const isPartialPayment = outstandingBalance > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static">
@@ -110,27 +160,44 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
         `}} />
 
         <div className="print-receipt-container">
-          {/* Top Decorative Bar & Action Bar */}
-          <div className="bg-[#141B47] text-white p-5 sm:p-6 relative">
+          {/* Top Decorative Header & Business Identity */}
+          <div style={{ backgroundColor: primaryColor }} className="text-white p-6 relative">
             <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-black tracking-widest text-[#F2901F] uppercase">
-                    LMX8 IMPORTS
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-white/90 uppercase tracking-wider">
-                    Official Receipt
-                  </span>
+              <div className="space-y-2">
+                {branding.mainLogoUrl ? (
+                  <img
+                    src={branding.mainLogoUrl}
+                    alt={branding.businessName}
+                    style={{ maxHeight: "42px", maxWidth: "200px" }}
+                    className="object-contain h-auto w-auto brightness-0 invert"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-black tracking-widest uppercase" style={{ color: accentColor }}>
+                      {branding.shortName}
+                    </span>
+                    <span className="font-bold text-xs tracking-wider opacity-90 uppercase">
+                      {branding.businessName}
+                    </span>
+                  </div>
+                )}
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                      Official Payment Receipt
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/15 text-white uppercase tracking-wider">
+                      {isPartialPayment ? "Partial Settlement" : "Full Settlement"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/75 font-mono">
+                    Receipt Slip #{receipt.receiptNumber || receipt.reference}
+                  </p>
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                  Payment Receipt
-                </h2>
-                <p className="text-xs text-white/70 font-mono">
-                  Ref: {receipt.reference}
-                </p>
               </div>
 
-              {/* Close Button (Hidden in Print) */}
+              {/* Close & Print Buttons (Hidden in Print) */}
               <div className="flex items-center gap-2 no-print">
                 <button
                   type="button"
@@ -139,7 +206,7 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
                   title="Print receipt or save to PDF"
                 >
                   <Printer size={14} />
-                  <span className="hidden sm:inline">Print / Save PDF</span>
+                  <span className="hidden sm:inline">Print / PDF</span>
                 </button>
                 <button
                   type="button"
@@ -154,87 +221,93 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
 
             {/* Status Ribbon */}
             <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+              <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
                 <CheckCircle2 size={15} />
                 <span className="uppercase tracking-wider font-extrabold text-[11px]">Payment Confirmed</span>
               </div>
-              <span className="text-white/80 font-mono text-[11px]">
+              <span className="text-white/85 font-mono text-[11px]">
                 {formattedDate} · {formattedTime}
               </span>
             </div>
           </div>
 
           {/* Receipt Body */}
-          <div className="p-5 sm:p-6 space-y-5">
+          <div className="p-5 sm:p-6 space-y-4">
             {/* Amount Banner */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[#F7F9FC] border border-[#E5E7EB] text-center space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#667085]">
-                Amount Paid
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Amount Received in This Transaction
               </span>
-              <p className="text-3xl sm:text-4xl font-black text-[#141B47] font-mono tracking-tight">
+              <p className="text-3xl sm:text-4xl font-black font-mono tracking-tight" style={{ color: primaryColor }}>
                 {formatCurrency(receipt.amount)}
               </p>
               <div className="flex items-center justify-center gap-1.5 pt-1">
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  {receipt.isOffline ? `Offline · ${methodLabel}` : `Online · ${methodLabel}`}
+                  {receipt.isOffline ? `Offline · ${methodLabel}` : `Online Gateway · ${methodLabel}`}
                 </span>
-                {receipt.receiptNumber && (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-slate-100 text-slate-700">
-                    Slip #{receipt.receiptNumber}
+                {receipt.reference && (
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-slate-200 text-slate-700">
+                    Ref: {receipt.reference}
                   </span>
                 )}
               </div>
             </div>
 
             {/* Customer & Payer Details Grid */}
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 p-4 rounded-xl bg-white border border-[#E5E7EB] text-xs">
+            <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-white border border-slate-200 text-xs">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#667085]">Customer</p>
-                <p className="font-bold text-sm text-[#172236] mt-0.5">{customerName}</p>
-                <p className="font-mono text-[#667085] mt-0.5">{customerId}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer Details</p>
+                <p className="font-bold text-sm text-slate-900 mt-0.5">{customerName}</p>
+                <p className="font-mono text-slate-600 mt-0.5">ID: {customerId}</p>
                 {receipt.customer?.phone && (
-                  <p className="text-[#667085] mt-0.5 font-mono">{receipt.customer.phone}</p>
+                  <p className="text-slate-600 mt-0.5 font-mono">{receipt.customer.phone}</p>
+                )}
+                {receipt.customer?.email && (
+                  <p className="text-slate-600 mt-0.5 truncate">{receipt.customer.email}</p>
                 )}
               </div>
 
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#667085]">Payment Method</p>
-                <p className="font-bold text-sm text-[#172236] mt-0.5">{methodLabel}</p>
-                <p className="text-[#667085] mt-0.5">
-                  Source: <strong className="text-[#141B47]">{receipt.isOffline ? "Offline Manual" : "Online Gateway"}</strong>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Payment & Source</p>
+                <p className="font-bold text-sm text-slate-900 mt-0.5">{methodLabel}</p>
+                <p className="text-slate-600 mt-0.5">
+                  Source: <strong className="text-slate-900">{receipt.isOffline ? "Manual Admin Record" : "Paystack Secure"}</strong>
                 </p>
                 {receipt.payerName && receipt.payerName !== customerName && (
-                  <p className="text-[#667085] mt-0.5">
-                    Payer: <strong className="text-[#172236]">{receipt.payerName}</strong>
+                  <p className="text-slate-600 mt-0.5">
+                    Payer: <strong className="text-slate-900">{receipt.payerName}</strong>
                   </p>
+                )}
+                {receipt.paymentDate && (
+                  <p className="text-slate-600 mt-0.5 font-mono">Date: {formattedDate}</p>
                 )}
               </div>
             </div>
 
-            {/* Shipment Association Details (If applicable) */}
+            {/* Shipment & Financial Breakdown */}
             {receipt.shipment && (
-              <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-100 text-xs space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#141B47]">
-                    Associated Shipment
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2.5">
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-200">
+                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: primaryColor }}>
+                    Associated Shipment Breakdown
                   </span>
-                  <span className="font-mono font-bold text-xs text-[#141B47]">
-                    {receipt.shipment.trackingNumber}
+                  <span className="font-mono font-bold text-xs" style={{ color: primaryColor }}>
+                    Tracking: {receipt.shipment.trackingNumber || "N/A"}
                   </span>
                 </div>
 
                 {receipt.shipment.description && (
-                  <p className="text-[#475569] text-xs leading-relaxed line-clamp-2">
-                    {receipt.shipment.description}
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    Description: {receipt.shipment.description}
                   </p>
                 )}
 
-                {/* Shipping Fee & Discount Breakdown */}
+                {/* Detailed Fee & Payment Summary Table */}
                 {typeof receipt.shipment.fee === "number" && (
-                  <div className="pt-2 border-t border-blue-100 space-y-1 text-[11px]">
+                  <div className="space-y-1.5 pt-1 text-[11px]">
                     {receipt.shipment.discountPercent && receipt.shipment.discountPercent > 0 ? (
                       <>
-                        <div className="flex items-center justify-between text-[#64748B]">
+                        <div className="flex items-center justify-between text-slate-600">
                           <span>Original Shipping Fee:</span>
                           <span className="line-through font-mono">
                             {formatCurrency(receipt.shipment.originalFee ?? receipt.shipment.fee)}
@@ -246,28 +319,36 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
                             −{formatCurrency(receipt.shipment.discountAmount ?? 0)}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between font-bold text-[#141B47]">
-                          <span>Final Shipping Fee:</span>
+                        <div className="flex items-center justify-between font-bold text-slate-900">
+                          <span>Final Shipping Fee Due:</span>
                           <span className="font-mono">{formatCurrency(receipt.shipment.fee)}</span>
                         </div>
                       </>
                     ) : (
-                      <div className="flex items-center justify-between text-[#64748B]">
-                        <span>Shipping Fee:</span>
-                        <span className="font-mono font-bold text-[#141B47]">
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>Total Shipping Fee:</span>
+                        <span className="font-mono font-bold text-slate-900">
                           {formatCurrency(receipt.shipment.fee)}
                         </span>
                       </div>
                     )}
 
-                    {typeof receipt.shipment.outstanding === "number" && (
-                      <div className="flex items-center justify-between pt-1 border-t border-blue-100 font-extrabold text-xs">
-                        <span className="text-[#141B47]">Remaining Balance:</span>
-                        <span className={`font-mono ${receipt.shipment.outstanding > 0 ? "text-amber-700" : "text-emerald-700"}`}>
-                          {formatCurrency(receipt.shipment.outstanding)}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between text-emerald-700 font-bold pt-1 border-t border-slate-200">
+                      <span>Amount Paid in This Transaction:</span>
+                      <span className="font-mono">+{formatCurrency(receipt.amount)}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-slate-700 font-medium">
+                      <span>Total Paid to Date (Cumulative):</span>
+                      <span className="font-mono">{formatCurrency(totalPaidToDate)}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 font-extrabold text-xs">
+                      <span className="text-slate-900">Remaining Outstanding Balance:</span>
+                      <span className={`font-mono ${outstandingBalance > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                        {formatCurrency(outstandingBalance)}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -275,47 +356,48 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
 
             {/* Notes or Admin Recorded Notice */}
             {(receipt.notes || receipt.recordedBy) && (
-              <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-200 text-xs space-y-1">
+              <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200 text-xs space-y-1">
                 {receipt.notes && (
                   <div>
-                    <span className="text-[10px] font-bold uppercase text-[#667085]">Payment Notes:</span>
-                    <p className="text-[#334155] italic mt-0.5">{receipt.notes}</p>
+                    <span className="text-[10px] font-bold uppercase text-amber-800">Transaction Notes:</span>
+                    <p className="text-slate-700 italic mt-0.5">{receipt.notes}</p>
                   </div>
                 )}
                 {receipt.recordedBy && (
-                  <p className="text-[11px] text-[#667085] pt-0.5">
-                    Recorded by authorized admin: <strong className="text-[#141B47]">{receipt.recordedBy}</strong>
+                  <p className="text-[11px] text-amber-900 pt-0.5">
+                    Authorized Admin Recorder: <strong className="text-slate-900">{receipt.recordedBy}</strong>
                   </p>
                 )}
               </div>
             )}
 
             {/* Verification & Watermark Footer */}
-            <div className="pt-2 text-center text-[10px] text-[#94A3B8] space-y-1">
-              <p className="flex items-center justify-center gap-1">
+            <div className="pt-2 text-center text-[10px] text-slate-400 space-y-1 border-t border-slate-100">
+              <p className="flex items-center justify-center gap-1 font-medium text-slate-600">
                 <ShieldCheck size={12} className="text-emerald-600" />
-                This is a computer-generated transaction receipt issued by LexMedia Logistics (LMX8).
+                Official Computer-Generated Receipt · {branding.businessName}
               </p>
-              <p>For questions or verification, contact support@lexmedialimited.com or WhatsApp +233 24 123 4567</p>
+              <p>{branding.tagline} · Secure logistics & payment processing</p>
             </div>
           </div>
         </div>
 
         {/* Footer Actions (Hidden in Print) */}
-        <div className="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-2.5 no-print">
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 no-print">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold text-[#667085] hover:text-[#172236] hover:bg-gray-100 transition-colors cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors cursor-pointer"
           >
             Close
           </button>
           <button
             type="button"
             onClick={handlePrint}
-            className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#202B6D] transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+            style={{ backgroundColor: primaryColor }}
+            className="px-5 py-2.5 rounded-xl text-xs font-bold text-white hover:opacity-90 transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
           >
-            <Printer size={14} /> Print Receipt
+            <Printer size={14} /> Print / Save PDF
           </button>
         </div>
       </div>
