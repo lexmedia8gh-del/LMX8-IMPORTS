@@ -4,10 +4,11 @@ import React, { useState, useEffect, useCallback, useTransition, useMemo } from 
 import {
   Users, Search, UserPlus, Edit3, Key, Shield, ShieldAlert, CheckCircle2,
   XCircle, AlertTriangle, RefreshCw, Check, X, Phone, Mail, Lock, UserX, UserCheck,
-  Send, MessageSquare, ExternalLink, Copy
+  Send, MessageSquare, ExternalLink, Copy, CreditCard
 } from "lucide-react";
 import { AdminDrawer } from "@/components/admin-drawer";
 import { CreateCustomerDrawer } from "@/components/drawers/create-customer-drawer";
+import { RecordPaymentDrawer } from "@/components/drawers/record-payment-drawer";
 import {
   getAdminCustomersAction,
   updateCustomerAction,
@@ -39,6 +40,10 @@ export default function AdminCustomerSettings() {
 
   // Create Customer Drawer State
   const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
+
+  // Offline Payment Recording Drawer State
+  const [paymentCustomer, setPaymentCustomer] = useState<CustomerRecord | null>(null);
+  const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState<boolean>(false);
 
   // Edit Customer Drawer State
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
@@ -538,6 +543,19 @@ export default function AdminCustomerSettings() {
                       )}
 
                       <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentCustomer(c);
+                          setIsPaymentDrawerOpen(true);
+                        }}
+                        title={`Record offline payment for ${c.name}`}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 transition-all inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <CreditCard size={12} className="text-amber-700" />
+                        <span className="hidden xl:inline">Record Payment</span>
+                      </button>
+
+                      <button
                         onClick={() => handleOpenEdit(c)}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F1F5F9] text-[#141B47] hover:bg-[#141B47] hover:text-white transition-all inline-flex items-center gap-1.5 cursor-pointer"
                       >
@@ -677,6 +695,18 @@ export default function AdminCustomerSettings() {
                     <span>No Phone</span>
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentCustomer(c);
+                    setIsPaymentDrawerOpen(true);
+                  }}
+                  className="w-full justify-center px-3 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100 transition-colors inline-flex items-center gap-1.5 cursor-pointer min-h-[40px]"
+                >
+                  <CreditCard size={13} className="text-amber-700" />
+                  <span>Record Payment</span>
+                </button>
 
                 <button
                   type="button"
@@ -932,6 +962,31 @@ export default function AdminCustomerSettings() {
                   </span>
                 </button>
               </div>
+            </div>
+
+            {/* ── BILLING & OFFLINE PAYMENT RECORDING ── */}
+            <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+                    <CreditCard size={14} className="text-amber-700" /> Offline Payment Recording
+                  </h4>
+                  <p className="text-[11px] text-amber-900 mt-0.5">
+                    Manually record cash, MTN MoMo, Telecel Cash, or bank payments received for {editingCustomer.name}.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentCustomer(editingCustomer);
+                  setIsPaymentDrawerOpen(true);
+                }}
+                className="w-full h-10 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#202B6D] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              >
+                <CreditCard size={14} /> Record Offline Payment for {editingCustomer.name}
+              </button>
             </div>
 
             {/* ── SECURITY SECTION (PIN RESET) ── */}
@@ -1300,6 +1355,25 @@ export default function AdminCustomerSettings() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── RECORD OFFLINE PAYMENT DRAWER ── */}
+      {paymentCustomer && (
+        <RecordPaymentDrawer
+          isOpen={isPaymentDrawerOpen}
+          onClose={() => {
+            setIsPaymentDrawerOpen(false);
+            setPaymentCustomer(null);
+          }}
+          preselectedCustomerId={paymentCustomer.id}
+          preselectedCustomerName={paymentCustomer.name}
+          onSuccess={(payment) => {
+            setIsPaymentDrawerOpen(false);
+            setPaymentCustomer(null);
+            showToast(`Offline payment recorded successfully for ${paymentCustomer.name}.`);
+            loadCustomers();
+          }}
+        />
       )}
     </div>
   );

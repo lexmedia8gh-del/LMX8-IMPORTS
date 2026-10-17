@@ -14,9 +14,15 @@ import {
 import { setShippingFeeAction } from "@/app/actions/admin-payments";
 import { Shipment } from "@/lib/db";
 import { ShipmentStatusBadge, STATUS_ORDER, ShipmentStatus, ShipmentTimeline, SHIPMENT_STATUS_ADMIN_LABELS, TimelineEvent } from "@/components/shipment-status";
-import { ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, Clock, DollarSign, Plus, Mail, Send, CheckCircle2, Trash2, Edit3, Tag, RotateCcw, Percent } from "lucide-react";
 import { AddTrackingEventDrawer } from "@/components/drawers/add-tracking-event-drawer";
 import { EditTrackingEventDrawer } from "@/components/drawers/edit-tracking-event-drawer";
+import { RecordPaymentDrawer } from "@/components/drawers/record-payment-drawer";
+import { PaymentReceiptModal, ReceiptData } from "@/components/payment-receipt-modal";
+import { 
+  ArrowLeft, Save, MapPin, Calendar, Camera, X, UploadCloud, AlertCircle, 
+  Clock, DollarSign, Plus, Mail, Send, CheckCircle2, Trash2, Edit3, Tag, 
+  RotateCcw, Percent, CreditCard, Receipt, ExternalLink
+} from "lucide-react";
 import Link from "next/link";
 
 export default function AdminShipmentDetails({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +33,9 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
   const [isEventDrawerOpen, setIsEventDrawerOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+  const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
+  const [receiptModalData, setReceiptModalData] = useState<ReceiptData | null>(null);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Timeline update form
@@ -548,6 +557,168 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
             </form>
           </div>
 
+          {/* Payments & Settlements Card */}
+          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-[#E5E7EB] space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#F1F5F9]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-[#172236] flex items-center gap-2">
+                    <CreditCard size={18} className="text-[#141B47]" /> Payments &amp; Settlements
+                  </h2>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                    shipment.isPaid
+                      ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                      : (shipment.paidAmount || 0) > 0
+                      ? "bg-amber-100 text-amber-800 border border-amber-200"
+                      : "bg-red-100 text-red-800 border border-red-200"
+                  }`}>
+                    {shipment.isPaid ? "Settled" : (shipment.paidAmount || 0) > 0 ? "Partially Paid" : "Unpaid"}
+                  </span>
+                </div>
+                <p className="text-xs text-[#667085] mt-0.5">
+                  Track confirmed online (Paystack) and offline payments, outstanding balances, and receipts.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsRecordPaymentOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-[#141B47] text-white hover:bg-[#202B6D] transition-all cursor-pointer shadow-xs self-start sm:self-auto shrink-0"
+              >
+                <Plus size={15} /> Record Offline Payment
+              </button>
+            </div>
+
+            {/* Financial Status Summary */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Total Shipping Fee</p>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="font-mono font-bold text-base text-[#172236]">
+                    GHS {shipment.fee.toFixed(2)}
+                  </span>
+                  {shipment.discountPercent && shipment.discountPercent > 0 ? (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                      {shipment.discountPercent}% OFF
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Total Paid to Date</p>
+                <p className="font-mono font-bold text-base text-emerald-600 mt-1">
+                  GHS {(shipment.paidAmount || 0).toFixed(2)}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Remaining Balance</p>
+                <p className={`font-mono font-black text-base mt-1 ${
+                  (shipment.outstanding || 0) > 0 ? "text-amber-600" : "text-emerald-700"
+                }`}>
+                  GHS {(shipment.outstanding ?? Math.max(0, shipment.fee - (shipment.paidAmount || 0))).toFixed(2)}
+                </p>
+              </div>
+            </div>
+
+            {/* Payment Transactions List */}
+            {(!shipment.payments || shipment.payments.length === 0) ? (
+              <div className="py-8 text-center text-xs text-[#667085] bg-gray-50/50 rounded-xl border border-dashed border-gray-200 p-4">
+                <Receipt size={24} className="mx-auto mb-2 text-gray-300" />
+                <p className="font-semibold text-[#172236]">No payments recorded yet</p>
+                <p className="mt-0.5">Use &quot;Record Offline Payment&quot; above to log manual cash, Mobile Money, or bank wire payments.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-[#F8FAFC] border-b border-[#E5E7EB]">
+                      <th className="px-3.5 py-2.5 font-bold uppercase tracking-wider text-[#64748B]">Date</th>
+                      <th className="px-3.5 py-2.5 font-bold uppercase tracking-wider text-[#64748B]">Reference</th>
+                      <th className="px-3.5 py-2.5 font-bold uppercase tracking-wider text-[#64748B]">Channel / Method</th>
+                      <th className="px-3.5 py-2.5 font-bold uppercase tracking-wider text-[#64748B]">Amount</th>
+                      <th className="px-3.5 py-2.5 font-bold uppercase tracking-wider text-[#64748B]">Status</th>
+                      <th className="px-3.5 py-2.5 font-bold uppercase tracking-wider text-[#64748B]">Recorded By</th>
+                      <th className="px-3.5 py-2.5 font-bold uppercase tracking-wider text-[#64748B] text-right">Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {shipment.payments.map((p) => (
+                      <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-3.5 py-3 text-[#64748B] whitespace-nowrap">
+                          {new Date(p.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-3.5 py-3 font-mono font-semibold text-[#141B47] whitespace-nowrap">
+                          {p.reference}
+                        </td>
+                        <td className="px-3.5 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                            p.provider === "OFFLINE"
+                              ? "bg-amber-100 text-amber-900 border border-amber-200"
+                              : "bg-blue-50 text-blue-800 border border-blue-200"
+                          }`}>
+                            {p.paymentMethodLabel || (p.provider === "OFFLINE" ? "Offline Payment" : "Paystack Online")}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-3 font-mono font-bold text-[#141B47] whitespace-nowrap">
+                          GHS {p.amount.toFixed(2)}
+                        </td>
+                        <td className="px-3.5 py-3 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-[11px]">
+                            <CheckCircle2 size={12} /> Confirmed
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-3 text-[#64748B] whitespace-nowrap">
+                          {p.recordedBy || "System (Online)"}
+                        </td>
+                        <td className="px-3.5 py-3 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReceiptModalData({
+                                reference: p.reference,
+                                amount: p.amount,
+                                currency: p.currency,
+                                status: p.status,
+                                provider: p.provider,
+                                paymentMethod: p.paymentMethod,
+                                paymentMethodLabel: p.paymentMethodLabel,
+                                isOffline: p.provider === "OFFLINE",
+                                receiptNumber: p.receiptNumber,
+                                payerName: p.payerName || shipment.customerName,
+                                notes: p.notes,
+                                recordedBy: p.recordedBy,
+                                createdAt: p.createdAt,
+                                customer: {
+                                  name: shipment.customerName,
+                                  customerIdentifier: shipment.customerId,
+                                },
+                                shipment: {
+                                  trackingNumber: shipment.id,
+                                  description: shipment.description,
+                                  fee: shipment.fee,
+                                  originalFee: shipment.originalFee,
+                                  discountPercent: shipment.discountPercent,
+                                  discountAmount: shipment.discountAmount,
+                                  outstanding: shipment.outstanding,
+                                },
+                              });
+                              setIsReceiptModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#F1F5F9] hover:bg-[#141B47] hover:text-white text-[#141B47] transition-all inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Receipt size={12} /> Receipt
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-[#E5E7EB]">
             <h2 className="text-base sm:text-lg font-bold text-[#172236] mb-2 flex items-center gap-2"><Camera size={18} /> Cargo Photos</h2>
             <p className="text-xs text-[#667085] mb-5">Upload warehouse, packing, and condition photos.</p>
@@ -817,6 +988,36 @@ export default function AdminShipmentDetails({ params }: { params: Promise<{ id:
           </div>
         </div>
       </div>
+
+      {/* Record Payment Drawer */}
+      {shipment && (
+        <RecordPaymentDrawer
+          isOpen={isRecordPaymentOpen}
+          onClose={() => setIsRecordPaymentOpen(false)}
+          preselectedCustomerId={shipment.customerId}
+          preselectedCustomerName={shipment.customerName}
+          preselectedShipmentId={shipment.id}
+          preselectedAmount={shipment.outstanding || 0}
+          onSuccess={(recordedPayment) => {
+            setIsRecordPaymentOpen(false);
+            showToast("Offline payment recorded successfully.");
+            // Refresh shipment details
+            getShipmentByIdAction(id).then((updated) => {
+              if (updated) setShipment(updated);
+            }).catch(() => {});
+          }}
+        />
+      )}
+
+      {/* Payment Receipt Modal */}
+      <PaymentReceiptModal
+        isOpen={isReceiptModalOpen}
+        onClose={() => {
+          setIsReceiptModalOpen(false);
+          setReceiptModalData(null);
+        }}
+        receipt={receiptModalData}
+      />
     </div>
   );
 }

@@ -32,11 +32,13 @@ import {
   Sparkles,
   Truck,
   ExternalLink,
+  Receipt,
 } from "lucide-react";
 import { ShipmentStatusBadge, ShipmentTimeline, ShipmentStatus } from "@/components/shipment-status";
 import { useShipmentRealtime } from "@/hooks/use-shipment-realtime";
 import { useBrandSettings } from "@/components/brand-provider";
 import { ShippingPayNowButton } from "@/components/shipping-pay-now-button";
+import { PaymentReceiptModal, ReceiptData } from "@/components/payment-receipt-modal";
 
 // Deterministic currency formatter
 function formatGHS(amount?: number | null) {
@@ -118,6 +120,8 @@ export default function ShipmentDetailsPage({
   const [loading, setLoading] = useState(true);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [activePhotoModal, setActivePhotoModal] = useState<{ url: string; filename?: string } | null>(null);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [receiptModalData, setReceiptModalData] = useState<ReceiptData | null>(null);
 
   const brandContext = useBrandSettings();
   const branding = brandContext?.branding;
@@ -743,6 +747,85 @@ export default function ShipmentDetailsPage({
                   {formatGHS(shipment.outstanding)}
                 </span>
               </div>
+
+              {/* Confirmed Payments List for this Consignment */}
+              {shipment.payments && shipment.payments.length > 0 && (
+                <div className="pt-2.5 border-t border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+                      Payment History ({shipment.payments.length})
+                    </p>
+                    <span className="text-[10px] text-emerald-700 font-bold">
+                      {formatGHS(shipment.paidAmount)} Settled
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+                    {shipment.payments.map((p) => (
+                      <div
+                        key={p.id}
+                        className="p-2.5 rounded-xl bg-white border border-slate-200/90 text-xs flex items-center justify-between gap-2 shadow-2xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                              p.provider === "OFFLINE"
+                                ? "bg-amber-100 text-amber-900 border border-amber-200"
+                                : "bg-blue-50 text-blue-800 border border-blue-200"
+                            }`}>
+                              {p.provider === "OFFLINE" ? "Offline" : "Paystack"}
+                            </span>
+                            <span className="font-bold text-[#141B47] font-mono">
+                              {formatGHS(p.amount)}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#64748B] mt-0.5 truncate">
+                            {p.paymentMethodLabel} · {new Date(p.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReceiptModalData({
+                              reference: p.reference,
+                              amount: p.amount,
+                              currency: p.currency,
+                              status: p.status,
+                              provider: p.provider,
+                              paymentMethod: p.paymentMethod,
+                              paymentMethodLabel: p.paymentMethodLabel,
+                              isOffline: p.provider === "OFFLINE",
+                              receiptNumber: p.receiptNumber,
+                              payerName: p.payerName || shipment.customerName,
+                              notes: p.notes,
+                              recordedBy: p.recordedBy,
+                              createdAt: p.createdAt,
+                              customer: {
+                                customerIdentifier: shipment.customerId,
+                                name: shipment.customerName,
+                              },
+                              shipment: {
+                                trackingNumber: shipment.id,
+                                description: shipment.description,
+                                fee: shipment.fee,
+                                originalFee: shipment.originalFee,
+                                discountPercent: shipment.discountPercent,
+                                discountAmount: shipment.discountAmount,
+                                outstanding: shipment.outstanding,
+                              },
+                            });
+                            setIsReceiptModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#F1F5F9] hover:bg-[#141B47] hover:text-white text-[#141B47] transition-all inline-flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          <Receipt size={11} /> Receipt
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {isOutstanding ? (
@@ -913,6 +996,16 @@ export default function ShipmentDetailsPage({
           </div>
         </div>
       )}
+
+      {/* Payment Receipt Modal */}
+      <PaymentReceiptModal
+        isOpen={isReceiptModalOpen}
+        onClose={() => {
+          setIsReceiptModalOpen(false);
+          setReceiptModalData(null);
+        }}
+        receipt={receiptModalData}
+      />
     </div>
   );
 }

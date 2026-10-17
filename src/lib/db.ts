@@ -18,6 +18,25 @@ export type ShipmentPhoto = {
   deletedAt?: string | null;
 };
 
+export type ShipmentPayment = {
+  id: string;
+  reference: string;
+  amount: number;
+  currency: string;
+  status: string;
+  type: string;
+  provider?: string | null;
+  providerTransactionId?: string | null;
+  paymentMethod?: string | null;
+  paymentMethodLabel?: string | null;
+  payerName?: string | null;
+  notes?: string | null;
+  receiptNumber?: string | null;
+  receiptAttachmentUrl?: string | null;
+  recordedBy?: string | null;
+  createdAt: string;
+};
+
 export type Shipment = {
   id: string;
   customerId: string;
@@ -37,6 +56,7 @@ export type Shipment = {
   paidAmount?: number;
   outstanding?: number;
   isPaid?: boolean;
+  paymentStatus?: "UNPAID" | "PARTIALLY_PAID" | "PAID";
   weight?: number | null;
   quantity?: number | null;
   origin?: string;
@@ -45,6 +65,7 @@ export type Shipment = {
   estimatedArrival?: string;
   trackingEvents: TrackingEvent[];
   photos: ShipmentPhoto[];
+  payments?: ShipmentPayment[];
 };
 
 export type Batch = {

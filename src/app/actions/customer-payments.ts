@@ -11,26 +11,72 @@ export async function getCustomerPaymentsAction() {
   const payments = await prisma.payment.findMany({
     where: { customerId: customer.id },
     include: {
-      shipment: { select: { id: true, trackingNumber: true, description: true } },
+      customer: { select: { id: true, name: true, customerIdentifier: true, phone: true, email: true } },
+      shipment: { select: { id: true, trackingNumber: true, description: true, fee: true, originalFee: true, discountPercent: true, discountAmount: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return payments.map((p) => ({
-    id: p.id,
-    reference: p.reference,
-    type: p.type,
-    amount: p.amount,
-    currency: p.currency,
-    status: p.status,
-    createdAt: p.createdAt.toISOString(),
-    shipment: p.shipment
-      ? {
-          trackingNumber: p.shipment.trackingNumber,
-          description: p.shipment.description,
-        }
-      : null,
-  }));
+  return payments.map((p) => {
+    const meta = typeof p.metadata === "object" && p.metadata !== null ? (p.metadata as any) : {};
+    const methodLabel =
+      meta.methodLabel ||
+      (meta.paymentMethod === "CASH"
+        ? "Cash"
+        : meta.paymentMethod === "MTN_MOMO"
+        ? "MTN Mobile Money"
+        : meta.paymentMethod === "TELECEL_CASH"
+        ? "Telecel Cash"
+        : meta.paymentMethod === "AT_MONEY"
+        ? "AT Money"
+        : meta.paymentMethod === "BANK_TRANSFER"
+        ? "Bank Transfer"
+        : meta.paymentMethod === "OTHER"
+        ? "Other Offline"
+        : p.provider === "OFFLINE"
+        ? "Offline Payment"
+        : "Paystack Online");
+
+    const isOffline = p.provider === "OFFLINE" || meta.source === "offline";
+
+    return {
+      id: p.id,
+      reference: p.reference,
+      type: p.type,
+      amount: typeof p.amount === "number" ? p.amount : parseFloat(p.amount) || 0,
+      currency: p.currency || "GHS",
+      status: p.status,
+      provider: p.provider || (isOffline ? "OFFLINE" : "PAYSTACK"),
+      providerTransactionId: p.providerTransactionId || meta.receiptNumber || null,
+      paymentMethod: meta.paymentMethod || (isOffline ? "OFFLINE" : "PAYSTACK"),
+      paymentMethodLabel: methodLabel,
+      isOffline,
+      receiptNumber: meta.receiptNumber || p.providerTransactionId || null,
+      payerName: meta.payerName || p.customer?.name || null,
+      notes: meta.notes || null,
+      receiptAttachmentUrl: meta.receiptAttachmentUrl || null,
+      recordedBy: meta.recordedByAdminName || null,
+      paymentDate: meta.paymentDate || p.createdAt.toISOString(),
+      createdAt: p.createdAt.toISOString(),
+      customer: {
+        id: p.customer.customerIdentifier,
+        name: p.customer.name,
+        phone: p.customer.phone || null,
+        email: p.customer.email || null,
+      },
+      shipment: p.shipment
+        ? {
+            id: p.shipment.id,
+            trackingNumber: p.shipment.trackingNumber,
+            description: p.shipment.description,
+            fee: p.shipment.fee,
+            originalFee: p.shipment.originalFee ?? p.shipment.fee,
+            discountPercent: p.shipment.discountPercent ?? 0,
+            discountAmount: p.shipment.discountAmount ?? 0,
+          }
+        : null,
+    };
+  });
 }
 
 // ── Customer: list shipments that have outstanding shipping fees ─────────────

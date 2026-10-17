@@ -55,14 +55,65 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
     (p: any) => p.type === "SHIPPING_FEE" && p.status === "SUCCESS"
   );
   const paidAmount = successfulPayments.reduce((acc: number, p: any) => acc + (p.amount || 0), 0);
-  const feeAmount = typeof s.fee === "number" ? s.fee : parseFloat(s.fee) || 0;
+  const feeAmount = typeof s.fee === "number" ? s.fee : parseFloat(String(s.fee || 0)) || 0;
   const originalFeeAmount = s.originalFee != null
-    ? (typeof s.originalFee === "number" ? s.originalFee : parseFloat(s.originalFee) || feeAmount)
+    ? (typeof s.originalFee === "number" ? s.originalFee : parseFloat(String(s.originalFee || feeAmount)) || feeAmount)
     : feeAmount;
-  const discountPercent = typeof s.discountPercent === "number" ? s.discountPercent : parseFloat(s.discountPercent) || 0;
-  const discountAmount = typeof s.discountAmount === "number" ? s.discountAmount : parseFloat(s.discountAmount) || 0;
-  const outstanding = Math.max(0, feeAmount - paidAmount);
+  const discountPercent = typeof s.discountPercent === "number" ? s.discountPercent : parseFloat(String(s.discountPercent || 0)) || 0;
+  const discountAmount = typeof s.discountAmount === "number" ? s.discountAmount : parseFloat(String(s.discountAmount || 0)) || 0;
+  const outstanding = Math.max(0, Math.round((feeAmount - paidAmount) * 100) / 100);
   const isPaid = feeAmount > 0 ? outstanding === 0 : true;
+  const paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID" =
+    feeAmount <= 0
+      ? "PAID"
+      : outstanding === 0
+      ? "PAID"
+      : paidAmount > 0
+      ? "PARTIALLY_PAID"
+      : "UNPAID";
+
+  const mappedPayments = (s.payments || [])
+    .slice()
+    .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+    .map((p: any) => {
+      const meta = typeof p.metadata === "object" && p.metadata !== null ? p.metadata : {};
+      const methodLabel =
+        meta.methodLabel ||
+        (meta.paymentMethod === "CASH"
+          ? "Cash"
+          : meta.paymentMethod === "MTN_MOMO"
+          ? "MTN Mobile Money"
+          : meta.paymentMethod === "TELECEL_CASH"
+          ? "Telecel Cash"
+          : meta.paymentMethod === "AT_MONEY"
+          ? "AT Money"
+          : meta.paymentMethod === "BANK_TRANSFER"
+          ? "Bank Transfer"
+          : meta.paymentMethod === "OTHER"
+          ? "Other Offline"
+          : p.provider === "OFFLINE"
+          ? "Offline Payment"
+          : "Paystack Online");
+
+      return {
+        id: p.id,
+        reference: p.reference,
+        amount: typeof p.amount === "number" ? p.amount : parseFloat(String(p.amount || 0)) || 0,
+        currency: p.currency || "GHS",
+        status: p.status,
+        type: p.type,
+        provider: p.provider || (meta.source === "offline" ? "OFFLINE" : "PAYSTACK"),
+        providerTransactionId: p.providerTransactionId || meta.receiptNumber || null,
+        paymentMethod: meta.paymentMethod || (p.provider === "OFFLINE" ? "OFFLINE" : "PAYSTACK"),
+        paymentMethodLabel: methodLabel,
+        payerName: meta.payerName || null,
+        notes: meta.notes || null,
+        receiptNumber: meta.receiptNumber || p.providerTransactionId || null,
+        receiptAttachmentUrl: meta.receiptAttachmentUrl || null,
+        recordedBy: meta.recordedByAdminName || null,
+        createdAt: p.createdAt ? new Date(p.createdAt).toISOString() : new Date().toISOString(),
+      };
+    });
 
   return {
     id: s.trackingNumber,
@@ -83,6 +134,7 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
     paidAmount,
     outstanding,
     isPaid,
+    paymentStatus,
     weight: s.weight ?? null,
     quantity: s.quantity ?? null,
     origin: s.origin || "Guangzhou, China",
@@ -102,6 +154,7 @@ async function mapPrismaShipment(s: any): Promise<UIShipment> {
         createdAt: e.createdAt ? e.createdAt.toISOString() : undefined,
       })),
     photos: photosWithSignedUrls,
+    payments: mappedPayments,
   };
 }
 

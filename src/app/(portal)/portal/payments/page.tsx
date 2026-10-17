@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getOutstandingShipmentsAction, getCustomerPaymentsAction } from "@/app/actions/customer-payments";
 import { CheckCircle2, AlertCircle, ArrowRight, Receipt } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
+import { CustomerPaymentsHistory } from "@/components/customer-payments-history";
 
 export const dynamic = "force-dynamic";
 
@@ -120,73 +121,7 @@ export default async function PaymentsPage() {
           <h2 className="font-semibold text-base" style={{ color: "#172236" }}>Payment History</h2>
         </div>
 
-        {payments.length === 0 ? (
-          <div className="py-12 text-center flex flex-col items-center">
-            <Receipt size={40} className="mb-3 text-gray-300" />
-            <p className="font-medium text-base" style={{ color: "#172236" }}>No payments yet</p>
-          </div>
-        ) : (
-          <>
-            {/* Mobile cards */}
-            <div className="md:hidden divide-y divide-[#F1F5F9]">
-              {payments.map((p) => (
-                <div key={p.id} className="p-4">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-mono text-[#172236] font-semibold truncate">{p.reference}</p>
-                      <p className="text-xs mt-0.5" style={{ color: "#667085" }}>{typeLabel(p.type)}</p>
-                    </div>
-                    <StatusBadge status={p.status} />
-                  </div>
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="font-bold text-base" style={{ color: "#172236" }}>{formatCurrency(p.amount)}</p>
-                    <p className="text-xs" style={{ color: "#94A3B8" }}>
-                      {new Date(p.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  {p.shipment?.trackingNumber && (
-                    <p className="text-xs mt-1 font-mono" style={{ color: "#94A3B8" }}>
-                      Shipment: {p.shipment.trackingNumber}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Desktop table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#F7F9FC] border-b border-[#E5E7EB]">
-                    {["Date", "Reference", "Type", "Amount", "Status", "Shipment"].map((h) => (
-                      <th key={h} className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: "#667085" }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F1F5F9]">
-                  {payments.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-6 py-4 text-sm whitespace-nowrap" style={{ color: "#667085" }}>
-                        {new Date(p.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 font-mono text-xs font-semibold max-w-[160px]" style={{ color: "#172236" }}>
-                        <span className="truncate block">{p.reference}</span>
-                      </td>
-                      <td className="px-6 py-4 text-sm whitespace-nowrap" style={{ color: "#667085" }}>{typeLabel(p.type)}</td>
-                      <td className="px-6 py-4 font-bold text-sm whitespace-nowrap" style={{ color: "#172236" }}>{formatCurrency(p.amount)}</td>
-                      <td className="px-6 py-4"><StatusBadge status={p.status} /></td>
-                      <td className="px-6 py-4 text-xs font-mono" style={{ color: "#667085" }}>
-                        {p.shipment?.trackingNumber ?? "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        <CustomerPaymentsHistory payments={payments as any} />
       </div>
     </div>
   );
