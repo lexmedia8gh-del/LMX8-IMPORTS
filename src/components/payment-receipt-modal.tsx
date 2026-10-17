@@ -58,6 +58,7 @@ interface BrandSettingsInfo {
   accentColor: string;
   mainLogoUrl: string | null;
   lightLogoUrl: string | null;
+  darkLogoUrl: string | null;
 }
 
 export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceiptModalProps) {
@@ -71,6 +72,7 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
     accentColor: "#F2901F",
     mainLogoUrl: null,
     lightLogoUrl: null,
+    darkLogoUrl: null,
   });
 
   useEffect(() => {
@@ -85,8 +87,9 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
               primaryColor: data.primaryColor || "#141B47",
               secondaryColor: data.secondaryColor || "#355DAF",
               accentColor: data.accentColor || "#F2901F",
-              mainLogoUrl: data.mainLogoUrl || data.lightLogoUrl || null,
+              mainLogoUrl: data.mainLogoUrl || null,
               lightLogoUrl: data.lightLogoUrl || null,
+              darkLogoUrl: data.darkLogoUrl || null,
             });
           }
         })
@@ -128,30 +131,44 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
   const outstandingBalance = receipt.shipment?.outstanding ?? 0;
   const isPartialPayment = outstandingBalance > 0;
 
+  // Correct Logo Variant: Use lightLogoUrl on dark header background if available; otherwise invert main logo
+  const receiptLogoUrl = branding.lightLogoUrl || branding.mainLogoUrl || null;
+  const needsLogoInversion = !branding.lightLogoUrl && Boolean(branding.mainLogoUrl);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:overflow-visible print:fixed print:inset-0">
       {/* Background click to close */}
       <div className="fixed inset-0 print:hidden" onClick={onClose} />
 
       {/* Modal Dialog Card */}
       <div 
         ref={printRef}
-        className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden z-10 print:shadow-none print:border-none print:rounded-none print:max-w-none print:w-full"
+        className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden z-10 print:shadow-none print:border-none print:rounded-none print:max-w-none print:w-full print:static"
       >
-        {/* Printable Styling */}
+        {/* Printable Styling - Fixes blank print preview by ensuring visibility of print container */}
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
-            body * {
-              visibility: hidden;
+            body {
+              background: #ffffff !important;
             }
-            .print-receipt-container, .print-receipt-container * {
-              visibility: visible;
+            body > * {
+              display: none !important;
+            }
+            .fixed.inset-0.z-50 {
+              position: static !important;
+              background: #ffffff !important;
+              padding: 0 !important;
+              overflow: visible !important;
+              display: block !important;
             }
             .print-receipt-container {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
+              display: block !important;
+              visibility: visible !important;
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              background: #ffffff !important;
             }
             .no-print {
               display: none !important;
@@ -160,16 +177,20 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
         `}} />
 
         <div className="print-receipt-container">
-          {/* Top Decorative Header & Business Identity */}
+          {/* Top Header with Correct Logo Variant for Dark Background */}
           <div style={{ backgroundColor: primaryColor }} className="text-white p-6 relative">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-2">
-                {branding.mainLogoUrl ? (
+                {receiptLogoUrl ? (
                   <img
-                    src={branding.mainLogoUrl}
+                    src={receiptLogoUrl}
                     alt={branding.businessName}
-                    style={{ maxHeight: "42px", maxWidth: "200px" }}
-                    className="object-contain h-auto w-auto brightness-0 invert"
+                    style={{ 
+                      maxHeight: "42px", 
+                      maxWidth: "200px", 
+                      filter: needsLogoInversion ? "brightness(0) invert(1)" : "none" 
+                    }}
+                    className="object-contain h-auto w-auto"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
@@ -185,14 +206,14 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                      Official Payment Receipt
+                      PAYMENT RECEIPT
                     </h2>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/15 text-white uppercase tracking-wider">
                       {isPartialPayment ? "Partial Settlement" : "Full Settlement"}
                     </span>
                   </div>
                   <p className="text-xs text-white/75 font-mono">
-                    Receipt Slip #{receipt.receiptNumber || receipt.reference}
+                    Receipt Number: #{receipt.receiptNumber || receipt.reference}
                   </p>
                 </div>
               </div>
@@ -226,24 +247,24 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
                 <span className="uppercase tracking-wider font-extrabold text-[11px]">Payment Confirmed</span>
               </div>
               <span className="text-white/85 font-mono text-[11px]">
-                {formattedDate} · {formattedTime}
+                Date Issued: {formattedDate} · {formattedTime}
               </span>
             </div>
           </div>
 
-          {/* Receipt Body */}
+          {/* Receipt Body - Factual, Clean, Professional (Buzzwords Removed) */}
           <div className="p-5 sm:p-6 space-y-4">
             {/* Amount Banner */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Amount Received in This Transaction
+                Amount Received
               </span>
               <p className="text-3xl sm:text-4xl font-black font-mono tracking-tight" style={{ color: primaryColor }}>
                 {formatCurrency(receipt.amount)}
               </p>
               <div className="flex items-center justify-center gap-1.5 pt-1">
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  {receipt.isOffline ? `Offline · ${methodLabel}` : `Online Gateway · ${methodLabel}`}
+                  Payment Status: Confirmed
                 </span>
                 {receipt.reference && (
                   <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-slate-200 text-slate-700">
@@ -253,10 +274,10 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
               </div>
             </div>
 
-            {/* Customer & Payer Details Grid */}
+            {/* Customer & Payment Method Grid */}
             <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-white border border-slate-200 text-xs">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer Details</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer</p>
                 <p className="font-bold text-sm text-slate-900 mt-0.5">{customerName}</p>
                 <p className="font-mono text-slate-600 mt-0.5">ID: {customerId}</p>
                 {receipt.customer?.phone && (
@@ -268,10 +289,10 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
               </div>
 
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Payment & Source</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Payment Method</p>
                 <p className="font-bold text-sm text-slate-900 mt-0.5">{methodLabel}</p>
                 <p className="text-slate-600 mt-0.5">
-                  Source: <strong className="text-slate-900">{receipt.isOffline ? "Manual Admin Record" : "Paystack Secure"}</strong>
+                  Source: <strong className="text-slate-900">{receipt.isOffline ? "Offline Manual" : "Online Gateway"}</strong>
                 </p>
                 {receipt.payerName && receipt.payerName !== customerName && (
                   <p className="text-slate-600 mt-0.5">
@@ -279,20 +300,20 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
                   </p>
                 )}
                 {receipt.paymentDate && (
-                  <p className="text-slate-600 mt-0.5 font-mono">Date: {formattedDate}</p>
+                  <p className="text-slate-600 mt-0.5 font-mono">Payment Date: {formattedDate}</p>
                 )}
               </div>
             </div>
 
-            {/* Shipment & Financial Breakdown */}
+            {/* Shipment Reference & Financial Breakdown */}
             {receipt.shipment && (
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2.5">
                 <div className="flex items-center justify-between pb-1.5 border-b border-slate-200">
                   <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: primaryColor }}>
-                    Associated Shipment Breakdown
+                    Shipment Reference
                   </span>
                   <span className="font-mono font-bold text-xs" style={{ color: primaryColor }}>
-                    Tracking: {receipt.shipment.trackingNumber || "N/A"}
+                    {receipt.shipment.trackingNumber || "N/A"}
                   </span>
                 </div>
 
@@ -302,31 +323,31 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
                   </p>
                 )}
 
-                {/* Detailed Fee & Payment Summary Table */}
+                {/* Financial Summary */}
                 {typeof receipt.shipment.fee === "number" && (
                   <div className="space-y-1.5 pt-1 text-[11px]">
                     {receipt.shipment.discountPercent && receipt.shipment.discountPercent > 0 ? (
                       <>
                         <div className="flex items-center justify-between text-slate-600">
-                          <span>Original Shipping Fee:</span>
+                          <span>Original Fee:</span>
                           <span className="line-through font-mono">
                             {formatCurrency(receipt.shipment.originalFee ?? receipt.shipment.fee)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-emerald-700 font-medium">
-                          <span>Discount Applied ({receipt.shipment.discountPercent}% OFF):</span>
+                          <span>Discount Applied ({receipt.shipment.discountPercent}%):</span>
                           <span className="font-mono">
                             −{formatCurrency(receipt.shipment.discountAmount ?? 0)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between font-bold text-slate-900">
-                          <span>Final Shipping Fee Due:</span>
+                          <span>Total Amount Due:</span>
                           <span className="font-mono">{formatCurrency(receipt.shipment.fee)}</span>
                         </div>
                       </>
                     ) : (
                       <div className="flex items-center justify-between text-slate-600">
-                        <span>Total Shipping Fee:</span>
+                        <span>Total Amount Due:</span>
                         <span className="font-mono font-bold text-slate-900">
                           {formatCurrency(receipt.shipment.fee)}
                         </span>
@@ -334,17 +355,17 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
                     )}
 
                     <div className="flex items-center justify-between text-emerald-700 font-bold pt-1 border-t border-slate-200">
-                      <span>Amount Paid in This Transaction:</span>
+                      <span>Amount Received:</span>
                       <span className="font-mono">+{formatCurrency(receipt.amount)}</span>
                     </div>
 
                     <div className="flex items-center justify-between text-slate-700 font-medium">
-                      <span>Total Paid to Date (Cumulative):</span>
+                      <span>Total Paid:</span>
                       <span className="font-mono">{formatCurrency(totalPaidToDate)}</span>
                     </div>
 
                     <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 font-extrabold text-xs">
-                      <span className="text-slate-900">Remaining Outstanding Balance:</span>
+                      <span className="text-slate-900">Outstanding Balance:</span>
                       <span className={`font-mono ${outstandingBalance > 0 ? "text-amber-700" : "text-emerald-700"}`}>
                         {formatCurrency(outstandingBalance)}
                       </span>
@@ -354,30 +375,28 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
               </div>
             )}
 
-            {/* Notes or Admin Recorded Notice */}
-            {(receipt.notes || receipt.recordedBy) && (
+            {/* Notes and Recorder Name (@lexmedia.gh) */}
+            {(receipt.notes || receipt.recordedBy || receipt.isOffline) && (
               <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200 text-xs space-y-1">
                 {receipt.notes && (
                   <div>
-                    <span className="text-[10px] font-bold uppercase text-amber-800">Transaction Notes:</span>
+                    <span className="text-[10px] font-bold uppercase text-amber-800">Notes:</span>
                     <p className="text-slate-700 italic mt-0.5">{receipt.notes}</p>
                   </div>
                 )}
-                {receipt.recordedBy && (
-                  <p className="text-[11px] text-amber-900 pt-0.5">
-                    Authorized Admin Recorder: <strong className="text-slate-900">{receipt.recordedBy}</strong>
-                  </p>
-                )}
+                <div className="flex items-center justify-between pt-0.5 text-[11px] text-amber-900">
+                  <span>Recorded By:</span>
+                  <strong className="font-mono text-slate-900">@lexmedia.gh</strong>
+                </div>
               </div>
             )}
 
-            {/* Verification & Watermark Footer */}
-            <div className="pt-2 text-center text-[10px] text-slate-400 space-y-1 border-t border-slate-100">
-              <p className="flex items-center justify-center gap-1 font-medium text-slate-600">
-                <ShieldCheck size={12} className="text-emerald-600" />
-                Official Computer-Generated Receipt · {branding.businessName}
+            {/* Verification Footer */}
+            <div className="pt-2 text-center text-[10px] text-slate-400 space-y-0.5 border-t border-slate-100">
+              <p className="font-medium text-slate-600">
+                Official Business Document · {branding.businessName}
               </p>
-              <p>{branding.tagline} · Secure logistics & payment processing</p>
+              <p>Support: support@lexmedialimited.com · Tel: +233 24 123 4567</p>
             </div>
           </div>
         </div>
