@@ -72,6 +72,7 @@ model Customer {
   emailLogs          EmailLog[]
   loginLogs          CustomerLoginLog[]
   pageViews          CustomerPageView[]
+  invoices           Invoice[]
 }
 
 model AdminUser {
@@ -90,6 +91,7 @@ model AdminUser {
   trackingEvents TrackingEvent[]
   shipmentPhotos ShipmentPhoto[]
   auditLogs      AuditLog[]
+  invoicesCreated Invoice[]
 }
 
 model Batch {
@@ -137,6 +139,7 @@ model Shipment {
   photos           ShipmentPhoto[]
   payments         Payment[]
   emailLogs        EmailLog[]
+  invoices         Invoice[]
 
   @@index([customerId])
   @@index([batchId])
@@ -444,6 +447,119 @@ model CustomerPageView {
 
   @@index([customerId])
   @@index([path])
+  @@index([createdAt])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Invoice {
+  id                  String         @id @default(uuid())
+  invoiceNumber       String         @unique
+  accessToken         String         @unique @default(uuid())
+  status              InvoiceStatus  @default(DRAFT)
+  issueDate           DateTime       @default(now())
+  dueDate             DateTime
+  currency            String         @default("GHS")
+  subtotal            Float          @default(0.0)
+  discountAmount      Float          @default(0.0)
+  discountPercent     Float?         @default(0.0)
+  shippingCharges     Float          @default(0.0)
+  handlingCharges     Float          @default(0.0)
+  customsCharges      Float          @default(0.0)
+  otherCharges        Float          @default(0.0)
+  taxRate             Float?         @default(0.0)
+  taxAmount           Float          @default(0.0)
+  totalAmount         Float          @default(0.0)
+  amountPaid          Float          @default(0.0)
+  outstandingBalance  Float          @default(0.0)
+  paymentInstructions String?
+  clientNotes         String?
+  internalNotes       String?
+  purchaseOrderRef    String?
+  lastDeliveryMethod  String?
+  lastSentAt          DateTime?
+  sentCount           Int            @default(0)
+
+  customerId          String
+  customer            Customer       @relation(fields: [customerId], references: [id])
+
+  shipmentId          String?
+  shipment            Shipment?      @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+
+  createdById         String?
+  createdBy           AdminUser?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  items               InvoiceItem[]
+  payments            InvoicePayment[]
+  communicationLogs   InvoiceCommunicationLog[]
+
+  @@index([customerId])
+  @@index([shipmentId])
+  @@index([status])
+  @@index([invoiceNumber])
+  @@index([accessToken])
+  @@index([dueDate])
+  @@index([createdAt])
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  sku         String?
+  quantity    Int      @default(1)
+  unitPrice   Float    @default(0.0)
+  discount    Float    @default(0.0)
+  lineTotal   Float    @default(0.0)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([invoiceId])
+}
+
+model InvoicePayment {
+  id            String   @id @default(uuid())
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentDate   DateTime @default(now())
+  paymentMethod String
+  reference     String?
+  notes         String?
+  recordedBy    String?
+  createdAt     DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([paymentDate])
+}
+
+model InvoiceCommunicationLog {
+  id                String   @id @default(uuid())
+  invoiceId         String
+  invoice           Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  channel           String
+  recipient         String
+  subject           String?
+  status            String
+  providerMessageId String?
+  errorMessage      String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([channel])
   @@index([createdAt])
 }
 

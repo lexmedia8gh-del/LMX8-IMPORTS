@@ -202,6 +202,120 @@ async function runMigrate() {
       console.warn("[migrate-deploy] Shipment discount columns notice:", colErr?.message || colErr);
     }
 
+    // ── 1c. Proactively ensure Invoice, InvoiceItem, InvoicePayment, InvoiceCommunicationLog exist ──
+    try {
+      const checkInvoice = await prisma.$queryRawUnsafe(`
+        SELECT table_name FROM information_schema.tables 
+        WHERE table_schema = 'public' AND (table_name = 'Invoice' OR table_name = 'invoice');
+      `).catch(() => []);
+
+      if (!Array.isArray(checkInvoice) || checkInvoice.length === 0) {
+        console.log("[migrate-deploy] Creating Invoice, InvoiceItem, InvoicePayment, InvoiceCommunicationLog tables...");
+        const invoiceStmts = [
+          `DO $$ BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'InvoiceStatus') THEN
+                  CREATE TYPE "InvoiceStatus" AS ENUM ('DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED');
+              END IF;
+          END $$;`,
+          `CREATE TABLE IF NOT EXISTS "public"."Invoice" (
+              "id" TEXT NOT NULL,
+              "invoiceNumber" TEXT NOT NULL,
+              "accessToken" TEXT NOT NULL,
+              "status" "InvoiceStatus" NOT NULL DEFAULT 'DRAFT',
+              "issueDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "dueDate" TIMESTAMP(3) NOT NULL,
+              "currency" TEXT NOT NULL DEFAULT 'GHS',
+              "subtotal" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "discountPercent" DOUBLE PRECISION DEFAULT 0.0,
+              "shippingCharges" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "handlingCharges" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "customsCharges" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "otherCharges" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "taxRate" DOUBLE PRECISION DEFAULT 0.0,
+              "taxAmount" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "totalAmount" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "amountPaid" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "outstandingBalance" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "paymentInstructions" TEXT,
+              "clientNotes" TEXT,
+              "internalNotes" TEXT,
+              "purchaseOrderRef" TEXT,
+              "lastDeliveryMethod" TEXT,
+              "lastSentAt" TIMESTAMP(3),
+              "sentCount" INTEGER NOT NULL DEFAULT 0,
+              "customerId" TEXT NOT NULL,
+              "shipmentId" TEXT,
+              "createdById" TEXT,
+              "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id")
+          );`,
+          `CREATE UNIQUE INDEX IF NOT EXISTS "Invoice_invoiceNumber_key" ON "public"."Invoice"("invoiceNumber");`,
+          `CREATE UNIQUE INDEX IF NOT EXISTS "Invoice_accessToken_key" ON "public"."Invoice"("accessToken");`,
+          `CREATE INDEX IF NOT EXISTS "Invoice_customerId_idx" ON "public"."Invoice"("customerId");`,
+          `CREATE INDEX IF NOT EXISTS "Invoice_shipmentId_idx" ON "public"."Invoice"("shipmentId");`,
+          `CREATE INDEX IF NOT EXISTS "Invoice_status_idx" ON "public"."Invoice"("status");`,
+          `CREATE INDEX IF NOT EXISTS "Invoice_dueDate_idx" ON "public"."Invoice"("dueDate");`,
+          `CREATE INDEX IF NOT EXISTS "Invoice_createdAt_idx" ON "public"."Invoice"("createdAt");`,
+          `CREATE TABLE IF NOT EXISTS "public"."InvoiceItem" (
+              "id" TEXT NOT NULL,
+              "invoiceId" TEXT NOT NULL,
+              "description" TEXT NOT NULL,
+              "sku" TEXT,
+              "quantity" INTEGER NOT NULL DEFAULT 1,
+              "unitPrice" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "discount" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "lineTotal" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+              "sortOrder" INTEGER NOT NULL DEFAULT 0,
+              "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              CONSTRAINT "InvoiceItem_pkey" PRIMARY KEY ("id")
+          );`,
+          `CREATE INDEX IF NOT EXISTS "InvoiceItem_invoiceId_idx" ON "public"."InvoiceItem"("invoiceId");`,
+          `CREATE TABLE IF NOT EXISTS "public"."InvoicePayment" (
+              "id" TEXT NOT NULL,
+              "invoiceId" TEXT NOT NULL,
+              "amount" DOUBLE PRECISION NOT NULL,
+              "paymentDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "paymentMethod" TEXT NOT NULL,
+              "reference" TEXT,
+              "notes" TEXT,
+              "recordedBy" TEXT,
+              "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              CONSTRAINT "InvoicePayment_pkey" PRIMARY KEY ("id")
+          );`,
+          `CREATE INDEX IF NOT EXISTS "InvoicePayment_invoiceId_idx" ON "public"."InvoicePayment"("invoiceId");`,
+          `CREATE TABLE IF NOT EXISTS "public"."InvoiceCommunicationLog" (
+              "id" TEXT NOT NULL,
+              "invoiceId" TEXT NOT NULL,
+              "channel" TEXT NOT NULL,
+              "recipient" TEXT NOT NULL,
+              "subject" TEXT,
+              "status" TEXT NOT NULL,
+              "providerMessageId" TEXT,
+              "errorMessage" TEXT,
+              "metadata" JSONB,
+              "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              CONSTRAINT "InvoiceCommunicationLog_pkey" PRIMARY KEY ("id")
+          );`,
+          `CREATE INDEX IF NOT EXISTS "InvoiceCommunicationLog_invoiceId_idx" ON "public"."InvoiceCommunicationLog"("invoiceId");`
+        ];
+        for (const stmt of invoiceStmts) {
+          try {
+            await prisma.$executeRawUnsafe(stmt);
+          } catch (e) {
+            console.warn("[migrate-deploy] Invoice DDL statement notice:", e?.message || e);
+          }
+        }
+        console.log("[migrate-deploy] Invoice tables created successfully.");
+      } else {
+        console.log("[migrate-deploy] Verified: Table 'Invoice' exists in public schema.");
+      }
+    } catch (invErr) {
+      console.warn("[migrate-deploy] Invoice setup notice:", invErr?.message || invErr);
+    }
+
     // ── 2. Diagnose & clean up _prisma_migrations table state ────────────────
     const migrationsTableExists = await prisma.$queryRawUnsafe(`
       SELECT table_name FROM information_schema.tables 
