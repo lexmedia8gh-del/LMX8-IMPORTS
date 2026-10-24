@@ -146,8 +146,18 @@ export async function updateBrandIdentityAction(data: {
   }
 }
 
+export type BrandingAssetKey =
+  | "mainLogo"
+  | "lightLogo"
+  | "darkLogo"
+  | "brandMark"
+  | "favicon"
+  | "invoiceLogo"
+  | "invoiceFooterLogo"
+  | "invoiceStamp";
+
 export async function initiateBrandingAssetUploadAction(
-  assetType: keyof Omit<BrandSettingsType, "businessName" | "shortName" | "tagline" | "primaryColor" | "secondaryColor" | "accentColor">,
+  assetType: BrandingAssetKey,
   filename: string,
   mimeType: string,
   size: number
@@ -195,7 +205,7 @@ export async function initiateBrandingAssetUploadAction(
 }
 
 export async function confirmBrandingAssetUploadAction(
-  assetType: keyof Omit<BrandSettingsType, "businessName" | "shortName" | "tagline" | "primaryColor" | "secondaryColor" | "accentColor">,
+  assetType: BrandingAssetKey,
   objectPath: string
 ) {
   const admin = await requireAdminSession();
@@ -258,7 +268,7 @@ export async function confirmBrandingAssetUploadAction(
 }
 
 export async function removeBrandingAssetAction(
-  assetType: keyof Omit<BrandSettingsType, "businessName" | "shortName" | "tagline" | "primaryColor" | "secondaryColor" | "accentColor">
+  assetType: BrandingAssetKey
 ) {
   const admin = await requireAdminSession();
 

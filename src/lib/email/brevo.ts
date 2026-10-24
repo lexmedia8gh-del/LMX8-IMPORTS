@@ -301,6 +301,7 @@ export async function wrapInBrandedLayout(title: string, bodyContent: string, fo
   const branding = brandingOverride || (await getBrandingForEmail());
   const footer = footerContent || `
     <strong>${branding.businessName} CTRL ROOM</strong><br>
+    Email: lexmedia8gh@gmail.com · Phone: 0551515208<br>
     Tema Port & Accra, Ghana · Shenzhen & Guangzhou, China<br>
     This is an automated notification. Secure payment processing powered by Paystack.
   `;

@@ -19,6 +19,8 @@ export interface BrandSettingsType {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  supportEmail?: string;
+  supportPhone?: string;
   mainLogo: string | null;
   lightLogo: string | null;
   darkLogo: string | null;
@@ -48,6 +50,8 @@ export const DEFAULT_BRANDING: BrandSettingsType = {
   primaryColor: "#141B47",
   secondaryColor: "#355DAF",
   accentColor: "#F2901F",
+  supportEmail: "lexmedia8gh@gmail.com",
+  supportPhone: "0551515208",
   mainLogo: null,
   lightLogo: null,
   darkLogo: null,

@@ -63,6 +63,8 @@ export async function getBrandSettings(): Promise<BrandSettingsType> {
         primaryColor: settings.primaryColor,
         secondaryColor: settings.secondaryColor,
         accentColor: settings.accentColor,
+        supportEmail: (settings as any).supportEmail || "lexmedia8gh@gmail.com",
+        supportPhone: (settings as any).supportPhone || "0551515208",
         mainLogo: settings.mainLogo,
         lightLogo: settings.lightLogo,
         darkLogo: settings.darkLogo,

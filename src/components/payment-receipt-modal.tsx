@@ -396,7 +396,7 @@ export function PaymentReceiptModal({ isOpen, onClose, receipt }: PaymentReceipt
               <p className="font-medium text-slate-600">
                 Official Business Document · {branding.businessName}
               </p>
-              <p>Support: support@lexmedialimited.com · Tel: +233 24 123 4567</p>
+              <p>Email: lexmedia8gh@gmail.com · Phone: 0551515208</p>
             </div>
           </div>
         </div>
