@@ -26,6 +26,8 @@ export default function EditInvoicePage({ params }: { params: Promise<{ id: stri
 
   // Editable fields
   const [items, setItems] = useState<InvoiceItemInput[]>([]);
+  const [freightStatus, setFreightStatus] = useState<"CONFIRMED" | "PENDING" | "NOT_APPLICABLE">("CONFIRMED");
+  const [freightNotes, setFreightNotes] = useState<string>("");
   const [shippingCharges, setShippingCharges] = useState<number>(0);
   const [handlingCharges, setHandlingCharges] = useState<number>(0);
   const [customsCharges, setCustomsCharges] = useState<number>(0);
@@ -56,6 +58,11 @@ export default function EditInvoicePage({ params }: { params: Promise<{ id: stri
             discount: it.discount || 0,
           }))
         );
+        const validFreightStatus = (inv.freightStatus === "PENDING" || inv.freightStatus === "NOT_APPLICABLE") 
+          ? inv.freightStatus 
+          : "CONFIRMED";
+        setFreightStatus(validFreightStatus);
+        setFreightNotes(inv.freightNotes || "");
         setShippingCharges(inv.shippingCharges || 0);
         setHandlingCharges(inv.handlingCharges || 0);
         setCustomsCharges(inv.customsCharges || 0);
@@ -124,7 +131,9 @@ export default function EditInvoicePage({ params }: { params: Promise<{ id: stri
       const res = await updateInvoiceAction({
         id: invoice.id,
         items,
-        shippingCharges,
+        shippingCharges: freightStatus === "CONFIRMED" ? shippingCharges : 0,
+        freightStatus,
+        freightNotes: freightNotes.trim() || undefined,
         handlingCharges,
         customsCharges,
         otherCharges,
@@ -313,20 +322,80 @@ export default function EditInvoicePage({ params }: { params: Promise<{ id: stri
 
         {/* Charges & Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs text-xs space-y-3">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs text-xs space-y-4">
             <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <DollarSign size={16} className="text-[#141B47]" /> Charges &amp; Discount
+              <DollarSign size={16} className="text-[#141B47]" /> Freight Status &amp; Charges
             </h3>
+
+            {/* Freight Status Selector */}
+            <div className="space-y-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <label className="block text-[10px] uppercase font-bold text-slate-600">
+                Freight Mode
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFreightStatus("CONFIRMED")}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border text-center transition-all ${
+                    freightStatus === "CONFIRMED"
+                      ? "bg-[#141B47] text-white border-[#141B47]"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  Confirmed
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreightStatus("PENDING")}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border text-center transition-all ${
+                    freightStatus === "PENDING"
+                      ? "bg-amber-600 text-white border-amber-600"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  Pending
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreightStatus("NOT_APPLICABLE")}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border text-center transition-all ${
+                    freightStatus === "NOT_APPLICABLE"
+                      ? "bg-slate-700 text-white border-slate-700"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  N/A
+                </button>
+              </div>
+              {freightStatus === "PENDING" && (
+                <div className="pt-1.5">
+                  <label className="block text-[10px] font-bold text-amber-800 uppercase mb-1">
+                    Freight Note for Client
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Air freight pending airport measurement"
+                    value={freightNotes}
+                    onChange={(e) => setFreightNotes(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white text-xs text-slate-800"
+                  />
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Shipping Fee</label>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">
+                  Shipping / Freight ({currency})
+                </label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={shippingCharges}
+                  disabled={freightStatus !== "CONFIRMED"}
+                  value={freightStatus === "CONFIRMED" ? shippingCharges : 0}
                   onChange={(e) => setShippingCharges(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono disabled:bg-slate-100 disabled:text-slate-400"
                 />
               </div>
               <div>
@@ -366,8 +435,8 @@ export default function EditInvoicePage({ params }: { params: Promise<{ id: stri
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs text-xs space-y-3">
-            <h3 className="font-bold text-slate-900 text-sm">Terms &amp; Dates</h3>
-            <div className="space-y-2">
+            <h3 className="font-bold text-slate-900 text-sm">Terms &amp; Instructions</h3>
+            <div className="space-y-3">
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Due Date *</label>
                 <input
@@ -379,12 +448,35 @@ export default function EditInvoicePage({ params }: { params: Promise<{ id: stri
                 />
               </div>
               <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">
+                  Payment Instructions
+                </label>
+                <textarea
+                  rows={3}
+                  value={paymentInstructions}
+                  onChange={(e) => setPaymentInstructions(e.target.value)}
+                  placeholder="Enter bank or mobile money instructions for this invoice..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-[11px]"
+                />
+              </div>
+              <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Client Notes</label>
                 <textarea
                   rows={2}
                   value={clientNotes}
                   onChange={(e) => setClientNotes(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-amber-800 mb-1">
+                  Internal Administrative Notes (Confidential)
+                </label>
+                <textarea
+                  rows={2}
+                  value={internalNotes}
+                  onChange={(e) => setInternalNotes(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-amber-300 bg-amber-50/40"
                 />
               </div>
             </div>

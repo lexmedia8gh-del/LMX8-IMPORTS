@@ -51,6 +51,7 @@ export async function updateSystemSettingsAction(data: Partial<SystemSettingsTyp
   const defaultCurrency = (data.defaultCurrency || "GHS").trim();
   const shipmentEmailEnabled = Boolean(data.shipmentEmailEnabled ?? true);
   const feeReminderEnabled = Boolean(data.feeReminderEnabled ?? true);
+  const defaultPaymentInstructions = typeof data.defaultPaymentInstructions === "string" ? data.defaultPaymentInstructions : "";
 
   try {
     const updated = await prisma.systemSettings.upsert({
@@ -66,6 +67,7 @@ export async function updateSystemSettingsAction(data: Partial<SystemSettingsTyp
         sessionTimeoutMinutes,
         maxLoginAttempts,
         lockoutDurationMinutes,
+        defaultPaymentInstructions,
         updatedBy: admin.id,
       },
       create: {
@@ -80,6 +82,7 @@ export async function updateSystemSettingsAction(data: Partial<SystemSettingsTyp
         sessionTimeoutMinutes,
         maxLoginAttempts,
         lockoutDurationMinutes,
+        defaultPaymentInstructions,
         updatedBy: admin.id,
       },
     });

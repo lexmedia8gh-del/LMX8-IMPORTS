@@ -64,6 +64,8 @@ export async function ensureInvoiceSchema(force = false): Promise<boolean> {
         "clientNotes" TEXT,
         "internalNotes" TEXT,
         "purchaseOrderRef" TEXT,
+        "freightStatus" TEXT DEFAULT 'CONFIRMED',
+        "freightNotes" TEXT,
         "lastDeliveryMethod" TEXT,
         "lastSentAt" TIMESTAMP(3),
         "sentCount" INTEGER NOT NULL DEFAULT 0,
@@ -74,6 +76,11 @@ export async function ensureInvoiceSchema(force = false): Promise<boolean> {
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id")
     );`,
+
+    // Column additions if table already exists
+    `ALTER TABLE "public"."Invoice" ADD COLUMN IF NOT EXISTS "freightStatus" TEXT DEFAULT 'CONFIRMED';`,
+    `ALTER TABLE "public"."Invoice" ADD COLUMN IF NOT EXISTS "freightNotes" TEXT;`,
+    `ALTER TABLE "public"."SystemSettings" ADD COLUMN IF NOT EXISTS "defaultPaymentInstructions" TEXT;`,
 
     // 3. Unique Indexes
     `CREATE UNIQUE INDEX IF NOT EXISTS "Invoice_invoiceNumber_key" ON "public"."Invoice"("invoiceNumber");`,

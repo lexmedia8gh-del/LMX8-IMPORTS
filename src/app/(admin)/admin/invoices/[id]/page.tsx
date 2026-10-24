@@ -13,6 +13,7 @@ import { formatCurrency } from "@/lib/currency";
 import { InvoiceDocument } from "@/components/invoices/invoice-document";
 import { RecordPaymentModal } from "@/components/invoices/record-payment-modal";
 import { SendInvoiceModal } from "@/components/invoices/send-invoice-modal";
+import { UpdateFreightModal } from "@/components/invoices/update-freight-modal";
 import { 
   ArrowLeft, Printer, Send, CreditCard, Copy, Edit, XCircle, 
   CheckCircle2, Clock, AlertTriangle, Truck, User, FileText, 
@@ -24,12 +25,14 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const router = useRouter();
 
   const [invoice, setInvoice] = useState<any | null>(null);
+  const [branding, setBranding] = useState<any | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Modals & Action States
   const [paymentModalOpen, setPaymentModalOpen] = useState<boolean>(false);
   const [sendModalOpen, setSendModalOpen] = useState<boolean>(false);
+  const [freightModalOpen, setFreightModalOpen] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
@@ -39,6 +42,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       const res = await getInvoiceByIdAction(resolvedParams.id);
       if (res.success && res.invoice) {
         setInvoice(res.invoice);
+        if (res.branding) {
+          setBranding(res.branding);
+        }
       } else {
         setError(res.error || "Invoice not found.");
       }
@@ -184,6 +190,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             </button>
           )}
 
+          {/* Add / Update Freight Charge Button */}
+          {invoice.status !== "CANCELLED" && (
+            <button
+              onClick={() => setFreightModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5 cursor-pointer"
+              title="Add or update international freight charges"
+            >
+              <Truck size={14} className="text-[#355DAF]" />
+              <span>Freight Charge</span>
+              {invoice.freightStatus === "PENDING" && (
+                <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                  Pending
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Send via Brevo or WhatsApp */}
           {invoice.status !== "CANCELLED" && (
             <button
@@ -263,6 +286,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         <div className="lg:col-span-2 space-y-6">
           <InvoiceDocument
             invoice={invoice}
+            branding={branding}
             showPrintActions={true}
           />
         </div>
@@ -293,6 +317,39 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 <span className={`font-mono ${invoice.outstandingBalance > 0 ? "text-red-600" : "text-emerald-700"}`}>
                   {formatCurrency(invoice.outstandingBalance, invoice.currency)}
                 </span>
+              </div>
+
+              {/* Freight Status Row */}
+              <div className="pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 flex items-center gap-1">
+                    <Truck size={12} className="text-slate-400" /> Freight Status:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                      invoice.freightStatus === "PENDING"
+                        ? "bg-amber-100 text-amber-800 border border-amber-200"
+                        : invoice.shippingCharges > 0
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                        : "bg-slate-100 text-slate-700 border border-slate-200"
+                    }`}>
+                      {invoice.freightStatus === "PENDING" ? "Pending Confirmation" : formatCurrency(invoice.shippingCharges || 0, invoice.currency)}
+                    </span>
+                    {invoice.status !== "CANCELLED" && (
+                      <button
+                        onClick={() => setFreightModalOpen(true)}
+                        className="text-[10px] font-bold text-[#355DAF] hover:underline cursor-pointer"
+                      >
+                        Update
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {invoice.freightStatus === "PENDING" && (
+                  <p className="text-[10px] text-amber-700 mt-1 italic">
+                    * Freight charge not finalized yet. Click &quot;Update&quot; once weighed.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -433,6 +490,16 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         <SendInvoiceModal
           isOpen={sendModalOpen}
           onClose={() => setSendModalOpen(false)}
+          onSuccess={() => loadInvoice()}
+          invoice={invoice}
+        />
+      )}
+
+      {/* Add / Update Freight Charge Modal */}
+      {freightModalOpen && (
+        <UpdateFreightModal
+          isOpen={freightModalOpen}
+          onClose={() => setFreightModalOpen(false)}
           onSuccess={() => loadInvoice()}
           invoice={invoice}
         />

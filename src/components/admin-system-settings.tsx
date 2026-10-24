@@ -301,6 +301,39 @@ export default function AdminSystemSettings() {
         </div>
       </div>
 
+      {/* 2.5 Invoicing & Billing Default Instructions */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB] space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-[#F1F5F9]">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-700">
+            <Settings size={20} />
+          </div>
+          <div>
+            <h3 className="font-bold text-base text-[#172236]">Invoice Default Payment Instructions</h3>
+            <p className="text-xs text-[#667085]">
+              Configure standard payment instructions to automatically prefill new invoices.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2 pt-1">
+          <label className="text-xs font-semibold text-[#172236] block">
+            Default Payment Instructions (Multiline)
+          </label>
+          <textarea
+            rows={4}
+            value={settings.defaultPaymentInstructions || ""}
+            onChange={(e) =>
+              setSettings({ ...settings, defaultPaymentInstructions: e.target.value })
+            }
+            placeholder="e.g. Bank: [Bank Name]&#10;Account Name: [Official Account Name]&#10;Account Number: [Account Number]&#10;Mobile Money: [Official Merchant/Number]&#10;Payment Reference: Please quote your invoice number"
+            className="w-full px-3 py-2 text-xs border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-navy leading-relaxed font-mono"
+          />
+          <p className="text-[11px] text-[#667085]">
+            Administrators can modify or override these instructions per invoice during creation and editing without changing these global defaults. When an invoice is marked Paid, payment instructions are automatically suppressed.
+          </p>
+        </div>
+      </div>
+
       {/* 3. Security & Access Control */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E7EB] space-y-4">
         <div className="flex items-center gap-3 pb-3 border-b border-[#F1F5F9]">

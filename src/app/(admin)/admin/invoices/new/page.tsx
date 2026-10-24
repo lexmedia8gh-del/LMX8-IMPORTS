@@ -7,14 +7,17 @@ import {
   getInvoiceEligibleClientsAction, 
   getInvoiceClientShipmentsAction, 
   createInvoiceAction,
+  getDefaultInvoiceSettingsAction,
   InvoiceItemInput
 } from "@/app/actions/invoices";
+import { getBrandSettingsAction } from "@/app/actions/branding";
 import { formatCurrency } from "@/lib/currency";
 import { InvoiceDocument } from "@/components/invoices/invoice-document";
 import { 
   User, Truck, Package, DollarSign, FileText, CheckCircle2, 
   ArrowRight, ArrowLeft, Plus, Trash2, Search, AlertCircle, ShieldCheck,
-  Building, Phone, Mail, HelpCircle, Save, Send
+  Building, Phone, Mail, HelpCircle, Save, Send, CheckCircle, CreditCard,
+  Clock, ShieldAlert, Award
 } from "lucide-react";
 
 export default function NewInvoicePage() {
@@ -25,6 +28,9 @@ export default function NewInvoicePage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Resolved dynamic branding
+  const [branding, setBranding] = useState<any | null>(null);
 
   // Clients & Shipments
   const [clients, setClients] = useState<any[]>([]);
@@ -41,13 +47,21 @@ export default function NewInvoicePage() {
   ]);
 
   // Financial Charges & Adjustments
+  const [freightStatus, setFreightStatus] = useState<"CONFIRMED" | "PENDING" | "NOT_APPLICABLE">("CONFIRMED");
   const [shippingCharges, setShippingCharges] = useState<number>(0);
+  const [freightNotes, setFreightNotes] = useState<string>("");
   const [handlingCharges, setHandlingCharges] = useState<number>(0);
   const [customsCharges, setCustomsCharges] = useState<number>(0);
   const [otherCharges, setOtherCharges] = useState<number>(0);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(0);
+
+  // Payment Status Selection by Admin
+  const [paymentStatusOption, setPaymentStatusOption] = useState<"ISSUED" | "PAID" | "PARTIALLY_PAID">("ISSUED");
+  const [initialPaymentAmount, setInitialPaymentAmount] = useState<number>(0);
+  const [initialPaymentMethod, setInitialPaymentMethod] = useState<string>("BANK_TRANSFER");
+  const [initialPaymentReference, setInitialPaymentReference] = useState<string>("");
 
   // Invoice Details
   const [currency, setCurrency] = useState<string>("GHS");
@@ -56,18 +70,35 @@ export default function NewInvoicePage() {
   defaultDueDate.setDate(defaultDueDate.getDate() + 7);
   const [dueDate, setDueDate] = useState<string>(defaultDueDate.toISOString().split("T")[0]);
   const [purchaseOrderRef, setPurchaseOrderRef] = useState<string>("");
-  const [paymentInstructions, setPaymentInstructions] = useState<string>(
-    "Bank: Stanbic Bank Ghana\nAccount Name: LexMedia Imports Ltd\nAccount Number: 9040008392183\nBranch: Tema Main\nMobile Money: 024 123 4567 (MTN MoMo - LexMedia)"
+  const [paymentInstructions, setPaymentInstructions] = useState<string>("");
+  const [clientNotes, setClientNotes] = useState<string>(
+    "Thank you for your business. Cargo and items are cleared and processed in accordance with our standard terms of service."
   );
-  const [clientNotes, setClientNotes] = useState<string>("Thank you for doing business with LMX8 Imports. All cargo is processed subject to standard freight terms.");
   const [internalNotes, setInternalNotes] = useState<string>("");
 
-  // Load clients on mount
+  // Load clients, branding, and default invoice settings on mount
   useEffect(() => {
     setLoading(true);
-    getInvoiceEligibleClientsAction()
-      .then((res) => {
-        if (res.success) setClients(res.clients || []);
+
+    Promise.all([
+      getInvoiceEligibleClientsAction(),
+      getBrandSettingsAction(),
+      getDefaultInvoiceSettingsAction(),
+    ])
+      .then(([clientsRes, brandRes, defaultSettingsRes]) => {
+        if (clientsRes.success) setClients(clientsRes.clients || []);
+        if (brandRes) setBranding(brandRes);
+        if (defaultSettingsRes.success) {
+          if (defaultSettingsRes.defaultPaymentInstructions) {
+            setPaymentInstructions(defaultSettingsRes.defaultPaymentInstructions);
+          }
+          if (defaultSettingsRes.defaultCurrency) {
+            setCurrency(defaultSettingsRes.defaultCurrency);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load initial invoice wizard data:", err);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -89,6 +120,9 @@ export default function NewInvoicePage() {
     }
   }, [selectedClient]);
 
+  // Effective shipping charges based on freightStatus
+  const effectiveShipping = freightStatus === "CONFIRMED" ? Math.max(0, shippingCharges) : 0;
+
   // Calculations
   const subtotal = items.reduce((acc, it) => {
     const q = Math.max(1, it.quantity || 1);
@@ -102,9 +136,18 @@ export default function NewInvoicePage() {
     : discountAmount;
 
   const baseAfterDiscount = Math.max(0, subtotal - calculatedDiscount);
-  const totalCharges = shippingCharges + handlingCharges + customsCharges + otherCharges;
+  const totalCharges = effectiveShipping + handlingCharges + customsCharges + otherCharges;
   const taxAmount = taxRate > 0 ? Math.round((baseAfterDiscount * (taxRate / 100)) * 100) / 100 : 0;
   const totalAmount = Math.round((baseAfterDiscount + totalCharges + taxAmount) * 100) / 100;
+
+  // Compute live amounts based on payment status selection
+  const liveAmountPaid = paymentStatusOption === "PAID"
+    ? totalAmount
+    : paymentStatusOption === "PARTIALLY_PAID"
+    ? Math.min(totalAmount, Math.max(0, initialPaymentAmount))
+    : 0;
+
+  const liveOutstandingBalance = Math.max(0, Math.round((totalAmount - liveAmountPaid) * 100) / 100);
 
   // Item helpers
   const handleAddItem = () => {
@@ -128,17 +171,25 @@ export default function NewInvoicePage() {
     if (currentStep === 3) {
       return items.length > 0 && items.every((it) => it.description.trim().length > 0 && it.unitPrice >= 0);
     }
-    if (currentStep === 5) return Boolean(dueDate);
+    if (currentStep === 5) {
+      if (!dueDate) return false;
+      if (paymentStatusOption === "PARTIALLY_PAID" && (initialPaymentAmount <= 0 || initialPaymentAmount >= totalAmount)) {
+        return false;
+      }
+      return true;
+    }
     return true;
   };
 
-  const handleFinalSubmit = async (status: "DRAFT" | "ISSUED") => {
+  const handleFinalSubmit = async (statusOverride?: "DRAFT" | "ISSUED" | "PAID" | "PARTIALLY_PAID") => {
     if (!selectedClient) {
       setError("Please select a client.");
       return;
     }
     setError(null);
     setSubmitting(true);
+
+    const targetStatus = statusOverride || paymentStatusOption;
 
     try {
       const res = await createInvoiceAction({
@@ -150,7 +201,9 @@ export default function NewInvoicePage() {
         items,
         discountAmount: calculatedDiscount,
         discountPercent,
-        shippingCharges,
+        shippingCharges: effectiveShipping,
+        freightStatus,
+        freightNotes: freightNotes.trim() || undefined,
         handlingCharges,
         customsCharges,
         otherCharges,
@@ -159,7 +212,10 @@ export default function NewInvoicePage() {
         clientNotes,
         internalNotes,
         purchaseOrderRef,
-        status,
+        status: targetStatus,
+        initialPaymentAmount: targetStatus === "PAID" ? totalAmount : initialPaymentAmount,
+        initialPaymentMethod,
+        initialPaymentReference: initialPaymentReference.trim() || (targetStatus === "PAID" ? "CONFIRMED_ON_CREATION" : "INITIAL_DEPOSIT"),
       });
 
       if (!res.success) {
@@ -587,21 +643,132 @@ export default function NewInvoicePage() {
               <DollarSign size={18} className="text-[#F2901F]" /> Step 4: Freight Charges &amp; Adjustments
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Add optional freight, customs, handling, or discounts applicable to this invoice
+              Configure freight status, shipping fees, customs clearance, handling, and discounts
             </p>
+          </div>
+
+          {/* Freight Mode Selection */}
+          <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200 space-y-3">
+            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wide">
+              Freight Charge Status
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setFreightStatus("CONFIRMED")}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  freightStatus === "CONFIRMED"
+                    ? "border-[#141B47] bg-white ring-2 ring-[#141B47]/20 shadow-xs"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-slate-900">
+                  <span className={`w-3 h-3 rounded-full border-2 ${
+                    freightStatus === "CONFIRMED" ? "border-[#141B47] bg-[#141B47]" : "border-slate-300"
+                  }`} />
+                  <span>Freight Confirmed</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 pl-5">
+                  Shipping fee known and included in total now
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFreightStatus("PENDING")}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  freightStatus === "PENDING"
+                    ? "border-amber-500 bg-amber-50/50 ring-2 ring-amber-500/20 shadow-xs"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
+                  <span className={`w-3 h-3 rounded-full border-2 ${
+                    freightStatus === "PENDING" ? "border-amber-500 bg-amber-500" : "border-slate-300"
+                  }`} />
+                  <span>Pending Confirmation</span>
+                </div>
+                <p className="text-[11px] text-amber-700/80 mt-1 pl-5">
+                  Defer freight until cargo is measured/arrives
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFreightStatus("NOT_APPLICABLE")}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  freightStatus === "NOT_APPLICABLE"
+                    ? "border-slate-700 bg-slate-50 ring-2 ring-slate-700/20 shadow-xs"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-slate-900">
+                  <span className={`w-3 h-3 rounded-full border-2 ${
+                    freightStatus === "NOT_APPLICABLE" ? "border-slate-700 bg-slate-700" : "border-slate-300"
+                  }`} />
+                  <span>Not Applicable</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 pl-5">
+                  Goods only / local delivery / freight excluded
+                </p>
+              </button>
+            </div>
+
+            {freightStatus === "PENDING" && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-2 mt-2">
+                <div className="flex items-center gap-2 font-bold">
+                  <Clock size={15} className="text-amber-600" />
+                  <span>Deferred Freight Workflow Active</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-amber-700">
+                  Freight will not be treated as 0.00. The invoice will display <strong>&quot;Freight Pending Confirmation&quot;</strong> so the client knows shipping charges will follow once the shipment is measured. You can update this charge at any time using <em>Add / Update Freight Charge</em>.
+                </p>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-amber-800 mb-1">
+                    Freight Note for Client (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Air freight charge subject to weighing at airport warehouse"
+                    value={freightNotes}
+                    onChange={(e) => setFreightNotes(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs text-slate-800"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             {/* Shipping & Freight */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-1">
-              <label className="block font-bold text-slate-700">Shipping / Freight Charge ({currency})</label>
+            <div className={`p-4 rounded-xl border ${
+              freightStatus === "CONFIRMED" 
+                ? "border-slate-200 bg-slate-50 space-y-1" 
+                : "border-slate-200 bg-slate-100/60 opacity-60 space-y-1"
+            }`}>
+              <div className="flex justify-between items-center">
+                <label className="block font-bold text-slate-700">
+                  Shipping / Freight Charge ({currency})
+                </label>
+                {freightStatus === "PENDING" && (
+                  <span className="text-[10px] font-bold text-amber-700 uppercase bg-amber-100 px-2 py-0.5 rounded-md">
+                    Pending Confirmation
+                  </span>
+                )}
+                {freightStatus === "NOT_APPLICABLE" && (
+                  <span className="text-[10px] font-bold text-slate-500 uppercase bg-slate-200 px-2 py-0.5 rounded-md">
+                    N/A
+                  </span>
+                )}
+              </div>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                value={shippingCharges}
+                disabled={freightStatus !== "CONFIRMED"}
+                value={freightStatus === "CONFIRMED" ? shippingCharges : 0}
                 onChange={(e) => setShippingCharges(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono bg-white"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono bg-white disabled:bg-slate-100 disabled:text-slate-400"
               />
             </div>
 
@@ -704,10 +871,22 @@ export default function NewInvoicePage() {
                 <span className="font-mono">-{formatCurrency(calculatedDiscount, currency)}</span>
               </div>
             )}
-            {totalCharges > 0 && (
+            {freightStatus === "CONFIRMED" && shippingCharges > 0 && (
               <div className="flex justify-between text-slate-600">
-                <span>Additional Charges:</span>
-                <span className="font-mono">+{formatCurrency(totalCharges, currency)}</span>
+                <span>Shipping / Freight:</span>
+                <span className="font-mono">+{formatCurrency(shippingCharges, currency)}</span>
+              </div>
+            )}
+            {freightStatus === "PENDING" && (
+              <div className="flex justify-between text-amber-700 font-semibold">
+                <span>Freight:</span>
+                <span className="text-[11px] italic">Pending Confirmation</span>
+              </div>
+            )}
+            {(handlingCharges > 0 || customsCharges > 0 || otherCharges > 0) && (
+              <div className="flex justify-between text-slate-600">
+                <span>Other Charges (Customs/Handling):</span>
+                <span className="font-mono">+{formatCurrency(handlingCharges + customsCharges + otherCharges, currency)}</span>
               </div>
             )}
             {taxAmount > 0 && (
@@ -741,16 +920,203 @@ export default function NewInvoicePage() {
         </div>
       )}
 
-      {/* STEP 5: INVOICE DETAILS */}
+      {/* STEP 5: INVOICE DETAILS & PAYMENT STATUS */}
       {currentStep === 5 && (
         <div className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-8 space-y-6 shadow-xs">
           <div>
             <h2 className="text-lg font-bold text-[#141B47] flex items-center gap-2">
-              <FileText size={18} className="text-[#F2901F]" /> Step 5: Terms &amp; Settlement Details
+              <FileText size={18} className="text-[#F2901F]" /> Step 5: Terms, Payment Status &amp; Settlement Details
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Specify dates, payment instructions, client notices, and internal administrative notes
+              Choose the initial payment status, configure payment instructions, and set invoice dates
             </p>
+          </div>
+
+          {/* ADMINISTRATOR-CONTROLLED PAYMENT STATUS */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-800 uppercase tracking-wide">
+                Invoice Payment Status
+              </label>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Set whether this invoice is issued unpaid, has an initial deposit, or is already paid in full.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setPaymentStatusOption("ISSUED")}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  paymentStatusOption === "ISSUED"
+                    ? "border-[#141B47] bg-white ring-2 ring-[#141B47]/20 shadow-xs"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-slate-900">
+                  <span className={`w-3 h-3 rounded-full border-2 ${
+                    paymentStatusOption === "ISSUED" ? "border-[#141B47] bg-[#141B47]" : "border-slate-300"
+                  }`} />
+                  <span>Pending Payment</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1.5 pl-5">
+                  Standard unpaid invoice. Full balance due from client.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentStatusOption("PAID")}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  paymentStatusOption === "PAID"
+                    ? "border-emerald-600 bg-emerald-50/50 ring-2 ring-emerald-600/20 shadow-xs"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
+                  <span className={`w-3 h-3 rounded-full border-2 ${
+                    paymentStatusOption === "PAID" ? "border-emerald-600 bg-emerald-600" : "border-slate-300"
+                  }`} />
+                  <span>Paid in Full</span>
+                </div>
+                <p className="text-[11px] text-emerald-700/80 mt-1.5 pl-5">
+                  Already settled. Applies PAID stamp &amp; zeroes balance due.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentStatusOption("PARTIALLY_PAID");
+                  if (initialPaymentAmount === 0 && totalAmount > 0) {
+                    setInitialPaymentAmount(Math.round((totalAmount / 2) * 100) / 100);
+                  }
+                }}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  paymentStatusOption === "PARTIALLY_PAID"
+                    ? "border-blue-600 bg-blue-50/50 ring-2 ring-blue-600/20 shadow-xs"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-blue-800">
+                  <span className={`w-3 h-3 rounded-full border-2 ${
+                    paymentStatusOption === "PARTIALLY_PAID" ? "border-blue-600 bg-blue-600" : "border-slate-300"
+                  }`} />
+                  <span>Partially Paid</span>
+                </div>
+                <p className="text-[11px] text-blue-700/80 mt-1.5 pl-5">
+                  Deposit or advance received. Records payment &amp; balances.
+                </p>
+              </button>
+            </div>
+
+            {/* Paid in full details */}
+            {paymentStatusOption === "PAID" && (
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-emerald-800">
+                  <CheckCircle size={16} className="text-emerald-600" />
+                  <span>Official Settlement Mode Enabled</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-emerald-700">
+                  This invoice will be issued with an official <strong>PAID Stamp</strong>. The total paid will be set to <strong>{formatCurrency(totalAmount, currency)}</strong>, leaving an outstanding balance of <strong>{currency} 0.00</strong>. Payment instructions and payment requests are automatically suppressed.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-emerald-800 mb-1">
+                      Payment Method
+                    </label>
+                    <select
+                      value={initialPaymentMethod}
+                      onChange={(e) => setInitialPaymentMethod(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-semibold text-slate-800"
+                    >
+                      <option value="BANK_TRANSFER">Bank Transfer / Wire</option>
+                      <option value="MOBILE_MONEY">Mobile Money (MTN / Telecel / AT)</option>
+                      <option value="CASH">Cash Payment</option>
+                      <option value="CHEQUE">Cheque</option>
+                      <option value="CARD">Credit / Debit Card</option>
+                      <option value="ADMIN_CONFIRMED">Admin Confirmed / Internal</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-emerald-800 mb-1">
+                      Reference / Receipt Note (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. TXN-89412 or REC-001"
+                      value={initialPaymentReference}
+                      onChange={(e) => setInitialPaymentReference(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-mono text-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Partially paid details */}
+            {paymentStatusOption === "PARTIALLY_PAID" && (
+              <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-blue-800">
+                  <CreditCard size={16} className="text-blue-600" />
+                  <span>Initial Deposit / Partial Settlement</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-blue-700">
+                  Record an initial deposit made by the client. An audit payment row will be created and the remaining balance will be calculated automatically.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-blue-800 mb-1">
+                      Deposit Amount ({currency}) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max={totalAmount}
+                      value={initialPaymentAmount}
+                      onChange={(e) => setInitialPaymentAmount(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-xl border border-blue-300 bg-white text-xs font-mono font-bold text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-blue-800 mb-1">
+                      Payment Method
+                    </label>
+                    <select
+                      value={initialPaymentMethod}
+                      onChange={(e) => setInitialPaymentMethod(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-blue-300 bg-white text-xs font-semibold text-slate-800"
+                    >
+                      <option value="BANK_TRANSFER">Bank Transfer / Wire</option>
+                      <option value="MOBILE_MONEY">Mobile Money</option>
+                      <option value="CASH">Cash</option>
+                      <option value="CHEQUE">Cheque</option>
+                      <option value="CARD">Card</option>
+                      <option value="ADMIN_CONFIRMED">Admin Confirmed</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-blue-800 mb-1">
+                      Transaction Reference
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. DEP-2026-01"
+                      value={initialPaymentReference}
+                      onChange={(e) => setInitialPaymentReference(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-blue-300 bg-white text-xs font-mono text-slate-800"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center text-xs font-bold pt-2 border-t border-blue-200">
+                  <span>Remaining Outstanding Balance:</span>
+                  <span className="font-mono text-blue-900 text-sm">
+                    {formatCurrency(liveOutstandingBalance, currency)}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
@@ -805,16 +1171,28 @@ export default function NewInvoicePage() {
               />
             </div>
 
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">
-                Payment Instructions (Printed on invoice &amp; sent in email)
-              </label>
+            {/* Configurable Payment Instructions */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center">
+                <label className="block font-bold text-slate-700">
+                  Payment Instructions
+                </label>
+                <span className="text-[11px] text-slate-400">
+                  {paymentStatusOption === "PAID" 
+                    ? "(Omitted automatically when invoice is Paid in Full)" 
+                    : "Configured from Admin Settings · Editable per invoice"}
+                </span>
+              </div>
               <textarea
                 rows={3}
+                placeholder="Enter bank account details, mobile money payment numbers, and payment reference instructions..."
                 value={paymentInstructions}
                 onChange={(e) => setPaymentInstructions(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 leading-relaxed font-mono text-[11px]"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 leading-relaxed font-mono text-[11px] bg-white"
               />
+              <p className="text-[10px] text-slate-500">
+                You can adjust bank/mobile money details for this client. Overrides apply only to this invoice and do not alter the system default.
+              </p>
             </div>
 
             <div>
@@ -835,7 +1213,7 @@ export default function NewInvoicePage() {
               </label>
               <textarea
                 rows={2}
-                placeholder="e.g. Sourced via supplier Liu in Guangzhou; warehouse release authorized upon 50% deposit"
+                placeholder="e.g. Sourced via supplier Liu in Guangzhou; warehouse release authorized upon payment verification"
                 value={internalNotes}
                 onChange={(e) => setInternalNotes(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-amber-300 bg-white leading-relaxed"
@@ -853,8 +1231,9 @@ export default function NewInvoicePage() {
             </button>
             <button
               type="button"
+              disabled={!canProceed()}
               onClick={() => setCurrentStep(6)}
-              className="px-5 py-2.5 rounded-xl font-bold bg-[#141B47] text-white hover:bg-[#1E2968] flex items-center gap-2 shadow-xs"
+              className="px-5 py-2.5 rounded-xl font-bold bg-[#141B47] text-white hover:bg-[#1E2968] flex items-center gap-2 shadow-xs disabled:opacity-50"
             >
               Review Live Preview <ArrowRight size={14} />
             </button>
@@ -867,15 +1246,33 @@ export default function NewInvoicePage() {
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-[#141B47] flex items-center gap-2">
-                <CheckCircle2 size={18} className="text-emerald-500" /> Step 6: Review Live Invoice Document
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Inspect the final document layout. You can save as a draft to edit later or officially issue it now.
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={18} className="text-emerald-500" />
+                <h2 className="text-lg font-bold text-[#141B47]">
+                  Step 6: Live Document Preview
+                </h2>
+                {paymentStatusOption === "PAID" && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    Paid in Full
+                  </span>
+                )}
+                {paymentStatusOption === "PARTIALLY_PAID" && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-blue-100 text-blue-800 border border-blue-300">
+                    Partially Paid
+                  </span>
+                )}
+                {freightStatus === "PENDING" && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                    Freight Pending
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Inspect the invoice document with official dynamic branding, stamp, charges, and settlement details.
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <button
                 type="button"
                 onClick={() => setCurrentStep(5)}
@@ -894,34 +1291,53 @@ export default function NewInvoicePage() {
               <button
                 type="button"
                 disabled={submitting}
-                onClick={() => handleFinalSubmit("ISSUED")}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#1E2968] flex items-center gap-2 shadow-sm"
+                onClick={() => handleFinalSubmit()}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm ${
+                  paymentStatusOption === "PAID"
+                    ? "bg-emerald-700 hover:bg-emerald-800 text-white"
+                    : "bg-[#141B47] text-white hover:bg-[#1E2968]"
+                }`}
               >
-                <Send size={14} /> {submitting ? "Finalizing..." : "Issue Invoice Officially"}
+                {paymentStatusOption === "PAID" ? (
+                  <>
+                    <Award size={14} /> {submitting ? "Finalizing..." : "Issue Paid Invoice (With Official Stamp)"}
+                  </>
+                ) : paymentStatusOption === "PARTIALLY_PAID" ? (
+                  <>
+                    <CreditCard size={14} /> {submitting ? "Finalizing..." : "Issue Partially Paid Invoice"}
+                  </>
+                ) : (
+                  <>
+                    <Send size={14} /> {submitting ? "Finalizing..." : "Issue Invoice Officially"}
+                  </>
+                )}
               </button>
             </div>
           </div>
 
-          {/* Render Actual Invoice Document Preview */}
+          {/* Render Actual Invoice Document Preview with Dynamic Branding & Status */}
           <InvoiceDocument
+            branding={branding}
             invoice={{
               invoiceNumber: "PREVIEW-PENDING",
-              status: "DRAFT",
+              status: paymentStatusOption === "PAID" ? "PAID" : paymentStatusOption === "PARTIALLY_PAID" ? "PARTIALLY_PAID" : "ISSUED",
               issueDate,
               dueDate,
               currency,
               subtotal,
               discountAmount: calculatedDiscount,
               discountPercent,
-              shippingCharges,
+              shippingCharges: effectiveShipping,
+              freightStatus,
+              freightNotes: freightNotes.trim() || undefined,
               handlingCharges,
               customsCharges,
               otherCharges,
               taxRate,
               taxAmount,
               totalAmount,
-              amountPaid: 0,
-              outstandingBalance: totalAmount,
+              amountPaid: liveAmountPaid,
+              outstandingBalance: liveOutstandingBalance,
               paymentInstructions,
               clientNotes,
               purchaseOrderRef,

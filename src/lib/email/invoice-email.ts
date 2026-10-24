@@ -11,6 +11,8 @@ export interface InvoiceEmailData {
   totalAmount: number;
   amountPaid: number;
   outstandingBalance: number;
+  status?: string;
+  freightStatus?: "CONFIRMED" | "PENDING" | "NOT_APPLICABLE" | null;
   shipmentReference?: string | null;
   paymentInstructions?: string | null;
   clientNotes?: string | null;
@@ -24,11 +26,19 @@ export async function generateInvoiceEmailHtml(data: InvoiceEmailData): Promise<
   const formattedTotal = formatCurrency(data.totalAmount, data.currency);
   const formattedPaid = formatCurrency(data.amountPaid, data.currency);
   const formattedBalance = formatCurrency(data.outstandingBalance, data.currency);
+  const isPaid = data.status === "PAID" || (data.outstandingBalance <= 0 && data.totalAmount > 0);
 
   const shipmentRowHtml = data.shipmentReference
     ? `<tr>
         <td class="label" style="padding: 8px 0; color: #64748B; font-weight: 500; font-size: 13px;">Linked Shipment:</td>
         <td class="val" style="padding: 8px 0; color: #0F172A; font-weight: 700; text-align: right; font-size: 13px; font-family: monospace;">${data.shipmentReference}</td>
+      </tr>`
+    : "";
+
+  const freightRowHtml = data.freightStatus === "PENDING"
+    ? `<tr style="border-top: 1px solid #F1F5F9;">
+        <td class="label" style="padding: 8px 0; color: #D97706; font-weight: 600; font-size: 13px;">Shipping / Freight:</td>
+        <td class="val" style="padding: 8px 0; color: #B45309; font-weight: 700; text-align: right; font-size: 12px; text-transform: uppercase;">Pending Confirmation</td>
       </tr>`
     : "";
 
@@ -38,7 +48,13 @@ export async function generateInvoiceEmailHtml(data: InvoiceEmailData): Promise<
       </div>`
     : "";
 
-  const paymentInstructionsHtml = data.paymentInstructions
+  // If paid in full, suppress payment instructions completely and show paid confirmation
+  const paymentInstructionsHtml = isPaid
+    ? `<div style="background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 10px; padding: 14px 18px; margin: 20px 0; font-size: 13px; color: #065F46;">
+        <strong style="color: #047857; display: block; margin-bottom: 4px;">Payment Received · Paid in Full</strong>
+        This invoice has been settled in full. Thank you for doing business with ${branding.businessName}. No further payment is required.
+      </div>`
+    : data.paymentInstructions
     ? `<div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 18px; margin: 20px 0; font-size: 13px; color: #334155;">
         <strong style="color: ${branding.primaryColor || "#141B47"}; display: block; margin-bottom: 6px;">Payment Instructions:</strong>
         <div style="line-height: 1.5; white-space: pre-wrap;">${data.paymentInstructions}</div>
@@ -51,25 +67,44 @@ export async function generateInvoiceEmailHtml(data: InvoiceEmailData): Promise<
       </div>`
     : "";
 
+  const statusHeaderBadge = isPaid
+    ? `<span style="background-color: #DCFCE7; color: #15803D; font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 20px; border: 1px solid #86EFAC;">
+        PAID IN FULL
+       </span>`
+    : `<span style="background-color: #FEF3C7; color: #B45309; font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 20px; border: 1px solid #FCD34D;">
+        PAYMENT DUE
+       </span>`;
+
+  const leadText = isPaid
+    ? `Please find your official payment receipt for invoice <strong>#${data.invoiceNumber}</strong> from <strong>${branding.businessName}</strong>. This invoice is settled in full.`
+    : `Please find your official invoice <strong>#${data.invoiceNumber}</strong> from <strong>${branding.businessName}</strong> for the goods and services you ordered.`;
+
+  const buttonText = isPaid ? "View & Download Paid Receipt PDF →" : "View & Download Invoice PDF →";
+
   const bodyContent = `
     <h2 class="greeting" style="font-size: 18px; font-weight: 700; color: ${branding.primaryColor || "#141B47"}; margin: 0 0 12px 0;">
       Dear ${data.clientName},
     </h2>
     
     <p class="lead" style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
-      Please find your official invoice <strong>#${data.invoiceNumber}</strong> from <strong>${branding.businessName}</strong> for the goods and services you ordered.
+      ${leadText}
     </p>
 
     ${customNoteHtml}
 
     <div class="status-card" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 22px; margin-bottom: 24px;">
       <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #E2E8F0; padding-bottom: 12px; margin-bottom: 12px;">
-        <span style="font-size: 11px; font-weight: 800; color: ${branding.accentColor || "#F2901F"}; text-transform: uppercase; letter-spacing: 0.8px;">
-          INVOICE SUMMARY
-        </span>
-        <span style="font-family: monospace; font-size: 13px; font-weight: 700; color: ${branding.primaryColor || "#141B47"};">
-          #${data.invoiceNumber}
-        </span>
+        <div>
+          <span style="font-size: 11px; font-weight: 800; color: ${branding.accentColor || "#F2901F"}; text-transform: uppercase; letter-spacing: 0.8px; display: block;">
+            INVOICE SUMMARY
+          </span>
+          <span style="font-family: monospace; font-size: 13px; font-weight: 700; color: ${branding.primaryColor || "#141B47"};">
+            #${data.invoiceNumber}
+          </span>
+        </div>
+        <div>
+          ${statusHeaderBadge}
+        </div>
       </div>
 
       <table style="width: 100%; border-collapse: collapse;">
@@ -79,9 +114,10 @@ export async function generateInvoiceEmailHtml(data: InvoiceEmailData): Promise<
         </tr>
         <tr style="border-top: 1px solid #F1F5F9;">
           <td class="label" style="padding: 8px 0; color: #64748B; font-weight: 500; font-size: 13px;">Payment Due Date:</td>
-          <td class="val" style="padding: 8px 0; color: #B91C1C; font-weight: 700; text-align: right; font-size: 13px;">${data.dueDate}</td>
+          <td class="val" style="padding: 8px 0; color: ${isPaid ? "#475569" : "#B91C1C"}; font-weight: 700; text-align: right; font-size: 13px;">${data.dueDate}</td>
         </tr>
         ${shipmentRowHtml}
+        ${freightRowHtml}
         <tr style="border-top: 1px solid #F1F5F9;">
           <td class="label" style="padding: 8px 0; color: #64748B; font-weight: 500; font-size: 13px;">Total Invoiced:</td>
           <td class="val" style="padding: 8px 0; color: #0F172A; font-weight: 700; text-align: right; font-size: 13px; font-family: monospace;">${formattedTotal}</td>
@@ -101,7 +137,7 @@ export async function generateInvoiceEmailHtml(data: InvoiceEmailData): Promise<
 
     <div style="text-align: center; margin: 30px 0 20px 0;">
       <a href="${data.publicViewUrl}" class="btn" style="display: inline-block; background-color: ${branding.accentColor || "#F2901F"}; color: #FFFFFF !important; font-weight: 700; font-size: 15px; text-decoration: none; padding: 14px 32px; border-radius: 10px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-        View & Download Invoice PDF →
+        ${buttonText}
       </a>
       <p style="font-size: 12px; color: #64748B; margin-top: 8px;">
         You can securely review, print, and download your invoice at any time using the link above.
@@ -111,7 +147,7 @@ export async function generateInvoiceEmailHtml(data: InvoiceEmailData): Promise<
     ${clientNotesHtml}
 
     <p style="font-size: 13px; line-height: 1.6; color: #475569; margin-top: 24px;">
-      If you have any questions regarding this invoice, please do not hesitate to contact our desk.<br><br>
+      If you have any questions regarding this document, please do not hesitate to contact our desk.<br><br>
       Thank you for choosing <strong>${branding.businessName}</strong>.
     </p>
   `;

@@ -9,6 +9,7 @@ export interface SystemSettingsType {
   sessionTimeoutMinutes: number;
   maxLoginAttempts: number;
   lockoutDurationMinutes: number;
+  defaultPaymentInstructions?: string;
   updatedAt?: string;
 }
 
@@ -23,4 +24,5 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettingsType = {
   sessionTimeoutMinutes: 60,
   maxLoginAttempts: 5,
   lockoutDurationMinutes: 15,
+  defaultPaymentInstructions: "",
 };

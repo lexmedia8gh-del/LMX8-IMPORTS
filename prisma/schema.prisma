@@ -411,6 +411,8 @@ model SystemSettings {
   sessionTimeoutMinutes   Int      @default(60)
   maxLoginAttempts        Int      @default(5)
   lockoutDurationMinutes  Int      @default(15)
+  // Invoicing & Billing
+  defaultPaymentInstructions String?
   updatedAt               DateTime @updatedAt
   updatedBy               String?  // Admin User ID
 }
@@ -483,6 +485,8 @@ model Invoice {
   clientNotes         String?
   internalNotes       String?
   purchaseOrderRef    String?
+  freightStatus       String?        @default("CONFIRMED") // PENDING, CONFIRMED, NOT_APPLICABLE
+  freightNotes        String?
   lastDeliveryMethod  String?
   lastSentAt          DateTime?
   sentCount           Int            @default(0)

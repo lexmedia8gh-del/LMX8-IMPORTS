@@ -26,6 +26,8 @@ export interface InvoiceDocumentData {
   paymentInstructions?: string | null;
   clientNotes?: string | null;
   purchaseOrderRef?: string | null;
+  freightStatus?: "CONFIRMED" | "PENDING" | "NOT_APPLICABLE" | null;
+  freightNotes?: string | null;
   customer?: {
     id?: string;
     customerIdentifier?: string;
@@ -66,9 +68,13 @@ export interface InvoiceBrandingProps {
   secondaryColor?: string;
   accentColor?: string;
   invoiceLogo?: string | null;
+  invoiceLogoUrl?: string | null;
   mainLogo?: string | null;
+  mainLogoUrl?: string | null;
   lightLogo?: string | null;
+  lightLogoUrl?: string | null;
   invoiceStamp?: string | null;
+  invoiceStampUrl?: string | null;
 }
 
 interface InvoiceDocumentProps {
@@ -83,7 +89,15 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
   const primaryColor = branding?.primaryColor || "#141B47";
   const secondaryColor = branding?.secondaryColor || "#355DAF";
   const accentColor = branding?.accentColor || "#F2901F";
-  const logoUrl = branding?.invoiceLogo || branding?.mainLogo || branding?.lightLogo || null;
+  const logoUrl =
+    branding?.invoiceLogoUrl ||
+    branding?.invoiceLogo ||
+    branding?.mainLogoUrl ||
+    branding?.mainLogo ||
+    branding?.lightLogoUrl ||
+    branding?.lightLogo ||
+    null;
+  const stampUrl = branding?.invoiceStampUrl || branding?.invoiceStamp || null;
 
   const formattedIssueDate = invoice.issueDate
     ? new Date(invoice.issueDate).toLocaleDateString("en-GH", {
@@ -101,12 +115,14 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
       })
     : "—";
 
+  const isPaid = invoice.status === "PAID" || (invoice.outstandingBalance <= 0 && invoice.totalAmount > 0);
+
   const getStatusBadge = () => {
     switch (invoice.status) {
       case "PAID":
         return {
           label: "PAID IN FULL",
-          bg: "bg-emerald-50 text-emerald-700 border-emerald-200",
+          bg: "bg-emerald-50 text-emerald-700 border-emerald-300",
           icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />,
         };
       case "PARTIALLY_PAID":
@@ -145,7 +161,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
   const badge = getStatusBadge();
 
   return (
-    <div className="invoice-sheet bg-white text-slate-900 rounded-2xl shadow-xl border border-slate-200 overflow-hidden print:shadow-none print:border-none print:rounded-none max-w-4xl mx-auto">
+    <div className="invoice-sheet bg-white text-slate-900 rounded-2xl shadow-xl border border-slate-200 overflow-hidden print:shadow-none print:border-none print:rounded-none max-w-4xl mx-auto relative">
       {/* Print-specific style rules */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
@@ -181,7 +197,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
       {/* Top Header */}
       <div 
         style={{ borderTop: `6px solid ${primaryColor}` }}
-        className="p-8 sm:p-10 border-b border-slate-100"
+        className="p-8 sm:p-10 border-b border-slate-100 relative overflow-hidden"
       >
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6">
           {/* Logo & Company Info */}
@@ -213,7 +229,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
           </div>
 
           {/* Document Title & Meta Box */}
-          <div className="sm:text-right space-y-2">
+          <div className="sm:text-right space-y-2 relative">
             <h1 
               style={{ color: primaryColor }}
               className="text-3xl sm:text-4xl font-black tracking-tight uppercase"
@@ -226,10 +242,29 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
                 {badge.label}
               </span>
             </div>
+
+            {/* Official PAID Stamp on Header if Paid */}
+            {isPaid && (
+              <div className="pt-2 flex justify-start sm:justify-end">
+                {stampUrl ? (
+                  <img
+                    src={stampUrl}
+                    alt="Official Paid Stamp"
+                    className="h-16 w-auto object-contain opacity-90 rotate-[-8deg] pointer-events-none drop-shadow-xs"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-lg border-2 border-dashed border-emerald-600 text-emerald-700 font-black text-xs uppercase tracking-widest rotate-[-6deg] bg-emerald-50/60 shadow-xs">
+                    <CheckCircle2 size={13} className="stroke-[3]" /> PAID IN FULL
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="text-xs text-slate-600 space-y-1 pt-1 font-mono">
               <p><span className="text-slate-400 font-sans">Invoice #:</span> <strong>{invoice.invoiceNumber}</strong></p>
               <p><span className="text-slate-400 font-sans">Issue Date:</span> {formattedIssueDate}</p>
-              <p><span className="text-slate-400 font-sans">Due Date:</span> <span className="font-bold text-red-600">{formattedDueDate}</span></p>
+              <p><span className="text-slate-400 font-sans">Due Date:</span> <span className={`font-bold ${isPaid ? "text-slate-700" : "text-red-600"}`}>{formattedDueDate}</span></p>
               {invoice.purchaseOrderRef && (
                 <p><span className="text-slate-400 font-sans">PO / Ref:</span> {invoice.purchaseOrderRef}</p>
               )}
@@ -353,15 +388,27 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
         <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row justify-between gap-8">
           {/* Payment Instructions & Notes */}
           <div className="sm:w-1/2 space-y-4 text-xs">
-            {invoice.paymentInstructions && (
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                  Payment Instructions
+            {/* If paid in full, suppress payment instructions and show official paid receipt note */}
+            {isPaid ? (
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200/90 space-y-1.5">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                  <CheckCircle2 size={13} className="text-emerald-600 stroke-[2.5]" /> Payment Status: Settled in Full
                 </span>
-                <div className="text-slate-700 whitespace-pre-wrap leading-relaxed">
-                  {invoice.paymentInstructions}
-                </div>
+                <p className="text-emerald-950 text-xs font-medium leading-relaxed">
+                  This invoice has been settled in full. Thank you for doing business with {businessName}. No further payment is required.
+                </p>
               </div>
+            ) : (
+              invoice.paymentInstructions && (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                    Payment Instructions
+                  </span>
+                  <div className="text-slate-700 whitespace-pre-wrap leading-relaxed">
+                    {invoice.paymentInstructions}
+                  </div>
+                </div>
+              )
             )}
 
             {invoice.clientNotes && (
@@ -405,10 +452,32 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
               </div>
             ) : null}
 
-            {invoice.shippingCharges && invoice.shippingCharges > 0 ? (
-              <div className="flex justify-between py-1 text-slate-600">
+            {/* Freight Charges Row / Pending Indicator */}
+            {invoice.freightStatus === "PENDING" ? (
+              <div className="py-2 px-3 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs space-y-1 my-1">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold flex items-center gap-1.5 text-amber-950 text-xs">
+                    <Truck size={13} className="text-amber-700" /> Shipping / Freight:
+                  </span>
+                  <span className="font-extrabold text-[10px] uppercase tracking-wider bg-amber-200/90 text-amber-900 px-2 py-0.5 rounded-full">
+                    Pending Confirmation
+                  </span>
+                </div>
+                <p className="text-[10px] text-amber-800 leading-normal">
+                  * Freight will be determined and billed once goods are weighed at warehouse.
+                </p>
+              </div>
+            ) : invoice.freightStatus === "NOT_APPLICABLE" ? (
+              <div className="flex justify-between py-1 text-slate-400 text-[11px] italic">
                 <span>Shipping / Freight:</span>
-                <span className="font-mono font-medium">{formatCurrency(invoice.shippingCharges, invoice.currency)}</span>
+                <span>Not Applicable</span>
+              </div>
+            ) : (invoice.shippingCharges && invoice.shippingCharges > 0) || invoice.freightStatus === "CONFIRMED" ? (
+              <div className="flex justify-between py-1 text-slate-600">
+                <span className="flex items-center gap-1">
+                  <Truck size={12} className="text-slate-400" /> Shipping / Freight:
+                </span>
+                <span className="font-mono font-medium">{formatCurrency(invoice.shippingCharges || 0, invoice.currency)}</span>
               </div>
             ) : null}
 
@@ -459,9 +528,16 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
               <span className="font-black text-xs uppercase tracking-wider text-slate-900">
                 Outstanding Balance:
               </span>
-              <span className={`font-mono text-lg font-black ${invoice.outstandingBalance > 0 ? "text-red-600" : "text-emerald-700"}`}>
-                {formatCurrency(invoice.outstandingBalance, invoice.currency)}
-              </span>
+              <div className="text-right">
+                <span className={`font-mono text-lg font-black ${invoice.outstandingBalance > 0 ? "text-red-600" : "text-emerald-700"}`}>
+                  {formatCurrency(invoice.outstandingBalance, invoice.currency)}
+                </span>
+                {isPaid && (
+                  <span className="block text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
+                    Settled
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>

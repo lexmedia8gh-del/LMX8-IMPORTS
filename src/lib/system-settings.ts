@@ -32,10 +32,12 @@ export async function ensureSystemSettingsSchema(): Promise<boolean> {
         "sessionTimeoutMinutes" INTEGER NOT NULL DEFAULT 60,
         "maxLoginAttempts" INTEGER NOT NULL DEFAULT 5,
         "lockoutDurationMinutes" INTEGER NOT NULL DEFAULT 15,
+        "defaultPaymentInstructions" TEXT,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedBy" TEXT,
         CONSTRAINT "SystemSettings_pkey" PRIMARY KEY ("id")
       );
+      ALTER TABLE "public"."SystemSettings" ADD COLUMN IF NOT EXISTS "defaultPaymentInstructions" TEXT;
     `);
     systemSettingsSchemaEnsured = true;
     return true;
@@ -70,6 +72,7 @@ export async function getSystemSettings(): Promise<SystemSettingsType> {
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes || DEFAULT_SYSTEM_SETTINGS.sessionTimeoutMinutes,
         maxLoginAttempts: settings.maxLoginAttempts || DEFAULT_SYSTEM_SETTINGS.maxLoginAttempts,
         lockoutDurationMinutes: settings.lockoutDurationMinutes || DEFAULT_SYSTEM_SETTINGS.lockoutDurationMinutes,
+        defaultPaymentInstructions: (settings as any).defaultPaymentInstructions ?? "",
         updatedAt: settings.updatedAt.toISOString(),
       };
     } else {

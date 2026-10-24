@@ -7,6 +7,8 @@ import { normalizePhoneNumber } from "@/lib/phone";
 import { sendBrevoEmail } from "@/lib/email/brevo";
 import { generateInvoiceEmailHtml } from "@/lib/email/invoice-email";
 import { getBrandSettings } from "@/lib/branding";
+import { getBrandSettingsAction } from "@/app/actions/branding";
+import { getSystemSettings } from "@/lib/system-settings";
 import { revalidatePath } from "next/cache";
 
 export interface InvoiceItemInput {
@@ -27,6 +29,8 @@ export interface CreateInvoiceInput {
   discountAmount?: number;
   discountPercent?: number;
   shippingCharges?: number;
+  freightStatus?: "CONFIRMED" | "PENDING" | "NOT_APPLICABLE";
+  freightNotes?: string;
   handlingCharges?: number;
   customsCharges?: number;
   otherCharges?: number;
@@ -35,11 +39,21 @@ export interface CreateInvoiceInput {
   clientNotes?: string;
   internalNotes?: string;
   purchaseOrderRef?: string;
-  status?: "DRAFT" | "ISSUED";
+  status?: "DRAFT" | "ISSUED" | "PAID" | "PARTIALLY_PAID";
+  initialPaymentAmount?: number;
+  initialPaymentMethod?: string;
+  initialPaymentReference?: string;
 }
 
 export interface UpdateInvoiceInput extends Partial<CreateInvoiceInput> {
   id: string;
+}
+
+export interface UpdateFreightChargesInput {
+  invoiceId: string;
+  freightStatus: "CONFIRMED" | "PENDING" | "NOT_APPLICABLE";
+  freightAmount: number;
+  freightNotes?: string;
 }
 
 function getAppBaseUrl(): string {
@@ -423,12 +437,15 @@ export async function getInvoiceByIdAction(idOrNumber: string) {
     }
 
     const publicUrl = `${getAppBaseUrl()}/invoices/${invoice.accessToken}`;
+    const branding = await getBrandSettingsAction();
 
     return {
       success: true,
       invoice: {
         ...invoice,
         status: runtimeStatus,
+        freightStatus: invoice.freightStatus || (invoice.shippingCharges > 0 ? "CONFIRMED" : "PENDING"),
+        freightNotes: invoice.freightNotes || null,
         issueDate: invoice.issueDate.toISOString(),
         dueDate: invoice.dueDate.toISOString(),
         createdAt: invoice.createdAt.toISOString(),
@@ -450,6 +467,7 @@ export async function getInvoiceByIdAction(idOrNumber: string) {
           createdAt: log.createdAt.toISOString(),
         })),
       },
+      branding,
     };
   } catch (error: any) {
     console.error("[getInvoiceByIdAction] Error:", error);
@@ -515,7 +533,7 @@ export async function getPublicInvoiceByTokenAction(token: string) {
       return { success: false, error: "Invoice not found or link has expired." };
     }
 
-    const branding = await getBrandSettings();
+    const branding = await getBrandSettingsAction();
 
     const now = new Date();
     let runtimeStatus = invoice.status;
@@ -541,6 +559,8 @@ export async function getPublicInvoiceByTokenAction(token: string) {
         discountAmount: invoice.discountAmount,
         discountPercent: invoice.discountPercent,
         shippingCharges: invoice.shippingCharges,
+        freightStatus: invoice.freightStatus || (invoice.shippingCharges > 0 ? "CONFIRMED" : "PENDING"),
+        freightNotes: invoice.freightNotes || null,
         handlingCharges: invoice.handlingCharges,
         customsCharges: invoice.customsCharges,
         otherCharges: invoice.otherCharges,
@@ -569,18 +589,7 @@ export async function getPublicInvoiceByTokenAction(token: string) {
           paymentDate: p.paymentDate.toISOString(),
         })),
       },
-      branding: {
-        businessName: branding.businessName,
-        shortName: branding.shortName,
-        tagline: branding.tagline,
-        primaryColor: branding.primaryColor,
-        secondaryColor: branding.secondaryColor,
-        accentColor: branding.accentColor,
-        mainLogo: branding.mainLogo,
-        lightLogo: branding.lightLogo,
-        invoiceLogo: branding.invoiceLogo,
-        invoiceStamp: branding.invoiceStamp,
-      },
+      branding,
     };
   } catch (error: any) {
     console.error("[getPublicInvoiceByTokenAction] Error:", error);
@@ -625,11 +634,14 @@ export async function createInvoiceAction(data: CreateInvoiceInput) {
       }
     }
 
+    const freightStatus = data.freightStatus || (data.shippingCharges && data.shippingCharges > 0 ? "CONFIRMED" : "PENDING");
+    const effectiveShippingCharges = freightStatus === "CONFIRMED" ? Math.max(0, Number(data.shippingCharges) || 0) : 0;
+
     const financials = calculateInvoiceFinancials({
       items: data.items,
       discountAmount: data.discountAmount,
       discountPercent: data.discountPercent,
-      shippingCharges: data.shippingCharges,
+      shippingCharges: effectiveShippingCharges,
       handlingCharges: data.handlingCharges,
       customsCharges: data.customsCharges,
       otherCharges: data.otherCharges,
@@ -638,48 +650,104 @@ export async function createInvoiceAction(data: CreateInvoiceInput) {
     });
 
     const invoiceNumber = await generateNextInvoiceNumber();
-    const status = data.status === "ISSUED" ? "ISSUED" : "DRAFT";
     const issueDate = data.issueDate ? new Date(data.issueDate) : new Date();
     const dueDate = new Date(data.dueDate);
 
-    const invoice = await prisma.invoice.create({
-      data: {
-        invoiceNumber,
-        status,
-        issueDate,
-        dueDate,
-        currency: data.currency || "GHS",
-        subtotal: financials.subtotal,
-        discountAmount: financials.discountAmount,
-        discountPercent: financials.discountPercent,
-        shippingCharges: financials.shippingCharges,
-        handlingCharges: financials.handlingCharges,
-        customsCharges: financials.customsCharges,
-        otherCharges: financials.otherCharges,
-        taxRate: financials.taxRate,
-        taxAmount: financials.taxAmount,
-        totalAmount: financials.totalAmount,
-        amountPaid: financials.amountPaid,
-        outstandingBalance: financials.outstandingBalance,
-        paymentInstructions: data.paymentInstructions || null,
-        clientNotes: data.clientNotes || null,
-        internalNotes: data.internalNotes || null,
-        purchaseOrderRef: data.purchaseOrderRef || null,
-        customerId: customer.id,
-        shipmentId: data.shipmentId || null,
-        createdById: admin.id,
-        items: {
-          create: financials.calculatedItems.map((it) => ({
-            description: it.description,
-            sku: it.sku,
-            quantity: it.quantity,
-            unitPrice: it.unitPrice,
-            discount: it.discount,
-            lineTotal: it.lineTotal,
-            sortOrder: it.sortOrder,
-          })),
+    // Determine initial payment status and balance reconciliation
+    let finalStatus: "DRAFT" | "ISSUED" | "PAID" | "PARTIALLY_PAID" = "DRAFT";
+    let finalAmountPaid = 0;
+    let finalOutstanding = financials.totalAmount;
+
+    if (data.status === "PAID") {
+      finalStatus = "PAID";
+      finalAmountPaid = financials.totalAmount;
+      finalOutstanding = 0;
+    } else if (data.status === "PARTIALLY_PAID") {
+      const initialPaid = Math.min(financials.totalAmount, Math.max(0, Number(data.initialPaymentAmount) || 0));
+      finalAmountPaid = initialPaid;
+      finalOutstanding = Math.max(0, Math.round((financials.totalAmount - initialPaid) * 100) / 100);
+      finalStatus = finalOutstanding <= 0 ? "PAID" : initialPaid > 0 ? "PARTIALLY_PAID" : "ISSUED";
+    } else if (data.status === "ISSUED") {
+      finalStatus = "ISSUED";
+      finalAmountPaid = 0;
+      finalOutstanding = financials.totalAmount;
+    } else {
+      finalStatus = "DRAFT";
+      finalAmountPaid = 0;
+      finalOutstanding = financials.totalAmount;
+    }
+
+    const invoice = await prisma.$transaction(async (tx) => {
+      const created = await tx.invoice.create({
+        data: {
+          invoiceNumber,
+          status: finalStatus as any,
+          issueDate,
+          dueDate,
+          currency: data.currency || "GHS",
+          subtotal: financials.subtotal,
+          discountAmount: financials.discountAmount,
+          discountPercent: financials.discountPercent,
+          shippingCharges: effectiveShippingCharges,
+          freightStatus,
+          freightNotes: data.freightNotes || null,
+          handlingCharges: financials.handlingCharges,
+          customsCharges: financials.customsCharges,
+          otherCharges: financials.otherCharges,
+          taxRate: financials.taxRate,
+          taxAmount: financials.taxAmount,
+          totalAmount: financials.totalAmount,
+          amountPaid: finalAmountPaid,
+          outstandingBalance: finalOutstanding,
+          paymentInstructions: data.paymentInstructions || null,
+          clientNotes: data.clientNotes || null,
+          internalNotes: data.internalNotes || null,
+          purchaseOrderRef: data.purchaseOrderRef || null,
+          customerId: customer.id,
+          shipmentId: data.shipmentId || null,
+          createdById: admin.id,
+          items: {
+            create: financials.calculatedItems.map((it) => ({
+              description: it.description,
+              sku: it.sku,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+              discount: it.discount,
+              lineTotal: it.lineTotal,
+              sortOrder: it.sortOrder,
+            })),
+          },
         },
-      },
+      });
+
+      // If marked as Paid or Partially Paid at creation, record auditable payment row
+      if (finalStatus === "PAID" && financials.totalAmount > 0) {
+        await tx.invoicePayment.create({
+          data: {
+            invoiceId: created.id,
+            amount: financials.totalAmount,
+            paymentDate: issueDate,
+            paymentMethod: data.initialPaymentMethod || "ADMIN_CONFIRMED",
+            reference: data.initialPaymentReference?.trim() || "CONFIRMED_ON_CREATION",
+            notes: "Confirmed paid in full upon invoice creation by administrator",
+            recordedBy: admin.name || admin.email,
+          },
+        });
+      } else if (finalStatus === "PARTIALLY_PAID" && finalAmountPaid > 0) {
+        await tx.invoicePayment.create({
+          data: {
+            invoiceId: created.id,
+            amount: finalAmountPaid,
+            paymentDate: issueDate,
+            paymentMethod: data.initialPaymentMethod || "ADMIN_CONFIRMED",
+            reference: data.initialPaymentReference?.trim() || "INITIAL_DEPOSIT",
+            notes: "Initial partial payment recorded upon invoice creation",
+            recordedBy: admin.name || admin.email,
+          },
+        });
+      }
+
+      return created;
     });
 
     // Record audit log
@@ -688,13 +756,16 @@ export async function createInvoiceAction(data: CreateInvoiceInput) {
         action: "INVOICE_CREATED",
         entityType: "Invoice",
         entityId: invoice.id,
-        description: `Invoice #${invoiceNumber} created for ${customer.name} with total amount ${data.currency || "GHS"} ${financials.totalAmount} by ${admin.name || admin.email}`,
+        description: `Invoice #${invoiceNumber} created for ${customer.name} with total amount ${data.currency || "GHS"} ${financials.totalAmount} (Status: ${finalStatus}, Freight: ${freightStatus}) by ${admin.name || admin.email}`,
         adminId: admin.id,
         metadata: {
           invoiceNumber,
           customerId: customer.id,
           totalAmount: financials.totalAmount,
-          status,
+          amountPaid: finalAmountPaid,
+          outstandingBalance: finalOutstanding,
+          status: finalStatus,
+          freightStatus,
         },
       },
     });
@@ -748,12 +819,16 @@ export async function updateInvoiceAction(data: UpdateInvoiceInput) {
     // Existing payments sum
     const totalPaymentsRecorded = existing.payments.reduce((acc, p) => acc + (p.amount || 0), 0);
 
+    const freightStatus = data.freightStatus !== undefined ? data.freightStatus : (existing.freightStatus || "CONFIRMED");
+    const rawShippingCharges = data.shippingCharges !== undefined ? data.shippingCharges : existing.shippingCharges;
+    const effectiveShippingCharges = freightStatus === "CONFIRMED" ? Math.max(0, Number(rawShippingCharges) || 0) : 0;
+
     const itemsToCalculate = data.items || [];
     const financials = calculateInvoiceFinancials({
       items: itemsToCalculate,
       discountAmount: data.discountAmount ?? existing.discountAmount,
       discountPercent: data.discountPercent ?? existing.discountPercent ?? 0,
-      shippingCharges: data.shippingCharges ?? existing.shippingCharges,
+      shippingCharges: effectiveShippingCharges,
       handlingCharges: data.handlingCharges ?? existing.handlingCharges,
       customsCharges: data.customsCharges ?? existing.customsCharges,
       otherCharges: data.otherCharges ?? existing.otherCharges,
@@ -780,7 +855,9 @@ export async function updateInvoiceAction(data: UpdateInvoiceInput) {
           subtotal: financials.subtotal,
           discountAmount: financials.discountAmount,
           discountPercent: financials.discountPercent,
-          shippingCharges: financials.shippingCharges,
+          shippingCharges: effectiveShippingCharges,
+          freightStatus,
+          freightNotes: data.freightNotes !== undefined ? data.freightNotes : existing.freightNotes,
           handlingCharges: financials.handlingCharges,
           customsCharges: financials.customsCharges,
           otherCharges: financials.otherCharges,
@@ -825,6 +902,138 @@ export async function updateInvoiceAction(data: UpdateInvoiceInput) {
   } catch (error: any) {
     console.error("[updateInvoiceAction] Error:", error);
     return { success: false, error: error?.message || "Failed to update invoice." };
+  }
+}
+
+/**
+ * Dedicated administrator action to Add or Update Freight Charge on an existing invoice
+ * Transparently recomputes totals, preserves original goods payments, and logs changes.
+ */
+export async function updateFreightChargesAction(input: UpdateFreightChargesInput) {
+  const admin = await requireAdminSession();
+  await ensureInvoiceSchema();
+
+  try {
+    const existing = await prisma.invoice.findUnique({
+      where: { id: input.invoiceId },
+      include: {
+        payments: true,
+        items: true,
+      },
+    });
+
+    if (!existing) return { success: false, error: "Invoice not found." };
+    if (existing.status === "CANCELLED") return { success: false, error: "Cannot modify freight charges on a cancelled invoice." };
+
+    const freightStatus = input.freightStatus || "CONFIRMED";
+    const freightAmount = freightStatus === "CONFIRMED" ? Math.max(0, Number(input.freightAmount) || 0) : 0;
+    const freightNotes = input.freightNotes?.trim() || null;
+
+    // Recalculate subtotal from items
+    const subtotal = existing.items.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+    const discountAmount = Math.min(subtotal, existing.discountAmount || 0);
+    const baseAfterDiscount = Math.max(0, subtotal - discountAmount);
+
+    const totalCharges = Math.round((
+      freightAmount +
+      (existing.handlingCharges || 0) +
+      (existing.customsCharges || 0) +
+      (existing.otherCharges || 0)
+    ) * 100) / 100;
+
+    const taxAmount = (existing.taxRate && existing.taxRate > 0)
+      ? Math.round((baseAfterDiscount * (existing.taxRate / 100)) * 100) / 100
+      : 0;
+
+    const newTotalAmount = Math.round((baseAfterDiscount + totalCharges + taxAmount) * 100) / 100;
+
+    // Preserve existing payments completely
+    const totalPaymentsRecorded = existing.payments.reduce((acc, p) => acc + (p.amount || 0), 0);
+    const amountPaid = Math.max(existing.amountPaid, totalPaymentsRecorded);
+    const newOutstandingBalance = Math.max(0, Math.round((newTotalAmount - amountPaid) * 100) / 100);
+
+    // Transition status accurately
+    let newStatus = existing.status;
+    if (newOutstandingBalance <= 0 && newTotalAmount > 0) {
+      newStatus = "PAID";
+    } else if (amountPaid > 0) {
+      newStatus = "PARTIALLY_PAID";
+    } else {
+      newStatus = existing.status === "DRAFT" ? "DRAFT" : "ISSUED";
+    }
+
+    const previousFreight = existing.shippingCharges;
+    const previousTotal = existing.totalAmount;
+
+    await prisma.invoice.update({
+      where: { id: existing.id },
+      data: {
+        freightStatus,
+        freightNotes,
+        shippingCharges: freightAmount,
+        totalAmount: newTotalAmount,
+        amountPaid,
+        outstandingBalance: newOutstandingBalance,
+        status: newStatus as any,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        action: "INVOICE_FREIGHT_UPDATED",
+        entityType: "Invoice",
+        entityId: existing.id,
+        description: `Freight charges updated from ${existing.currency} ${previousFreight} to ${existing.currency} ${freightAmount} (Status: ${freightStatus}) on invoice #${existing.invoiceNumber}. New total: ${existing.currency} ${newTotalAmount}, balance due: ${existing.currency} ${newOutstandingBalance} by ${admin.name || admin.email}`,
+        adminId: admin.id,
+        metadata: {
+          previousFreight,
+          newFreight: freightAmount,
+          freightStatus,
+          previousTotal,
+          newTotalAmount,
+          newOutstandingBalance,
+          newStatus,
+          freightNotes,
+        },
+      },
+    });
+
+    revalidatePath(`/admin/invoices/${existing.id}`);
+    revalidatePath("/admin/invoices");
+
+    return {
+      success: true,
+      totalAmount: newTotalAmount,
+      amountPaid,
+      outstandingBalance: newOutstandingBalance,
+      freightStatus,
+      status: newStatus,
+    };
+  } catch (error: any) {
+    console.error("[updateFreightChargesAction] Error:", error);
+    return { success: false, error: error?.message || "Failed to update freight charges." };
+  }
+}
+
+/**
+ * Retrieve system default invoice settings for prefilling creation workflow
+ */
+export async function getDefaultInvoiceSettingsAction() {
+  await requireAdminSession();
+  try {
+    const system = await getSystemSettings();
+    return {
+      success: true,
+      defaultPaymentInstructions: system.defaultPaymentInstructions || "",
+      defaultCurrency: system.defaultCurrency || "GHS",
+    };
+  } catch (err: any) {
+    console.error("[getDefaultInvoiceSettingsAction] Error:", err);
+    return {
+      success: false,
+      defaultPaymentInstructions: "",
+      defaultCurrency: "GHS",
+    };
   }
 }
 
@@ -1119,6 +1328,8 @@ export async function sendInvoiceEmailAction(invoiceId: string, customNote?: str
       totalAmount: invoice.totalAmount,
       amountPaid: invoice.amountPaid,
       outstandingBalance: invoice.outstandingBalance,
+      status: invoice.status,
+      freightStatus: (invoice as any).freightStatus || (invoice.shippingCharges > 0 ? "CONFIRMED" : "PENDING"),
       shipmentReference: invoice.shipment?.trackingNumber || null,
       paymentInstructions: invoice.paymentInstructions,
       clientNotes: invoice.clientNotes,
