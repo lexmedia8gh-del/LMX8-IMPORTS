@@ -41,7 +41,7 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3.5 sm:gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <DashboardStatCard title="Total Customers" value={customers.length} icon={<Users className="h-5 w-5" />} trend="neutral" />
         <DashboardStatCard title="Active Shipments" value={activeShipments.length} icon={<Box className="h-5 w-5" />} trend="neutral" />
         <DashboardStatCard title="In Transit" value={inTransit} icon={<Truck className="h-5 w-5" />} trend="neutral" />

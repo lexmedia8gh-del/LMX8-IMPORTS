@@ -104,12 +104,12 @@ export function SendInvoiceModal({ isOpen, onClose, onSuccess, invoice }: SendIn
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
       <div className="fixed inset-0" onClick={onClose} />
 
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-lg max-h-[92vh] flex flex-col bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="p-6 bg-[#141B47] text-white flex items-start justify-between">
+        <div className="p-5 sm:p-6 bg-[#141B47] text-white flex items-start justify-between shrink-0">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-widest text-[#F2901F]">
               CLIENT DISPATCH
@@ -121,21 +121,21 @@ export function SendInvoiceModal({ isOpen, onClose, onSuccess, invoice }: SendIn
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors min-h-[36px] min-w-[36px]"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-slate-200 bg-slate-50 p-2 gap-2 text-xs font-bold">
+        <div className="flex border-b border-slate-200 bg-slate-50 p-2 gap-2 text-xs font-bold shrink-0">
           <button
             type="button"
             onClick={() => {
               setActiveTab("EMAIL");
               setStatusMessage(null);
             }}
-            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all ${
+            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all min-h-[40px] ${
               activeTab === "EMAIL"
                 ? "bg-white text-[#141B47] shadow-xs border border-slate-200"
                 : "text-slate-500 hover:text-slate-800"
@@ -150,7 +150,7 @@ export function SendInvoiceModal({ isOpen, onClose, onSuccess, invoice }: SendIn
               setStatusMessage(null);
               if (!whatsAppData) handlePrepareWhatsApp();
             }}
-            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all ${
+            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all min-h-[40px] ${
               activeTab === "WHATSAPP"
                 ? "bg-white text-emerald-800 shadow-xs border border-slate-200"
                 : "text-slate-500 hover:text-slate-800"
@@ -161,7 +161,7 @@ export function SendInvoiceModal({ isOpen, onClose, onSuccess, invoice }: SendIn
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4">
+        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto">
           {statusMessage && (
             <div
               className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${

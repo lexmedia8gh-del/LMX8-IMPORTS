@@ -249,7 +249,7 @@ export default function NewInvoicePage() {
   });
 
   return (
-    <div className="p-4 sm:p-8 space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto w-full min-w-0">
       {/* Header & Breadcrumb */}
       <div>
         <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
@@ -538,8 +538,8 @@ export default function NewInvoicePage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    <div className="sm:col-span-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                    <div className="sm:col-span-2 lg:col-span-5">
                       <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                         Goods Description *
                       </label>
@@ -549,11 +549,11 @@ export default function NewInvoicePage() {
                         value={item.description}
                         onChange={(e) => handleItemChange(idx, "description", e.target.value)}
                         required
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white min-h-[40px]"
                       />
                     </div>
 
-                    <div className="sm:col-span-2">
+                    <div className="sm:col-span-1 lg:col-span-2">
                       <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                         SKU / Code
                       </label>
@@ -562,11 +562,11 @@ export default function NewInvoicePage() {
                         placeholder="SKU-102"
                         value={item.sku || ""}
                         onChange={(e) => handleItemChange(idx, "sku", e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white font-mono"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white font-mono min-h-[40px]"
                       />
                     </div>
 
-                    <div className="sm:col-span-1">
+                    <div className="sm:col-span-1 lg:col-span-1">
                       <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                         Qty
                       </label>
@@ -575,11 +575,11 @@ export default function NewInvoicePage() {
                         min="1"
                         value={item.quantity}
                         onChange={(e) => handleItemChange(idx, "quantity", parseInt(e.target.value, 10) || 1)}
-                        className="w-full px-2 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white font-mono text-center"
+                        className="w-full px-2 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white font-mono text-center min-h-[40px]"
                       />
                     </div>
 
-                    <div className="sm:col-span-2">
+                    <div className="sm:col-span-1 lg:col-span-2">
                       <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                         Unit Price ({currency})
                       </label>
@@ -589,15 +589,15 @@ export default function NewInvoicePage() {
                         min="0"
                         value={item.unitPrice}
                         onChange={(e) => handleItemChange(idx, "unitPrice", parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white font-mono"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white font-mono min-h-[40px]"
                       />
                     </div>
 
-                    <div className="sm:col-span-1 text-right">
+                    <div className="sm:col-span-1 lg:col-span-2 text-left sm:text-right">
                       <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
                         Total
                       </label>
-                      <p className="font-mono font-bold text-slate-900 py-2">
+                      <p className="font-mono font-bold text-slate-900 py-2 sm:py-2.5 text-xs sm:text-sm">
                         {formatCurrency(lineTotal, currency)}
                       </p>
                     </div>

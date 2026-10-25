@@ -231,7 +231,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
         {/* Top Accent Strip */}
         <div style={{ backgroundColor: primaryColor }} className="h-1.5 w-full" />
 
-        <div className="p-6 sm:p-8 space-y-5">
+        <div className="p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-5 print:p-0">
           {/* Header Section */}
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-100">
             {/* Logo & Company Info */}
@@ -372,8 +372,8 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
           </div>
 
           {/* Item Table */}
-          <div className="overflow-hidden border border-slate-200/80 rounded-xl">
-            <table className="w-full text-left border-collapse text-xs">
+          <div className="overflow-x-auto overflow-y-hidden border border-slate-200/80 rounded-xl print:overflow-visible">
+            <table className="w-full text-left border-collapse text-xs min-w-[500px] sm:min-w-0">
               <thead>
                 <tr 
                   style={{ backgroundColor: `${primaryColor}0F`, borderBottom: `2px solid ${primaryColor}` }}

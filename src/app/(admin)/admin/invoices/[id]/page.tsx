@@ -141,27 +141,27 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <div className="p-4 sm:p-8 space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6 sm:space-y-8 max-w-6xl mx-auto w-full min-w-0">
       {/* Top Bar Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/admin/invoices"
-            className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+            className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
             title="Back to Invoices list"
           >
             <ArrowLeft size={16} />
           </Link>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-mono font-bold text-xs text-slate-500">
+              <span className="font-mono font-bold text-xs text-slate-500 truncate">
                 INVOICE #{invoice.invoiceNumber}
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
                 {invoice.status}
               </span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-[#141B47] tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-[#141B47] tracking-tight truncate">
               {invoice.customer?.name || "Client Invoice"}
             </h1>
           </div>
@@ -174,7 +174,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             <button
               onClick={handleIssueInvoice}
               disabled={actionLoading}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#F2901F] text-slate-900 hover:bg-[#E08010] shadow-xs flex items-center gap-1.5"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#F2901F] text-slate-900 hover:bg-[#E08010] shadow-xs flex items-center gap-1.5 min-h-[40px] cursor-pointer"
             >
               <CheckCircle2 size={14} /> Issue Officially
             </button>
@@ -184,7 +184,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {invoice.status !== "CANCELLED" && invoice.outstandingBalance > 0 && (
             <button
               onClick={() => setPaymentModalOpen(true)}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center gap-1.5"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center gap-1.5 min-h-[40px] cursor-pointer"
             >
               <CreditCard size={14} /> Record Payment
             </button>
@@ -194,7 +194,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {invoice.status !== "CANCELLED" && (
             <button
               onClick={() => setFreightModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5 cursor-pointer min-h-[40px]"
               title="Add or update international freight charges"
             >
               <Truck size={14} className="text-[#355DAF]" />
@@ -211,7 +211,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {invoice.status !== "CANCELLED" && (
             <button
               onClick={() => setSendModalOpen(true)}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#141B47] hover:bg-[#1E2968] text-white shadow-xs flex items-center gap-1.5"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#141B47] hover:bg-[#1E2968] text-white shadow-xs flex items-center gap-1.5 min-h-[40px] cursor-pointer"
             >
               <Send size={14} /> Send to Client
             </button>
@@ -221,7 +221,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           <Link
             href={`/admin/invoices/${invoice.id}/print`}
             target="_blank"
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5 min-h-[40px]"
             title="Print or Save PDF"
           >
             <Printer size={14} /> Print / PDF
@@ -230,7 +230,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {/* Copy client link */}
           <button
             onClick={copyPublicLink}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5 min-h-[40px] cursor-pointer"
             title="Copy unguessable client view link"
           >
             <Share2 size={14} /> {copiedLink ? "Link Copied!" : "Client Link"}
@@ -240,7 +240,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {invoice.status === "DRAFT" && (
             <Link
               href={`/admin/invoices/${invoice.id}/edit`}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-xs flex items-center gap-1.5 min-h-[40px]"
             >
               <Edit size={14} /> Edit
             </Link>
@@ -250,7 +250,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           <button
             onClick={handleDuplicateInvoice}
             disabled={actionLoading}
-            className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-600"
+            className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
             title="Duplicate Invoice"
           >
             <Copy size={15} />
@@ -261,7 +261,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             <button
               onClick={handleCancelInvoice}
               disabled={actionLoading}
-              className="p-2 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50"
+              className="p-2 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
               title="Cancel Invoice"
             >
               <XCircle size={15} />
@@ -281,9 +281,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {/* Main Grid: Document & Sidebar Audit */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-start">
         {/* Left Column: Full Invoice Document (2 Cols) */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 min-w-0 overflow-x-auto">
           <InvoiceDocument
             invoice={invoice}
             branding={branding}
@@ -292,7 +292,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         {/* Right Column: Communications & Audit Trail (1 Col) */}
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
           {/* Summary Details Card */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs text-xs space-y-3">
             <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">

@@ -13,15 +13,15 @@ export function DashboardStatCard({ title, value, icon, description, trend }: Da
   return (
     <Card className="hover:shadow-md transition-shadow duration-300 border-[#E2E8F0] overflow-hidden group">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-white group-hover:bg-gray-50/50 transition-colors">
-        <CardTitle className="text-sm font-medium text-[#64748B]">{title}</CardTitle>
-        <div className="text-gray-400 bg-[#F1F5F9] p-2 rounded-full group-hover:text-brand-gold group-hover:bg-yellow-50 transition-colors">
+        <CardTitle className="text-xs sm:text-sm font-medium text-[#64748B] truncate">{title}</CardTitle>
+        <div className="text-gray-400 bg-[#F1F5F9] p-2 rounded-full group-hover:text-brand-gold group-hover:bg-yellow-50 transition-colors shrink-0">
           {icon}
         </div>
       </CardHeader>
-      <CardContent className="bg-white group-hover:bg-gray-50/50 transition-colors">
-        <div className="text-2xl font-bold text-[#0F172A]">{value}</div>
+      <CardContent className="bg-white group-hover:bg-gray-50/50 transition-colors min-w-0">
+        <div className="text-xl sm:text-2xl font-bold text-[#0F172A] truncate tracking-tight">{value}</div>
         {description && (
-          <p className={`text-xs mt-1 font-medium ${trend === 'up' ? 'text-brand-success' : trend === 'down' ? 'text-brand-error' : 'text-[#64748B]'}`}>
+          <p className={`text-xs mt-1 font-medium truncate ${trend === 'up' ? 'text-brand-success' : trend === 'down' ? 'text-brand-error' : 'text-[#64748B]'}`}>
             {description}
           </p>
         )}

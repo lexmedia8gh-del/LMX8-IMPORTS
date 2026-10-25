@@ -172,70 +172,70 @@ export function AdminCustomerAnalytics() {
           <span className="text-xs text-[#667085]">Verified via Paystack</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
           {/* Total Revenue */}
-          <div className="p-5 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xs space-y-2 relative overflow-hidden">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xs space-y-2 relative overflow-hidden min-w-0">
             <div className="flex items-center justify-between text-[#667085]">
-              <span className="text-xs font-bold uppercase tracking-wider">Total Revenue</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <span className="text-xs font-bold uppercase tracking-wider truncate">Total Revenue</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                 <TrendingUp size={16} />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-extrabold text-[#141B47] tabular-nums">
+            <p className="text-2xl sm:text-3xl font-extrabold text-[#141B47] tabular-nums truncate tracking-tight">
               {formatCurrency(summary?.totalRevenue ?? 0)}
             </p>
-            <div className="text-[11px] text-[#667085] flex items-center justify-between pt-1 border-t border-[#F1F5F9]">
-              <span>Period: <strong className="text-emerald-700">{formatCurrency(summary?.periodRevenue ?? 0)}</strong></span>
-              <span>{summary?.successfulPaymentsCount ?? 0} paid</span>
+            <div className="text-[11px] text-[#667085] flex items-center justify-between pt-1 border-t border-[#F1F5F9] truncate">
+              <span className="truncate">Period: <strong className="text-emerald-700">{formatCurrency(summary?.periodRevenue ?? 0)}</strong></span>
+              <span className="shrink-0">{summary?.successfulPaymentsCount ?? 0} paid</span>
             </div>
           </div>
 
           {/* Shipping Fees Collected */}
-          <div className="p-5 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xs space-y-2">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xs space-y-2 min-w-0">
             <div className="flex items-center justify-between text-[#667085]">
-              <span className="text-xs font-bold uppercase tracking-wider">Shipping Fees</span>
-              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <span className="text-xs font-bold uppercase tracking-wider truncate">Shipping Fees</span>
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                 <Truck size={16} />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-extrabold text-[#141B47] tabular-nums">
+            <p className="text-2xl sm:text-3xl font-extrabold text-[#141B47] tabular-nums truncate tracking-tight">
               {formatCurrency(summary?.shippingFeeRevenue ?? 0)}
             </p>
-            <div className="text-[11px] text-[#667085] pt-1 border-t border-[#F1F5F9]">
-              <span>Direct cargo &amp; logistics freight settlements</span>
+            <div className="text-[11px] text-[#667085] pt-1 border-t border-[#F1F5F9] truncate">
+              <span className="truncate">Direct cargo freight settlements</span>
             </div>
           </div>
 
           {/* Sourcing Credits Purchased */}
-          <div className="p-5 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xs space-y-2">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xs space-y-2 min-w-0">
             <div className="flex items-center justify-between text-[#667085]">
-              <span className="text-xs font-bold uppercase tracking-wider">Credit Purchases</span>
-              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <span className="text-xs font-bold uppercase tracking-wider truncate">Credit Purchases</span>
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                 <Sparkles size={16} />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-extrabold text-[#141B47] tabular-nums">
+            <p className="text-2xl sm:text-3xl font-extrabold text-[#141B47] tabular-nums truncate tracking-tight">
               {formatCurrency(summary?.creditPurchaseRevenue ?? 0)}
             </p>
-            <div className="text-[11px] text-[#667085] pt-1 border-t border-[#F1F5F9]">
-              <span>Packages sold for verified product sourcing</span>
+            <div className="text-[11px] text-[#667085] pt-1 border-t border-[#F1F5F9] truncate">
+              <span className="truncate">Packages sold for product sourcing</span>
             </div>
           </div>
 
           {/* Outstanding Balances */}
-          <div className="p-5 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xs space-y-2">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xs space-y-2 min-w-0">
             <div className="flex items-center justify-between text-[#667085]">
-              <span className="text-xs font-bold uppercase tracking-wider">Outstanding Balance</span>
-              <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+              <span className="text-xs font-bold uppercase tracking-wider truncate">Outstanding Balance</span>
+              <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
                 <CreditCard size={16} />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-extrabold text-rose-600 tabular-nums">
+            <p className="text-2xl sm:text-3xl font-extrabold text-rose-600 tabular-nums truncate tracking-tight">
               {formatCurrency(summary?.outstandingBalances ?? 0)}
             </p>
-            <div className="text-[11px] text-[#667085] flex items-center justify-between pt-1 border-t border-[#F1F5F9]">
-              <span>Pending Invoices: <strong>{summary?.pendingPaymentsCount ?? 0}</strong></span>
-              <span>{formatCurrency(summary?.pendingPaymentsAmount ?? 0)}</span>
+            <div className="text-[11px] text-[#667085] flex items-center justify-between pt-1 border-t border-[#F1F5F9] truncate">
+              <span className="truncate">Pending: <strong>{summary?.pendingPaymentsCount ?? 0}</strong></span>
+              <span className="shrink-0 font-mono">{formatCurrency(summary?.pendingPaymentsAmount ?? 0)}</span>
             </div>
           </div>
         </div>

@@ -253,18 +253,18 @@ export function AdminPaymentsClient({ initialPayments }: AdminPaymentsClientProp
             subtitle: "Lifetime transaction log"
           },
         ].map((card) => (
-          <div key={card.label} className="bg-white rounded-2xl p-5 border border-[#E5E7EB] shadow-xs space-y-2">
+          <div key={card.label} className="bg-white rounded-2xl p-4 sm:p-5 border border-[#E5E7EB] shadow-xs space-y-2 min-w-0">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-[#667085]">{card.label}</p>
+              <p className="text-xs font-semibold text-[#667085] truncate">{card.label}</p>
               <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-white"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0"
                 style={{ background: card.color }}
               >
                 {card.icon}
               </div>
             </div>
-            <p className="text-2xl font-bold text-[#172236] font-mono tabular-nums">{card.value}</p>
-            <p className="text-[11px] text-[#94A3B8]">{card.subtitle}</p>
+            <p className="text-xl sm:text-2xl font-bold text-[#172236] font-mono tabular-nums truncate tracking-tight">{card.value}</p>
+            <p className="text-[11px] text-[#94A3B8] truncate">{card.subtitle}</p>
           </div>
         ))}
       </div>
