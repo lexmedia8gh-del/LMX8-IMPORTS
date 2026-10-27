@@ -52,7 +52,7 @@ export async function generateInvoiceEmailHtml(data: InvoiceEmailData): Promise<
   const paymentInstructionsHtml = isPaid
     ? `<div style="background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 10px; padding: 14px 18px; margin: 20px 0; font-size: 13px; color: #065F46;">
         <strong style="color: #047857; display: block; margin-bottom: 4px;">Payment Received · Paid in Full</strong>
-        This invoice has been settled in full. Thank you for doing business with ${branding.businessName}. No further payment is required.
+        This invoice is paid in full. No further payment is required.
       </div>`
     : data.paymentInstructions
     ? `<div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 18px; margin: 20px 0; font-size: 13px; color: #334155;">
@@ -76,10 +76,10 @@ export async function generateInvoiceEmailHtml(data: InvoiceEmailData): Promise<
        </span>`;
 
   const leadText = isPaid
-    ? `Please find your official payment receipt for invoice <strong>#${data.invoiceNumber}</strong> from <strong>${branding.businessName}</strong>. This invoice is settled in full.`
-    : `Please find your official invoice <strong>#${data.invoiceNumber}</strong> from <strong>${branding.businessName}</strong> for the goods and services you ordered.`;
+    ? `Here is your payment receipt for invoice <strong>#${data.invoiceNumber}</strong> from <strong>${branding.businessName}</strong>.`
+    : `Here is invoice <strong>#${data.invoiceNumber}</strong> from <strong>${branding.businessName}</strong>.`;
 
-  const buttonText = isPaid ? "View & Download Paid Receipt PDF →" : "View & Download Invoice PDF →";
+  const buttonText = isPaid ? "View Receipt →" : "View Invoice →";
 
   const bodyContent = `
     <h2 class="greeting" style="font-size: 18px; font-weight: 700; color: ${branding.primaryColor || "#141B47"}; margin: 0 0 12px 0;">

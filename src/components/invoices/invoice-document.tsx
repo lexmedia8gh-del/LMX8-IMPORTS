@@ -314,11 +314,11 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
             {/* Bill To */}
             <div className="p-3.5 rounded-xl bg-slate-50/90 border border-slate-200/80 space-y-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <User size={12} className="text-slate-500" /> Billed To (Client)
+                <User size={12} className="text-slate-500" /> Bill To
               </span>
-              <p className="font-bold text-xs text-slate-900">{invoice.customer?.name || "Valued Client"}</p>
+              <p className="font-bold text-xs text-slate-900">{invoice.customer?.name || "Customer"}</p>
               {invoice.customer?.customerIdentifier && (
-                <p className="font-mono text-[11px] text-slate-600">Client ID: {invoice.customer.customerIdentifier}</p>
+                <p className="font-mono text-[11px] text-slate-600">Customer ID: {invoice.customer.customerIdentifier}</p>
               )}
               {invoice.customer?.phone && (
                 <p className="text-[11px] text-slate-600 flex items-center gap-1">
@@ -337,21 +337,16 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
               )}
             </div>
 
-            {/* Linked Shipment Details */}
+            {/* Shipment Details */}
             <div className="p-3.5 rounded-xl bg-slate-50/90 border border-slate-200/80 space-y-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Truck size={12} className="text-slate-500" /> Shipment Reference
+                <Truck size={12} className="text-slate-500" /> Shipment
               </span>
               {invoice.shipment ? (
                 <>
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold text-xs text-slate-900 font-mono">
-                      {invoice.shipment.trackingNumber || "Assigned Shipment"}
-                    </p>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-blue-100 text-blue-800 uppercase tracking-wider">
-                      Linked
-                    </span>
-                  </div>
+                  <p className="font-bold text-xs text-slate-900 font-mono">
+                    {invoice.shipment.trackingNumber || "Shipment"}
+                  </p>
                   {invoice.shipment.description && (
                     <p className="text-[11px] text-slate-600 line-clamp-1">
                       {invoice.shipment.description}
@@ -365,7 +360,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
                 </>
               ) : (
                 <div className="text-[11px] text-slate-500 italic py-1">
-                  Goods order — No international consignment linked.
+                  No linked shipment.
                 </div>
               )}
             </div>
@@ -380,7 +375,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
                   className="text-slate-700 font-bold uppercase tracking-wider text-[10px]"
                 >
                   <th className="py-2.5 px-3 w-8 text-center">#</th>
-                  <th className="py-2.5 px-3">Description / Goods Details</th>
+                  <th className="py-2.5 px-3">Description</th>
                   <th className="py-2.5 px-3 text-right w-16">Qty</th>
                   <th className="py-2.5 px-3 text-right w-24">Unit Price</th>
                   <th className="py-2.5 px-3 text-right w-20">Discount</th>
@@ -391,7 +386,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
                 {invoice.items.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-6 text-center text-slate-400 italic">
-                      No line items listed on this invoice.
+                      No items listed.
                     </td>
                   </tr>
                 ) : (
@@ -433,11 +428,11 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
                       <CheckCircle2 size={14} className="text-emerald-600 stroke-[2.5] shrink-0" /> Payment Status
                     </span>
                     <span className="px-2 py-0.5 rounded text-[9.5px] font-black uppercase tracking-wider bg-emerald-200/80 text-emerald-900 border border-emerald-300 shrink-0">
-                      Settled in Full
+                      Paid in Full
                     </span>
                   </div>
                   <p className="text-emerald-900 text-[11px] font-medium leading-relaxed">
-                    This invoice has been settled in full. Thank you for doing business with {businessName}. No further payment is required.
+                    This invoice has been paid in full. No further payment is required.
                   </p>
                 </div>
               ) : (
@@ -471,7 +466,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
                     </div>
                   ) : (
                     <p className="text-[11px] text-slate-600 leading-relaxed pt-0.5">
-                      Payment is due by <strong className="text-slate-800">{formattedDueDate}</strong>. Please reference invoice <strong className="font-mono">#{invoice.invoiceNumber}</strong> with your remittance.
+                      Payment is due by <strong className="text-slate-800">{formattedDueDate}</strong>. Please reference invoice <strong className="font-mono">#{invoice.invoiceNumber}</strong> with your payment.
                     </p>
                   )}
                 </div>
@@ -481,7 +476,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
               {invoice.clientNotes && (
                 <div className="card-block p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs space-y-1.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-                    <FileText size={13} className="text-amber-700 shrink-0" /> Notice &amp; Client Terms
+                    <FileText size={13} className="text-amber-700 shrink-0" /> Notes
                   </span>
                   <p className="text-[11px] text-amber-950/90 leading-relaxed break-words">
                     {invoice.clientNotes}
@@ -497,7 +492,7 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
                       <CreditCard size={14} className="text-emerald-700 shrink-0" /> Payments Received
                     </span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                      {invoice.payments.length} {invoice.payments.length === 1 ? "Record" : "Records"}
+                      {invoice.payments.length}
                     </span>
                   </div>
                   <div className="space-y-1.5 divide-y divide-slate-200/60 pt-0.5">
@@ -689,13 +684,12 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
         </div>
 
         {/* Invoice Document Footer */}
-        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200/80 text-center text-[11px] text-slate-500 space-y-0.5">
-          <p className="font-semibold text-slate-700 flex items-center justify-center gap-1.5">
-            <ShieldCheck size={13} className="text-emerald-600" />
-            Official Business Document issued by {businessName}
+        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200/80 text-center text-[11px] text-slate-500 space-y-0.5">
+          <p className="font-semibold text-slate-700">
+            Issued by {businessName}
           </p>
-          <p className="text-slate-400">
-            Email: <strong className="text-slate-600">{supportEmail}</strong> · Phone: <strong className="text-slate-600">{supportPhone}</strong> · Thank you for your business!
+          <p className="text-slate-500">
+            Email: <strong className="text-slate-700">{supportEmail}</strong> · Phone: <strong className="text-slate-700">{supportPhone}</strong>
           </p>
         </div>
       </div>

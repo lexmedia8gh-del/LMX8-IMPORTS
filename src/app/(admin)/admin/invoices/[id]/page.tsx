@@ -176,7 +176,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               disabled={actionLoading}
               className="px-4 py-2 rounded-xl text-xs font-bold bg-[#F2901F] text-slate-900 hover:bg-[#E08010] shadow-xs flex items-center gap-1.5 min-h-[40px] cursor-pointer"
             >
-              <CheckCircle2 size={14} /> Issue Officially
+              <CheckCircle2 size={14} /> Issue Invoice
             </button>
           )}
 
@@ -270,11 +270,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      {/* Internal Admin Confidential Notes Box */}
+      {/* Internal Notes Box */}
       {invoice.internalNotes && (
         <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900 space-y-1">
           <span className="font-extrabold text-[10px] uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
-            <ShieldCheck size={14} className="text-amber-600" /> Internal Administrative Notes (Strictly Confidential)
+            <ShieldCheck size={14} className="text-amber-600" /> Internal Notes
           </span>
           <p className="leading-relaxed whitespace-pre-wrap font-medium">{invoice.internalNotes}</p>
         </div>

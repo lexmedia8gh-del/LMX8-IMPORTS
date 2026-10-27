@@ -72,7 +72,7 @@ export default function NewInvoicePage() {
   const [purchaseOrderRef, setPurchaseOrderRef] = useState<string>("");
   const [paymentInstructions, setPaymentInstructions] = useState<string>("");
   const [clientNotes, setClientNotes] = useState<string>(
-    "Thank you for your business. Cargo and items are cleared and processed in accordance with our standard terms of service."
+    "Payment is due by the date specified. Standard shipping terms apply."
   );
   const [internalNotes, setInternalNotes] = useState<string>("");
 
@@ -718,10 +718,10 @@ export default function NewInvoicePage() {
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-2 mt-2">
                 <div className="flex items-center gap-2 font-bold">
                   <Clock size={15} className="text-amber-600" />
-                  <span>Deferred Freight Workflow Active</span>
+                  <span>Freight Pending Confirmation</span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-amber-700">
-                  Freight will not be treated as 0.00. The invoice will display <strong>&quot;Freight Pending Confirmation&quot;</strong> so the client knows shipping charges will follow once the shipment is measured. You can update this charge at any time using <em>Add / Update Freight Charge</em>.
+                  Freight will be added once cargo is measured at port. You can add or update this charge at any time.
                 </p>
                 <div>
                   <label className="block text-[10px] font-bold uppercase text-amber-800 mb-1">
@@ -1249,7 +1249,7 @@ export default function NewInvoicePage() {
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={18} className="text-emerald-500" />
                 <h2 className="text-lg font-bold text-[#141B47]">
-                  Step 6: Live Document Preview
+                  Step 6: Invoice Preview
                 </h2>
                 {paymentStatusOption === "PAID" && (
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -1268,7 +1268,7 @@ export default function NewInvoicePage() {
                 )}
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Inspect the invoice document with official dynamic branding, stamp, charges, and settlement details.
+                Preview the invoice before saving or issuing.
               </p>
             </div>
 

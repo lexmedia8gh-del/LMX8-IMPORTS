@@ -180,16 +180,11 @@ export default function AdminInvoicesPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-[#F2901F]/15 text-[#B45309]">
-              FINANCIAL DESK
-            </span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#141B47] tracking-tight mt-1">
-            Invoice Management
+          <h1 className="text-2xl sm:text-3xl font-black text-[#141B47] tracking-tight">
+            Invoices
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Create, track, and dispatch official client invoices and cargo settlements
+            Create, track, and manage customer invoices and payments
           </p>
         </div>
 

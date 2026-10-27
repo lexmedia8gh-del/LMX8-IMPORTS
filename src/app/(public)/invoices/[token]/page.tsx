@@ -59,10 +59,10 @@ export default function PublicInvoicePage({ params }: { params: Promise<{ token:
       <div className="max-w-4xl mx-auto mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
         <div>
           <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#F2901F]">
-            CLIENT PORTAL
+            INVOICE
           </span>
           <p className="text-xs font-bold text-slate-800">
-            Official Invoice #{invoiceData.invoiceNumber}
+            Invoice #{invoiceData.invoiceNumber}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -70,7 +70,7 @@ export default function PublicInvoicePage({ params }: { params: Promise<{ token:
             onClick={handlePrint}
             className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#1E2968] flex items-center justify-center gap-2 shadow-xs cursor-pointer"
           >
-            <Printer size={15} /> Print / Download PDF
+            <Printer size={15} /> Print / Save PDF
           </button>
         </div>
       </div>
@@ -81,10 +81,9 @@ export default function PublicInvoicePage({ params }: { params: Promise<{ token:
         branding={branding}
       />
 
-      {/* Client Security Notice Footer */}
+      {/* Footer */}
       <div className="max-w-4xl mx-auto mt-6 text-center text-[11px] text-slate-400 no-print flex items-center justify-center gap-1.5">
-        <ShieldCheck size={14} className="text-emerald-600" />
-        <span>Secure client document issued by {branding?.businessName || "LMX8 IMPORTS"}. Encrypted access.</span>
+        <span>Issued by {branding?.businessName || "LMX8 IMPORTS"}</span>
       </div>
     </div>
   );
