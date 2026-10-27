@@ -4,7 +4,7 @@ import React from "react";
 import { formatCurrency } from "@/lib/currency";
 import { 
   CheckCircle2, Clock, AlertTriangle, XCircle, Truck, User, 
-  Phone, Mail, FileText, ShieldCheck, Printer, Check, Award
+  Phone, Mail, FileText, ShieldCheck, Printer, Check, Award, CreditCard
 } from "lucide-react";
 
 export interface InvoiceDocumentData {
@@ -421,164 +421,268 @@ export function InvoiceDocument({ invoice, branding, showPrintActions = false, o
             </table>
           </div>
 
-          {/* Financial Summary & Payment Details Grid */}
-          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row justify-between gap-6 summary-block">
-            {/* Payment Instructions & Notes (Left Side) */}
-            <div className="sm:w-1/2 space-y-3 text-xs">
-              {/* If paid in full, suppress payment instructions and show official paid confirmation */}
+          {/* Financial Summary & Information Cards Grid */}
+          <div className="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6 items-start print:grid-cols-2 print:gap-6 summary-block">
+            {/* Left Column: Information Cards */}
+            <div className="space-y-3 w-full min-w-0">
+              {/* 1. Payment Status Card */}
               {isPaid ? (
-                <div className="p-3.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-xs space-y-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                    <CheckCircle2 size={13} className="text-emerald-600 stroke-[2.5]" /> Payment Status: Settled in Full
-                  </span>
+                <div className="card-block p-4 rounded-xl bg-emerald-50/80 border border-emerald-200/90 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                      <CheckCircle2 size={14} className="text-emerald-600 stroke-[2.5] shrink-0" /> Payment Status
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[9.5px] font-black uppercase tracking-wider bg-emerald-200/80 text-emerald-900 border border-emerald-300 shrink-0">
+                      Settled in Full
+                    </span>
+                  </div>
                   <p className="text-emerald-900 text-[11px] font-medium leading-relaxed">
                     This invoice has been settled in full. Thank you for doing business with {businessName}. No further payment is required.
                   </p>
                 </div>
               ) : (
-                invoice.paymentInstructions && (
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/90 space-y-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                      Payment Instructions
+                <div className="card-block p-4 rounded-xl bg-slate-50/90 border border-slate-200/90 text-xs space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Clock size={14} className="text-[#355DAF] shrink-0" /> Payment Status
                     </span>
-                    <div className="text-slate-700 font-mono text-[11px] whitespace-pre-wrap leading-relaxed">
-                      {invoice.paymentInstructions}
-                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[9.5px] font-black uppercase tracking-wider border shrink-0 ${
+                      invoice.status === "PARTIALLY_PAID"
+                        ? "bg-blue-100 text-blue-800 border-blue-200"
+                        : invoice.status === "OVERDUE"
+                        ? "bg-red-100 text-red-800 border-red-200"
+                        : "bg-amber-100 text-amber-900 border-amber-200"
+                    }`}>
+                      {invoice.status === "PARTIALLY_PAID"
+                        ? "Partially Paid"
+                        : invoice.status === "OVERDUE"
+                        ? "Overdue"
+                        : "Payment Due"}
+                    </span>
                   </div>
-                )
-              )}
-
-              {invoice.clientNotes && (
-                <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/70 text-amber-900 text-[11px] leading-relaxed">
-                  <span className="font-bold block mb-0.5 text-[10px] uppercase tracking-wide">Notice:</span>
-                  {invoice.clientNotes}
+                  {invoice.paymentInstructions ? (
+                    <div className="space-y-1 pt-0.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                        Payment Instructions:
+                      </span>
+                      <div className="text-slate-700 font-mono text-[11px] whitespace-pre-wrap leading-relaxed">
+                        {invoice.paymentInstructions}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-600 leading-relaxed pt-0.5">
+                      Payment is due by <strong className="text-slate-800">{formattedDueDate}</strong>. Please reference invoice <strong className="font-mono">#{invoice.invoiceNumber}</strong> with your remittance.
+                    </p>
+                  )}
                 </div>
               )}
 
-              {/* Recorded Payments List (if any partial payments received) */}
-              {invoice.payments && invoice.payments.length > 0 && (
-                <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70 text-xs space-y-1.5">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block">
-                    Payments Received ({invoice.payments.length})
+              {/* 2. Notice Card */}
+              {invoice.clientNotes && (
+                <div className="card-block p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs space-y-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                    <FileText size={13} className="text-amber-700 shrink-0" /> Notice &amp; Client Terms
                   </span>
-                  <div className="space-y-1 text-[11px]">
-                    {invoice.payments.map((p, pIdx) => (
-                      <div key={p.id || pIdx} className="flex justify-between items-center text-emerald-950 font-mono">
-                        <span>{new Date(p.paymentDate).toLocaleDateString()} · {p.paymentMethod}</span>
-                        <span className="font-bold">+{formatCurrency(p.amount, invoice.currency)}</span>
-                      </div>
-                    ))}
+                  <p className="text-[11px] text-amber-950/90 leading-relaxed break-words">
+                    {invoice.clientNotes}
+                  </p>
+                </div>
+              )}
+
+              {/* 3. Payments Received Card */}
+              {invoice.payments && invoice.payments.length > 0 && (
+                <div className="card-block p-4 rounded-xl bg-slate-50/90 border border-slate-200/90 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <CreditCard size={14} className="text-emerald-700 shrink-0" /> Payments Received
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                      {invoice.payments.length} {invoice.payments.length === 1 ? "Record" : "Records"}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 divide-y divide-slate-200/60 pt-0.5">
+                    {invoice.payments.map((p, pIdx) => {
+                      const pDate = p.paymentDate
+                        ? new Date(p.paymentDate).toLocaleDateString("en-GH", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "—";
+                      return (
+                        <div
+                          key={p.id || pIdx}
+                          className={`flex items-center justify-between text-xs ${pIdx > 0 ? "pt-1.5" : ""}`}
+                        >
+                          <div className="min-w-0 pr-3">
+                            <p className="font-semibold text-slate-800 text-[11px] truncate">
+                              {pDate} · {p.paymentMethod || "Payment"}
+                            </p>
+                            {p.reference && (
+                              <p className="font-mono text-[10px] text-slate-500 truncate">
+                                Ref: {p.reference}
+                              </p>
+                            )}
+                          </div>
+                          <span className="font-mono font-bold text-slate-900 text-xs shrink-0 tabular-nums text-right">
+                            {formatCurrency(p.amount, invoice.currency)}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Financial Totals Calculation Box (Right Side) */}
-            <div className="sm:w-1/2 max-w-sm ml-auto space-y-1.5 text-xs">
-              <div className="flex justify-between py-0.5 text-slate-600">
-                <span>Items Subtotal:</span>
-                <span className="font-mono font-medium">{formatCurrency(invoice.subtotal, invoice.currency)}</span>
-              </div>
-
-              {invoice.discountAmount && invoice.discountAmount > 0 ? (
-                <div className="flex justify-between py-0.5 text-emerald-700 font-semibold">
-                  <span>
-                    Discount {invoice.discountPercent ? `(${invoice.discountPercent}%)` : ""}:
+            {/* Right Column: Financial Summary */}
+            <div className="space-y-3 w-full min-w-0">
+              {/* Summary Breakdown Card */}
+              <div className="card-block p-4 rounded-xl bg-slate-50/90 border border-slate-200/90 space-y-2.5 text-xs">
+                {/* Items Subtotal */}
+                <div className="flex items-center justify-between py-0.5 text-slate-600 text-xs">
+                  <span className="font-medium text-slate-600">Items Subtotal:</span>
+                  <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                    {formatCurrency(invoice.subtotal, invoice.currency)}
                   </span>
-                  <span className="font-mono">-{formatCurrency(invoice.discountAmount, invoice.currency)}</span>
                 </div>
-              ) : null}
 
-              {/* Freight Charges / Deferred Indicator */}
-              {invoice.freightStatus === "PENDING" ? (
-                <div className="py-1.5 px-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-0.5 my-0.5">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold flex items-center gap-1 text-amber-950 text-xs">
-                      <Truck size={12} className="text-amber-700" /> Shipping / Freight:
-                    </span>
-                    <span className="font-extrabold text-[9px] uppercase tracking-wider bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full">
-                      Pending Confirmation
+                {/* Discount (if any) */}
+                {invoice.discountAmount && invoice.discountAmount > 0 ? (
+                  <div className="flex items-center justify-between py-0.5 text-emerald-700 text-xs font-medium">
+                    <span>Discount {invoice.discountPercent ? `(${invoice.discountPercent}%)` : ""}:</span>
+                    <span className="font-mono font-semibold tabular-nums">
+                      -{formatCurrency(invoice.discountAmount, invoice.currency)}
                     </span>
                   </div>
-                  <p className="text-[9.5px] text-amber-800 leading-tight">
-                    * Shipping fee will be determined once cargo is weighed/measured at port.
-                  </p>
-                </div>
-              ) : invoice.freightStatus === "NOT_APPLICABLE" ? (
-                <div className="flex justify-between py-0.5 text-slate-400 text-[11px] italic">
-                  <span>Shipping / Freight:</span>
-                  <span>Not Applicable</span>
-                </div>
-              ) : (invoice.shippingCharges && invoice.shippingCharges > 0) || invoice.freightStatus === "CONFIRMED" ? (
-                <div className="flex justify-between py-0.5 text-slate-600">
-                  <span className="flex items-center gap-1">
-                    <Truck size={11} className="text-slate-400" /> Shipping / Freight:
+                ) : null}
+
+                {/* Shipping / Freight Card */}
+                {invoice.freightStatus === "PENDING" ? (
+                  <div className="p-2.5 sm:p-3 rounded-lg bg-amber-50/90 border border-amber-200/90 text-amber-900 space-y-1 my-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold flex items-center gap-1.5 text-xs text-amber-950">
+                        <Truck size={13} className="text-amber-700 shrink-0" /> Shipping / Freight:
+                      </span>
+                      <span className="font-extrabold text-[9px] uppercase tracking-wider bg-amber-200/90 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300 shrink-0">
+                        Pending Confirmation
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-amber-800 leading-snug">
+                      {invoice.freightNotes || "* Shipping fee will be determined once cargo is weighed and measured at port."}
+                    </p>
+                  </div>
+                ) : invoice.freightStatus === "NOT_APPLICABLE" ? (
+                  <div className="flex items-center justify-between py-0.5 text-slate-400 text-xs italic">
+                    <span className="flex items-center gap-1.5">
+                      <Truck size={12} className="text-slate-400 shrink-0" /> Shipping / Freight:
+                    </span>
+                    <span className="text-[11px] font-mono">Not Applicable</span>
+                  </div>
+                ) : (invoice.shippingCharges && invoice.shippingCharges > 0) || invoice.freightStatus === "CONFIRMED" ? (
+                  <div className="space-y-0.5">
+                    <div className="flex items-center justify-between py-0.5 text-slate-600 text-xs">
+                      <span className="flex items-center gap-1.5 font-medium text-slate-600">
+                        <Truck size={12} className="text-slate-400 shrink-0" /> Shipping / Freight:
+                      </span>
+                      <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                        {formatCurrency(invoice.shippingCharges || 0, invoice.currency)}
+                      </span>
+                    </div>
+                    {invoice.freightNotes && (
+                      <p className="text-[10px] text-slate-500 pl-4 leading-tight">
+                        {invoice.freightNotes}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+
+                {/* Handling Charges */}
+                {invoice.handlingCharges && invoice.handlingCharges > 0 ? (
+                  <div className="flex items-center justify-between py-0.5 text-slate-600 text-xs">
+                    <span className="font-medium text-slate-600">Handling Charges:</span>
+                    <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                      {formatCurrency(invoice.handlingCharges, invoice.currency)}
+                    </span>
+                  </div>
+                ) : null}
+
+                {/* Customs / Clearance */}
+                {invoice.customsCharges && invoice.customsCharges > 0 ? (
+                  <div className="flex items-center justify-between py-0.5 text-slate-600 text-xs">
+                    <span className="font-medium text-slate-600">Customs / Clearance:</span>
+                    <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                      {formatCurrency(invoice.customsCharges, invoice.currency)}
+                    </span>
+                  </div>
+                ) : null}
+
+                {/* Other Services */}
+                {invoice.otherCharges && invoice.otherCharges > 0 ? (
+                  <div className="flex items-center justify-between py-0.5 text-slate-600 text-xs">
+                    <span className="font-medium text-slate-600">Other Services:</span>
+                    <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                      {formatCurrency(invoice.otherCharges, invoice.currency)}
+                    </span>
+                  </div>
+                ) : null}
+
+                {/* Tax */}
+                {invoice.taxRate && invoice.taxRate > 0 ? (
+                  <div className="flex items-center justify-between py-0.5 text-slate-600 text-xs">
+                    <span className="font-medium text-slate-600">Tax ({invoice.taxRate}%):</span>
+                    <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                      {formatCurrency(invoice.taxAmount || 0, invoice.currency)}
+                    </span>
+                  </div>
+                ) : null}
+
+                {/* Total Invoiced */}
+                <div className="border-t border-slate-200/90 pt-2.5 mt-1 flex items-center justify-between text-xs">
+                  <span className="font-black text-xs sm:text-sm text-slate-900">Total Invoiced:</span>
+                  <span className="font-mono text-sm sm:text-base font-black tabular-nums" style={{ color: primaryColor }}>
+                    {formatCurrency(invoice.totalAmount, invoice.currency)}
                   </span>
-                  <span className="font-mono font-medium">{formatCurrency(invoice.shippingCharges || 0, invoice.currency)}</span>
                 </div>
-              ) : null}
 
-              {invoice.handlingCharges && invoice.handlingCharges > 0 ? (
-                <div className="flex justify-between py-0.5 text-slate-600">
-                  <span>Handling Charges:</span>
-                  <span className="font-mono font-medium">{formatCurrency(invoice.handlingCharges, invoice.currency)}</span>
+                {/* Total Paid to Date (positive verified sum, no misleading minus) */}
+                <div className="flex items-center justify-between py-0.5 text-xs">
+                  <span className="font-medium text-slate-600">Total Paid to Date:</span>
+                  <span className="font-mono font-bold text-emerald-700 tabular-nums">
+                    {formatCurrency(invoice.amountPaid || 0, invoice.currency)}
+                  </span>
                 </div>
-              ) : null}
-
-              {invoice.customsCharges && invoice.customsCharges > 0 ? (
-                <div className="flex justify-between py-0.5 text-slate-600">
-                  <span>Customs / Clearance:</span>
-                  <span className="font-mono font-medium">{formatCurrency(invoice.customsCharges, invoice.currency)}</span>
-                </div>
-              ) : null}
-
-              {invoice.otherCharges && invoice.otherCharges > 0 ? (
-                <div className="flex justify-between py-0.5 text-slate-600">
-                  <span>Other Services:</span>
-                  <span className="font-mono font-medium">{formatCurrency(invoice.otherCharges, invoice.currency)}</span>
-                </div>
-              ) : null}
-
-              {invoice.taxRate && invoice.taxRate > 0 ? (
-                <div className="flex justify-between py-0.5 text-slate-600">
-                  <span>Tax ({invoice.taxRate}%):</span>
-                  <span className="font-mono font-medium">{formatCurrency(invoice.taxAmount || 0, invoice.currency)}</span>
-                </div>
-              ) : null}
-
-              {/* Total Invoiced */}
-              <div className="flex justify-between py-1.5 border-t-2 border-slate-200 text-sm font-black text-slate-900">
-                <span>Total Invoiced:</span>
-                <span className="font-mono text-base" style={{ color: primaryColor }}>
-                  {formatCurrency(invoice.totalAmount, invoice.currency)}
-                </span>
               </div>
 
-              {invoice.amountPaid > 0 && (
-                <div className="flex justify-between py-0.5 text-emerald-700 font-semibold text-xs">
-                  <span>Total Paid to Date:</span>
-                  <span className="font-mono">-{formatCurrency(invoice.amountPaid, invoice.currency)}</span>
-                </div>
-              )}
-
-              {/* Outstanding Balance */}
-              <div 
-                style={{ backgroundColor: `${primaryColor}08` }}
-                className="flex justify-between items-center p-3 rounded-xl border border-slate-200 mt-1"
+              {/* Balance Due Card */}
+              <div
+                className={`card-block p-4 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                  isPaid
+                    ? "bg-emerald-50/90 border-emerald-300 text-emerald-950"
+                    : "bg-[#141B47] border-[#141B47] text-white shadow-xs"
+                }`}
               >
-                <span className="font-black text-xs uppercase tracking-wider text-slate-900">
-                  Balance Due:
-                </span>
-                <div className="text-right">
-                  <span className={`font-mono text-base font-black ${invoice.outstandingBalance > 0 ? "text-red-600" : "text-emerald-700"}`}>
-                    {formatCurrency(invoice.outstandingBalance, invoice.currency)}
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`text-xs font-black uppercase tracking-wider ${isPaid ? "text-emerald-950" : "text-white"}`}>
+                    Balance Due:
                   </span>
-                  {isPaid && (
-                    <span className="block text-[9px] font-extrabold text-emerald-600 uppercase tracking-wider">
-                      Settled
+                  {isPaid ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-200/90 text-emerald-900 border border-emerald-300 shrink-0">
+                      SETTLED
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-[#F2901F] text-slate-950 shrink-0">
+                      OUTSTANDING
                     </span>
                   )}
                 </div>
+                <span
+                  className={`font-mono text-base sm:text-lg font-black tabular-nums text-right shrink-0 ${
+                    isPaid ? "text-emerald-700" : "text-[#FFB800]"
+                  }`}
+                >
+                  {formatCurrency(invoice.outstandingBalance, invoice.currency)}
+                </span>
               </div>
             </div>
           </div>
