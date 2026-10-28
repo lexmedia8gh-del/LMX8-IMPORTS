@@ -1,11 +1,12 @@
-import { AdminCustomerAnalytics } from "@/components/admin-customer-analytics";
+import { AnalyticsHub } from "@/components/analytics/analytics-hub";
 import { requireAdminSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Live Analytics & Revenue | LMX8 CTRL ROOM",
-  description: "Monitor live customer metrics, financial revenue, shipment milestones, and portal activity.",
+  title: "Business Intelligence, Live Reports & EOD | LMX8 CTRL ROOM",
+  description:
+    "Monitor live financial revenue, end-of-day reconciliation, cargo shipment milestones, and operational disbursements.",
 };
 
 export default async function AdminAnalyticsPage() {
@@ -13,7 +14,7 @@ export default async function AdminAnalyticsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <AdminCustomerAnalytics />
+      <AnalyticsHub />
     </div>
   );
 }

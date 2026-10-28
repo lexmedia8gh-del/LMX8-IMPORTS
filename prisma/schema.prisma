@@ -567,5 +567,60 @@ model InvoiceCommunicationLog {
   @@index([createdAt])
 }
 
+model Expense {
+  id             String   @id @default(uuid())
+  expenseNumber  String   @unique
+  category       String   // CUSTOMS_CLEARANCE, PORT_HANDLING, TRANSPORT_DELIVERY, WAREHOUSE, OFFICE_UTILITIES, PACKAGING, ADMINISTRATIVE, OTHER
+  description    String
+  amount         Float
+  currency       String   @default("GHS")
+  paymentMethod  String   @default("CASH") // CASH, BANK_TRANSFER, MTN_MOMO, TELECEL_CASH, CARD, CHEQUE, OTHER
+  payee          String?
+  reference      String?
+  notes          String?
+  receiptUrl     String?
+  date           DateTime @default(now())
+  recordedById   String?
+  recordedByName String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
+  @@index([date])
+  @@index([category])
+  @@index([paymentMethod])
+  @@index([createdAt])
+}
 
+model EodReport {
+  id                      String    @id @default(uuid())
+  reportNumber            String    @unique
+  businessDate            String    // YYYY-MM-DD
+  status                  String    @default("DRAFT") // DRAFT, FINALIZED
+  openingCash             Float     @default(0.0)
+  actualClosingCash       Float?
+  expectedClosingCash     Float     @default(0.0)
+  cashVariance            Float     @default(0.0)
+  totalInvoiced           Float     @default(0.0)
+  totalCollections        Float     @default(0.0)
+  collectionsByMethod     Json?
+  totalExpenses           Float     @default(0.0)
+  expensesByCategory      Json?
+  netCashMovement         Float     @default(0.0)
+  receivablesTotal        Float     @default(0.0)
+  invoicesCreatedCount    Int       @default(0)
+  invoicesSettledCount    Int       @default(0)
+  shipmentsProcessedCount Int       @default(0)
+  newClientsCount         Int       @default(0)
+  notes                   String?
+  preparedByName          String?
+  finalizedByName         String?
+  finalizedAt             DateTime?
+  snapshotData            Json?
+  auditTrail              Json?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([businessDate])
+  @@index([status])
+  @@index([createdAt])
+}
