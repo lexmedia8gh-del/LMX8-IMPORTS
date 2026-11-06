@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
  */
 export async function createNotificationInternal({
   customerId,
+  adminId,
   type,
   title,
   message,
@@ -19,15 +20,18 @@ export async function createNotificationInternal({
   idempotencyKey,
   shipmentId,
   paymentId,
+  sourcingRequestId,
 }: {
-  customerId: string;
-  type: "SHIPMENT" | "PAYMENT" | "DELIVERY" | "ACCOUNT" | "SYSTEM";
+  customerId?: string;
+  adminId?: string;
+  type: "SHIPMENT" | "PAYMENT" | "DELIVERY" | "ACCOUNT" | "SYSTEM" | "SOURCING_REQUEST";
   title: string;
   message: string;
   actionUrl?: string;
   idempotencyKey?: string;
   shipmentId?: string;
   paymentId?: string;
+  sourcingRequestId?: string;
 }) {
   try {
     if (idempotencyKey) {
@@ -40,6 +44,7 @@ export async function createNotificationInternal({
     return await prisma.notification.create({
       data: {
         customerId,
+        adminId,
         type,
         title,
         message,
@@ -47,6 +52,7 @@ export async function createNotificationInternal({
         idempotencyKey,
         shipmentId,
         paymentId,
+        sourcingRequestId,
       },
     });
   } catch (err) {

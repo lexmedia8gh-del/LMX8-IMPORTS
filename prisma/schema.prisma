@@ -92,6 +92,7 @@ model AdminUser {
   shipmentPhotos ShipmentPhoto[]
   auditLogs      AuditLog[]
   invoicesCreated Invoice[]
+  notifications  Notification[]
 }
 
 model Batch {
@@ -296,12 +297,15 @@ enum NotificationType {
   DELIVERY
   ACCOUNT
   SYSTEM
+  SOURCING_REQUEST
 }
 
 model Notification {
   id              String           @id @default(uuid())
-  customerId      String
-  customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId      String?
+  customer        Customer?        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  adminId         String?
+  admin           AdminUser?       @relation(fields: [adminId], references: [id], onDelete: SetNull)
   type            NotificationType @default(SYSTEM)
   title           String
   message         String
@@ -310,11 +314,14 @@ model Notification {
   idempotencyKey  String?          @unique
   shipmentId      String?
   paymentId       String?
+  sourcingRequestId String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
   @@index([customerId])
+  @@index([adminId])
   @@index([customerId, read])
+  @@index([adminId, read])
   @@index([createdAt])
 }
 

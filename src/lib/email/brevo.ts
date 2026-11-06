@@ -1786,4 +1786,60 @@ export async function sendCustomerCredentialsEmail(
   }
 }
 
+// 3. Sourcing Request Admin Alert
+export async function sendSourcingRequestAdminNotificationEmail(requestId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureEmailLogSchema();
+    const request = await prisma.sourcingRequest.findUnique({
+      where: { id: requestId },
+      include: { customer: true },
+    });
+
+    if (!request) return { success: false, error: "Sourcing request not found." };
+    const customer = request.customer;
+    if (!customer) return { success: false, error: "Customer not found." };
+
+    // Administrator notification email (using default fallback)
+    const adminEmail = "lexmedia8gh@gmail.com"; 
+
+    const portalBase = getPortalBaseUrl();
+    const adminUrl = `${portalBase}/admin/sourcing`;
+    const htmlContent = await wrapInBrandedLayout(
+      "New Sourcing Request",
+      `
+      <p class="greeting">Hello Administrator,</p>
+      <p class="lead">A new customer sourcing request has been submitted.</p>
+      <div class="status-card">
+        <div class="status-badge" style="background: #F2901F;">New Sourcing Request</div>
+        <table>
+          <tr><td class="label">Request Number</td><td class="val">${request.requestNumber}</td></tr>
+          <tr><td class="label">Customer</td><td class="val">${customer.name} (${customer.customerIdentifier})</td></tr>
+          <tr><td class="label">Product</td><td class="val">${request.productDetails}</td></tr>
+          <tr><td class="label">Quantity</td><td class="val">${request.quantity || 1}</td></tr>
+          <tr><td class="label">Date</td><td class="val">${request.createdAt.toLocaleDateString()}</td></tr>
+          <tr><td class="label">Status</td><td class="val">${request.status}</td></tr>
+        </table>
+      </div>
+      <div style="text-align: center;">
+        <a href="${adminUrl}" class="btn" style="background: #141B47;">View Sourcing Request</a>
+      </div>
+      `
+    );
+
+    const subject = "New Sourcing Request Received — LMX8 IMPORTS";
+
+    const result = await sendBrevoEmail({
+      to: [{ email: adminEmail }],
+      subject,
+      htmlContent,
+    });
+
+    return { success: result.success, error: result.error };
+  } catch (err: any) {
+    console.error("[sendSourcingRequestAdminNotificationEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+
 

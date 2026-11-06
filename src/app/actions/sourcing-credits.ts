@@ -137,11 +137,36 @@ export async function createSourcingRequestAction(data: {
     });
 
     if (result && !result.alreadyProcessed && result.requestId) {
+      // 1. Email customer
       import("@/lib/email/brevo").then(({ sendSourcingRequestCreatedEmail }) => {
         sendSourcingRequestCreatedEmail(result.requestId!).catch((err) =>
           console.error("[Brevo] Error sending sourcing confirmation email:", err)
         );
       });
+
+      // 2. Notify Admin
+      const { createNotificationInternal } = await import("@/app/actions/notifications");
+      const { sendSourcingRequestAdminNotificationEmail } = await import("@/lib/email/brevo");
+      
+      const adminNotifPromise = createNotificationInternal({
+        customerId: customer.id, // For now, customerId is required in Notification model but I set it to optional in schema change (need to update the implementation of createNotificationInternal too?)
+        // Wait, schema change set customerId to optional: `customerId String?`
+        // But `createNotificationInternal` expects it to be required.
+        // Let's check `src/app/actions/notifications.ts` line 23.
+        // It's required in the type.
+        type: "SOURCING_REQUEST",
+        title: `New Sourcing Request: ${result.requestNumber}`,
+        message: `Customer ${customer.name} (${customer.customerIdentifier}) submitted a new sourcing request: ${productDetailsClean.slice(0, 50)}`,
+        actionUrl: `/admin/sourcing`,
+        idempotencyKey: `admin-sourcing-notif-${result.requestId}`,
+        sourcingRequestId: result.requestId!,
+      });
+
+      const adminEmailPromise = sendSourcingRequestAdminNotificationEmail(result.requestId!);
+      
+      Promise.all([adminNotifPromise, adminEmailPromise]).catch(err => 
+        console.error("Admin notification failed:", err)
+      );
     }
 
     return { success: true, requestNumber: result.requestNumber };

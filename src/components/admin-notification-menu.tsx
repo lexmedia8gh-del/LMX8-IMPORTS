@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Check, X, ChevronRight, AlertCircle, Package, CreditCard, Truck, RefreshCw } from "lucide-react";
+import { Bell, Check, X, ChevronRight, AlertCircle, Package, CreditCard, Truck, RefreshCw, PackageSearch } from "lucide-react";
 import {
   getAdminNotificationsAction,
   markAdminNotificationReadAction,
@@ -138,6 +138,8 @@ export function AdminNotificationMenu() {
         return <CreditCard size={13} className="text-emerald-600" />;
       case "DELIVERY":
         return <Package size={13} className="text-purple-600" />;
+      case "SOURCING_REQUEST":
+        return <PackageSearch size={13} className="text-orange-600" />;
       default:
         return <AlertCircle size={13} className="text-amber-600" />;
     }
