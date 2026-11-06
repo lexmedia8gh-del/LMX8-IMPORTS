@@ -3,14 +3,15 @@
 import { useEffect, useState } from "react";
 import {
   getAllSourcingRequestsAction,
-  updateSourcingRequestStatusAction,
-  adminUpdateSourcingPriceAction,
   getSourcingRequestDetailsAction,
+  adminSaveOrPublishSourcingWorkspaceAction,
 } from "@/app/actions/sourcing-credits";
 import { 
-  PackageSearch, Clock, CheckCircle2, AlertCircle, Search, RefreshCw, 
-  Loader2, X, Edit3, DollarSign, History, ExternalLink, Calculator, ArrowRight
+  PackageSearch, CheckCircle2, AlertCircle, Search, RefreshCw, 
+  Loader2, X, History, Calculator, Plus, Trash2, Image as ImageIcon
 } from "lucide-react";
+
+export const dynamic = "force-dynamic";
 
 interface PriceHistoryEntry {
   id: string;
@@ -20,6 +21,17 @@ interface PriceHistoryEntry {
   notes?: string | null;
   updatedByName?: string | null;
   createdAt: string;
+}
+
+interface SourcingItemEntry {
+  id?: string;
+  productName: string;
+  description?: string;
+  unitPrice: number;
+  quantity: number;
+  subtotal: number;
+  imageUrl?: string;
+  isPublished?: boolean;
 }
 
 interface SourcingRequestItem {
@@ -40,6 +52,8 @@ interface SourcingRequestItem {
   adminNotes?: string | null;
   unitPrice?: number | null;
   totalCost?: number | null;
+  isDraft?: boolean;
+  publishedAt?: string | null;
   priceUpdatedAt?: string | null;
   priceUpdatedBy?: string | null;
   priceNotes?: string | null;
@@ -47,6 +61,7 @@ interface SourcingRequestItem {
   customerConfirmationStatus?: string;
   createdAt: string;
   updatedAt?: string;
+  sourcingItems?: SourcingItemEntry[];
   priceHistory?: PriceHistoryEntry[];
 }
 
@@ -54,7 +69,7 @@ const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> 
   PENDING: { bg: "#FEF3C7", text: "#92400E", label: "Awaiting Review" },
   QUOTED: { bg: "#DBEAFE", text: "#1E40AF", label: "Quotation Provided" },
   APPROVED: { bg: "#D1FAE5", text: "#065F46", label: "Approved" },
-  REJECTED: { bg: "#FEE2E2", text: "#991B1B", label: "Rejected / Declined" },
+  REJECTED: { bg: "#FEE2E2", text: "#991B1B", label: "Declined" },
   PURCHASED: { bg: "#EDE9FE", text: "#5B21B6", label: "Purchased in China" },
   SHIPPED: { bg: "#E0F2FE", text: "#0369A1", label: "Shipped" },
   COMPLETED: { bg: "#DCFCE7", text: "#166534", label: "Completed" },
@@ -66,16 +81,16 @@ export default function AdminSourcingPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
-  // Price Management / Detail Modal State
+  // Modal Workspace State
   const [selectedRequest, setSelectedRequest] = useState<SourcingRequestItem | null>(null);
-  const [unitPriceInput, setUnitPriceInput] = useState<string>("");
-  const [quantityInput, setQuantityInput] = useState<number>(1);
-  const [priceNotesInput, setPriceNotesInput] = useState<string>("");
-  const [statusInput, setStatusInput] = useState<any>("QUOTED");
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  
+  // Workspace items & notes
+  const [workspaceItems, setWorkspaceItems] = useState<SourcingItemEntry[]>([]);
   const [adminNotesInput, setAdminNotesInput] = useState<string>("");
+  const [statusInput, setStatusInput] = useState<string>("QUOTED");
 
-  const [savingPrice, setSavingPrice] = useState(false);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [savingAction, setSavingAction] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const loadData = async () => {
@@ -94,86 +109,113 @@ export default function AdminSourcingPage() {
     loadData();
   }, []);
 
-  const openReviewModal = (req: SourcingRequestItem) => {
+  const openReviewModal = async (req: SourcingRequestItem) => {
     setSelectedRequest(req);
-    setUnitPriceInput(req.unitPrice ? String(req.unitPrice) : "");
-    setQuantityInput(req.quantity || 1);
-    setPriceNotesInput(req.priceNotes || "");
-    setStatusInput(req.status === "PENDING" ? "QUOTED" : req.status);
-    setAdminNotesInput(req.adminNotes || "");
+    setLoadingDetails(true);
     setFeedback(null);
+    try {
+      const res = await getSourcingRequestDetailsAction(req.id);
+      if (res.success && res.request) {
+        setSelectedRequest(res.request as any);
+        setAdminNotesInput(res.request.adminNotes || "");
+        setStatusInput(res.request.status === "PENDING" ? "QUOTED" : res.request.status);
+        setWorkspaceItems(
+          (res.request.sourcingItems || []).map((it: any) => ({
+            id: it.id,
+            productName: it.productName || "",
+            description: it.description || "",
+            unitPrice: it.unitPrice || 0,
+            quantity: it.quantity || 1,
+            subtotal: it.subtotal || 0,
+            imageUrl: it.imageUrl || "",
+            isPublished: it.isPublished,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to load request details:", err);
+    } finally {
+      setLoadingDetails(false);
+    }
   };
 
-  // Auto calculate total cost: unitPrice * quantity
-  const computedTotal = (parseFloat(unitPriceInput) || 0) * (Number(quantityInput) || 1);
+  const handleAddItem = () => {
+    setWorkspaceItems((prev) => [
+      ...prev,
+      {
+        productName: selectedRequest?.productDetails || "Sourced Product",
+        description: "",
+        unitPrice: 0,
+        quantity: selectedRequest?.quantity || 1,
+        subtotal: 0,
+        imageUrl: selectedRequest?.imageUrl || "",
+      },
+    ]);
+  };
 
-  const handleSavePrice = async () => {
+  const handleRemoveItem = (index: number) => {
+    setWorkspaceItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleItemChange = (index: number, field: keyof SourcingItemEntry, value: any) => {
+    setWorkspaceItems((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      if (field === "unitPrice" || field === "quantity") {
+        const p = field === "unitPrice" ? parseFloat(value) || 0 : updated[index].unitPrice;
+        const q = field === "quantity" ? parseInt(value) || 1 : updated[index].quantity;
+        updated[index].subtotal = Math.round(p * q * 100) / 100;
+      }
+      return updated;
+    });
+  };
+
+  const computedWorkspaceTotal = workspaceItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+
+  const handleSaveWorkspace = async (action: "draft" | "publish") => {
     if (!selectedRequest) return;
-    const parsedPrice = parseFloat(unitPriceInput);
-    if (isNaN(parsedPrice) || parsedPrice < 0) {
-      setFeedback({ type: "error", text: "Please enter a valid unit price." });
+    if (workspaceItems.length === 0) {
+      setFeedback({ type: "error", text: "Please add at least one product item with pricing." });
       return;
     }
 
-    setSavingPrice(true);
+    for (const it of workspaceItems) {
+      if (!it.productName.trim()) {
+        setFeedback({ type: "error", text: "All product items must have a valid product name." });
+        return;
+      }
+      if (isNaN(it.unitPrice) || it.unitPrice < 0) {
+        setFeedback({ type: "error", text: "Please enter a valid non-negative unit price for all items." });
+        return;
+      }
+    }
+
+    setSavingAction(true);
     setFeedback(null);
     try {
-      const res = await adminUpdateSourcingPriceAction({
+      const res = await adminSaveOrPublishSourcingWorkspaceAction({
         requestId: selectedRequest.id,
-        unitPrice: parsedPrice,
-        quantity: Number(quantityInput) || 1,
-        priceNotes: priceNotesInput.trim(),
+        adminNotes: adminNotesInput.trim(),
+        status: statusInput,
+        action,
+        items: workspaceItems,
       });
 
       if (res.error) {
         setFeedback({ type: "error", text: res.error });
       } else {
-        setFeedback({ 
-          type: "success", 
-          text: `Price published successfully! Total: GH₵ ${computedTotal.toFixed(2)}. Customer has been alerted.` 
+        setFeedback({
+          type: "success",
+          text: action === "publish"
+            ? `Quotation published successfully! Total: GH₵ ${computedWorkspaceTotal.toFixed(2)}. Customer notified.`
+            : "Draft saved successfully. Customer has not been notified.",
         });
         await loadData();
-        // Update local modal data
-        if (res.request) {
-          setSelectedRequest((prev) => prev ? {
-            ...prev,
-            unitPrice: parsedPrice,
-            quantity: Number(quantityInput) || 1,
-            totalCost: computedTotal,
-            priceNotes: priceNotesInput.trim(),
-            status: "QUOTED",
-            customerConfirmationStatus: "AWAITING_CONFIRMATION",
-          } : null);
-        }
       }
     } catch (err: any) {
-      setFeedback({ type: "error", text: err?.message || "Failed to update price." });
+      setFeedback({ type: "error", text: err?.message || "Failed to save sourcing update." });
     } finally {
-      setSavingPrice(false);
-    }
-  };
-
-  const handleUpdateStatusOnly = async () => {
-    if (!selectedRequest) return;
-    setUpdatingStatus(true);
-    setFeedback(null);
-    try {
-      const res = await updateSourcingRequestStatusAction({
-        requestId: selectedRequest.id,
-        status: statusInput,
-        adminNotes: adminNotesInput.trim(),
-      });
-
-      if (res.error) {
-        setFeedback({ type: "error", text: res.error });
-      } else {
-        setFeedback({ type: "success", text: "Request status updated successfully." });
-        await loadData();
-      }
-    } catch (err: any) {
-      setFeedback({ type: "error", text: err?.message || "Failed to update status." });
-    } finally {
-      setUpdatingStatus(false);
+      setSavingAction(false);
     }
   };
 
@@ -196,7 +238,7 @@ export default function AdminSourcingPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-[#172236]">Sourcing Management</h1>
           <p className="text-sm mt-1 text-[#667085]">
-            Review customer product requests, quote unit prices, manage audit histories, and process orders.
+            Upload product photos, attach individual prices and descriptions, and publish quotations to customers.
           </p>
         </div>
         <button
@@ -233,7 +275,7 @@ export default function AdminSourcingPage() {
                 placeholder="Search requests, customers..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-[#E5E7EB] w-48 sm:w-60 focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-[#E5E7EB] w-48 sm:w-60 focus:outline-none focus:ring-1 focus:ring-[#141B47]"
               />
             </div>
             <select
@@ -247,19 +289,19 @@ export default function AdminSourcingPage() {
               <option value="APPROVED">Approved</option>
               <option value="PURCHASED">Purchased in China</option>
               <option value="SHIPPED">Shipped</option>
-              <option value="REJECTED">Rejected / Declined</option>
+              <option value="REJECTED">Declined</option>
             </select>
           </div>
         </div>
 
         {loading ? (
           <div className="py-20 text-center text-[#667085] flex flex-col items-center gap-2">
-            <Loader2 size={28} className="animate-spin text-brand-navy" />
-            <p className="text-xs">Loading sourcing requests and pricing history...</p>
+            <Loader2 size={28} className="animate-spin text-[#141B47]" />
+            <p className="text-xs">Loading sourcing requests and workspace...</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-20 text-center text-[#667085] flex flex-col items-center gap-3">
-            <PackageSearch size={40} className="opacity-20 text-brand-navy" />
+            <PackageSearch size={40} className="opacity-20 text-[#141B47]" />
             <p className="font-bold text-base text-[#172236]">No sourcing requests found</p>
             <p className="text-xs max-w-sm">
               {search || statusFilter !== "ALL"
@@ -290,7 +332,7 @@ export default function AdminSourcingPage() {
                       />
                     ) : (
                       <div className="w-12 h-12 rounded-xl bg-[#F7F9FC] flex items-center justify-center shrink-0 border border-[#E5E7EB]">
-                        <PackageSearch size={20} className="text-[#0B1F44]" />
+                        <PackageSearch size={20} className="text-[#141B47]" />
                       </div>
                     )}
                     <div className="space-y-1">
@@ -302,41 +344,38 @@ export default function AdminSourcingPage() {
                         >
                           {style.label}
                         </span>
-                        {req.customerConfirmationStatus === "CONFIRMED" && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                            Customer Approved
+                        {req.isDraft ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                            Draft Workspace
                           </span>
-                        )}
-                        {req.customerConfirmationStatus === "DECLINED" && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800">
-                            Customer Declined
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                            Published Quote
                           </span>
                         )}
                       </div>
                       <p className="text-sm font-semibold text-[#172236]">{req.productDetails}</p>
                       <p className="text-xs text-[#667085]">
-                        Applicant: <strong className="text-[#172236]">{req.customerName}</strong> ({req.customerId}) · Qty: {req.quantity || 1}
-                        {req.originalQuantity && req.originalQuantity !== req.quantity ? ` (Orig: ${req.originalQuantity})` : ""}
+                        Customer: <strong className="text-[#172236]">{req.customerName}</strong> ({req.customerId}) · Req. Qty: {req.quantity || 1}
                         {req.preferredSizeColor ? ` · Specs: ${req.preferredSizeColor}` : ""}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:self-center">
-                    {/* Current Quoted Price */}
                     <div className="text-left sm:text-right">
-                      {req.unitPrice != null ? (
+                      {req.totalCost != null ? (
                         <div>
-                          <p className="text-xs text-gray-500">Unit: GH₵ {req.unitPrice.toFixed(2)}</p>
+                          <p className="text-xs text-gray-500">Total Quotation</p>
                           <p className="text-sm font-extrabold text-[#141B47]">
-                            Total: GH₵ {(req.totalCost || (req.unitPrice * (req.quantity || 1))).toFixed(2)}
+                            GH₵ {req.totalCost.toFixed(2)}
                           </p>
                           {req.priceUpdatedBy && (
                             <p className="text-[10px] text-gray-400">By {req.priceUpdatedBy}</p>
                           )}
                         </div>
                       ) : (
-                        <p className="text-xs text-amber-600 font-semibold">Not Priced Yet</p>
+                        <p className="text-xs text-amber-600 font-semibold">Awaiting Pricing</p>
                       )}
                     </div>
 
@@ -344,8 +383,8 @@ export default function AdminSourcingPage() {
                       onClick={() => openReviewModal(req)}
                       className="px-4 py-2 rounded-xl text-xs font-bold bg-[#141B47] text-white hover:bg-[#355DAF] transition-colors cursor-pointer shadow-2xs flex items-center justify-center gap-1.5"
                     >
-                      <DollarSign size={13} />
-                      Set Price / Review
+                      <Calculator size={13} />
+                      Open Sourcing Workspace
                     </button>
                   </div>
                 </div>
@@ -355,16 +394,16 @@ export default function AdminSourcingPage() {
         )}
       </div>
 
-      {/* DETAIL & PRICE MANAGEMENT MODAL */}
+      {/* ADMIN PHOTO UPLOAD & PRICING WORKSPACE MODAL */}
       {selectedRequest && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-[#E5E7EB] space-y-5 my-8">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-2xl border border-[#E5E7EB] space-y-6 my-8">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
               <div>
                 <h3 className="font-bold text-lg text-[#172236] flex items-center gap-2">
-                  <span>Price Management & Review</span>
-                  <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-gray-100 text-gray-700">
+                  <span>Admin Sourcing & Quotation Workspace</span>
+                  <span className="font-mono text-xs px-2.5 py-0.5 rounded-md bg-[#141B47] text-white">
                     {selectedRequest.requestNumber}
                   </span>
                 </h3>
@@ -374,208 +413,274 @@ export default function AdminSourcingPage() {
               </div>
               <button
                 onClick={() => setSelectedRequest(null)}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Product info banner */}
-            <div className="bg-[#F8FAFC] rounded-xl p-4 border border-[#E2E8F0] flex gap-4 text-xs">
-              {selectedRequest.imageUrl && (
-                <img 
-                  src={selectedRequest.imageUrl} 
-                  alt="Product" 
-                  className="w-20 h-20 object-cover rounded-lg border border-gray-200 shrink-0" 
-                />
-              )}
-              <div className="space-y-1">
-                <p className="font-bold text-sm text-[#172236]">{selectedRequest.productDetails}</p>
-                <p className="text-gray-600">
-                  Customer&apos;s Requested Quantity: <strong>{selectedRequest.originalQuantity || selectedRequest.quantity || 1}</strong>
-                </p>
-                {selectedRequest.preferredSizeColor && (
-                  <p className="text-gray-600">Preferred Specs/Color: <strong>{selectedRequest.preferredSizeColor}</strong></p>
-                )}
-                {selectedRequest.additionalInstructions && (
-                  <p className="text-gray-500 italic mt-1">&ldquo;{selectedRequest.additionalInstructions}&rdquo;</p>
-                )}
+            {loadingDetails ? (
+              <div className="py-12 text-center text-gray-500 flex items-center justify-center gap-2">
+                <Loader2 size={20} className="animate-spin text-[#141B47]" />
+                <span className="text-xs">Loading complete submission details...</span>
               </div>
-            </div>
-
-            {/* PRICING WORKSPACE (PART 1 CORE REQUIREMENT) */}
-            <div className="border border-blue-200 bg-blue-50/40 rounded-xl p-4 space-y-4">
-              <div className="flex items-center gap-2 text-blue-900 font-bold text-xs uppercase tracking-wide">
-                <Calculator size={14} /> Sourcing Price Calculator & Quotation
-              </div>
-
-              <div className="grid sm:grid-cols-3 gap-3">
-                {/* Unit Price */}
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 block mb-1">
-                    Unit Price (GH₵) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={unitPriceInput}
-                    onChange={(e) => setUnitPriceInput(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47]"
-                  />
+            ) : (
+              <div className="space-y-6">
+                {/* 1. Original Customer Submission Banner */}
+                <div className="bg-[#F8FAFC] rounded-2xl p-5 border border-[#E2E8F0] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                      Original Customer Request Submission
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      Submitted: {new Date(selectedRequest.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-4 items-start">
+                    {selectedRequest.imageUrl && (
+                      <img 
+                        src={selectedRequest.imageUrl} 
+                        alt="Customer Upload" 
+                        className="w-24 h-24 object-cover rounded-xl border border-gray-300 shadow-xs shrink-0" 
+                      />
+                    )}
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-bold text-[#172236]">{selectedRequest.productDetails}</p>
+                      <p className="text-xs text-gray-600">
+                        Requested Quantity: <strong>{selectedRequest.originalQuantity || selectedRequest.quantity || 1}</strong>
+                        {selectedRequest.preferredSizeColor ? ` · Specs/Color: ${selectedRequest.preferredSizeColor}` : ""}
+                      </p>
+                      {selectedRequest.additionalInstructions && (
+                        <p className="text-xs text-gray-500 italic bg-white p-2.5 rounded-lg border border-gray-200">
+                          &ldquo;{selectedRequest.additionalInstructions}&rdquo;
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Quantity */}
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 block mb-1">
-                    Confirmed Quantity
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={quantityInput}
-                    onChange={(e) => setQuantityInput(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47]"
-                  />
-                  {selectedRequest.originalQuantity && selectedRequest.originalQuantity !== quantityInput && (
-                    <p className="text-[10px] text-amber-700 mt-1">
-                      Original request: {selectedRequest.originalQuantity}
-                    </p>
+                {/* 2. Admin Photo Upload & Product Items Workspace */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-sm text-[#172236] flex items-center gap-2">
+                        <ImageIcon size={16} className="text-[#F2901F]" /> Admin Sourced Product Photos & Pricing
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Upload photos, provide distinct product descriptions, unit prices, and quantities for each item.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddItem}
+                      className="px-3.5 py-1.5 bg-[#141B47] text-white rounded-xl text-xs font-bold hover:bg-[#355DAF] transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Plus size={14} /> Add Product Item
+                    </button>
+                  </div>
+
+                  {workspaceItems.length === 0 ? (
+                    <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center bg-gray-50/50 space-y-2">
+                      <PackageSearch size={32} className="mx-auto text-gray-400 opacity-60" />
+                      <p className="text-xs font-semibold text-gray-700">No product items added yet</p>
+                      <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
+                        Click &ldquo;Add Product Item&rdquo; above to upload photos, enter item names, pricing, and specifications.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {workspaceItems.map((item, index) => (
+                        <div key={index} className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs relative space-y-3">
+                          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                            <span className="text-xs font-bold text-[#141B47] uppercase tracking-wider font-mono">
+                              Item #{index + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(index)}
+                              className="text-red-500 hover:text-red-700 p-1 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                              title="Remove Item"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+
+                          <div className="grid sm:grid-cols-3 gap-3">
+                            {/* Product Name */}
+                            <div className="sm:col-span-2">
+                              <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                                Product Name / Title <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. 5kW Solar Inverter (Pure Sine Wave)"
+                                value={item.productName}
+                                onChange={(e) => handleItemChange(index, "productName", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47]"
+                              />
+                            </div>
+
+                            {/* Image URL / Preview */}
+                            <div>
+                              <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                                Product Photo URL / Image
+                              </label>
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  type="url"
+                                  placeholder="https://... image link"
+                                  value={item.imageUrl || ""}
+                                  onChange={(e) => handleItemChange(index, "imageUrl", e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47]"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Description / Specifications */}
+                          <div>
+                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                              Product Specifications & Description
+                            </label>
+                            <textarea
+                              rows={2}
+                              placeholder="Describe material, brand, model, packaging, factory inspection details..."
+                              value={item.description || ""}
+                              onChange={(e) => handleItemChange(index, "description", e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47] resize-none"
+                            />
+                          </div>
+
+                          {/* Pricing Row */}
+                          <div className="grid sm:grid-cols-3 gap-3 pt-1">
+                            <div>
+                              <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                                Unit Price (GH₵) <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={item.unitPrice}
+                                onChange={(e) => handleItemChange(index, "unitPrice", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                                Quantity <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47]"
+                              />
+                            </div>
+
+                            <div className="bg-[#F8FAFC] rounded-xl p-2.5 border border-gray-200 flex flex-col justify-center">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase">Subtotal</span>
+                              <span className="text-sm font-extrabold text-[#141B47]">
+                                GH₵ {(item.subtotal || 0).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Grand Total Summary */}
+                      <div className="bg-[#141B47] text-white rounded-2xl p-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs text-gray-300">Total Sourced Items: <strong>{workspaceItems.length}</strong></p>
+                          <p className="text-[11px] text-[#F2901F] font-semibold">Ready for customer quotation publishing</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-gray-300 uppercase font-semibold">Grand Total Payable</p>
+                          <p className="text-xl font-black text-[#F2901F]">GH₵ {computedWorkspaceTotal.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                {/* Auto Calculated Total */}
-                <div className="bg-white rounded-lg p-2.5 border border-blue-200 flex flex-col justify-center">
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">Total Item Cost</span>
-                  <span className="text-lg font-black text-[#141B47]">
-                    GH₵ {computedTotal.toFixed(2)}
-                  </span>
-                  <span className="text-[10px] text-gray-400">Unit Price × Qty</span>
+                {/* 3. Status & Admin Notes */}
+                <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 block mb-1">Request Status</label>
+                    <select
+                      value={statusInput}
+                      onChange={(e) => setStatusInput(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#141B47]"
+                    >
+                      <option value="PENDING">Awaiting Review (PENDING)</option>
+                      <option value="QUOTED">Quotation Provided (QUOTED)</option>
+                      <option value="APPROVED">Approved (APPROVED)</option>
+                      <option value="PURCHASED">Purchased in China (PURCHASED)</option>
+                      <option value="SHIPPED">Shipped to Warehouse (SHIPPED)</option>
+                      <option value="COMPLETED">Completed (COMPLETED)</option>
+                      <option value="REJECTED">Declined (REJECTED)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 block mb-1">
+                      General Admin Notes / Instructions
+                    </label>
+                    <input
+                      type="text"
+                      value={adminNotesInput}
+                      onChange={(e) => setAdminNotesInput(e.target.value)}
+                      placeholder="Optional notes for customer portal..."
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#141B47]"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Admin Notes / Explanation */}
-              <div>
-                <label className="text-xs font-semibold text-gray-700 block mb-1">
-                  Pricing Notes / Explanation for Customer
-                </label>
-                <textarea
-                  rows={2}
-                  value={priceNotesInput}
-                  onChange={(e) => setPriceNotesInput(e.target.value)}
-                  placeholder="e.g. Verified with Guangzhou manufacturer, includes domestic China factory packaging..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47] resize-none"
-                />
-              </div>
+                {feedback && (
+                  <div
+                    className={`p-3.5 rounded-xl text-xs flex items-center gap-2 ${
+                      feedback.type === "success"
+                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                        : "bg-red-50 text-red-800 border border-red-200"
+                    }`}
+                  >
+                    {feedback.type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                    <span>{feedback.text}</span>
+                  </div>
+                )}
 
-              <div className="flex items-center justify-between pt-1">
-                <p className="text-[11px] text-gray-500">
-                  Saving will publish the updated price to the customer portal and send an email alert.
-                </p>
-                <button
-                  type="button"
-                  disabled={savingPrice || !unitPriceInput}
-                  onClick={handleSavePrice}
-                  className="px-4 py-2 rounded-lg text-xs font-bold text-white bg-[#F2901F] hover:bg-[#e08015] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
-                >
-                  {savingPrice ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-                  Save & Publish Price
-                </button>
-              </div>
-            </div>
-
-            {/* AUDIT TRAIL / PRICE REVISION HISTORY */}
-            {selectedRequest.priceHistory && selectedRequest.priceHistory.length > 0 && (
-              <div className="border border-gray-200 rounded-xl p-3.5 space-y-2 bg-gray-50/50">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
-                  <History size={14} /> Price Revision Audit Trail ({selectedRequest.priceHistory.length})
-                </div>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {selectedRequest.priceHistory.map((h) => (
-                    <div key={h.id} className="text-xs bg-white p-2.5 rounded-lg border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <div>
-                        <span className="font-bold text-gray-800">GH₵ {h.unitPrice.toFixed(2)} / unit</span>
-                        <span className="text-gray-500"> × {h.quantity} = </span>
-                        <strong className="text-blue-900">GH₵ {h.totalCost.toFixed(2)}</strong>
-                        {h.notes && <p className="text-[11px] text-gray-500 italic mt-0.5">{h.notes}</p>}
-                      </div>
-                      <div className="text-[10px] text-gray-400 font-mono sm:text-right">
-                        <span>{new Date(h.createdAt).toLocaleString()}</span>
-                        <br />
-                        <span>By: {h.updatedByName || "Admin"}</span>
-                      </div>
-                    </div>
-                  ))}
+                {/* Modal Footer Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRequest(null)}
+                    className="px-4 py-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingAction}
+                    onClick={() => handleSaveWorkspace("draft")}
+                    className="px-4 py-2.5 text-xs font-bold text-[#141B47] bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {savingAction && <Loader2 size={13} className="animate-spin" />}
+                    Save as Draft (Private)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingAction}
+                    onClick={() => handleSaveWorkspace("publish")}
+                    className="px-5 py-2.5 text-xs font-bold text-white bg-[#F2901F] hover:bg-[#e08015] rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    {savingAction && <Loader2 size={13} className="animate-spin" />}
+                    Publish Updates to Customer
+                  </button>
                 </div>
               </div>
             )}
-
-            {/* STATUS UPDATE WORKSPACE */}
-            <div className="space-y-3 pt-2 border-t border-gray-100">
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 block mb-1">Status</label>
-                  <select
-                    value={statusInput}
-                    onChange={(e) => setStatusInput(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-brand-navy"
-                  >
-                    <option value="PENDING">Awaiting Review (PENDING)</option>
-                    <option value="QUOTED">Quotation Provided (QUOTED)</option>
-                    <option value="APPROVED">Approved (APPROVED)</option>
-                    <option value="PURCHASED">Purchased in China (PURCHASED)</option>
-                    <option value="SHIPPED">Shipped to Warehouse (SHIPPED)</option>
-                    <option value="COMPLETED">Completed (COMPLETED)</option>
-                    <option value="REJECTED">Rejected / Declined (REJECTED)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 block mb-1">
-                    Internal Admin Status Note
-                  </label>
-                  <input
-                    type="text"
-                    value={adminNotesInput}
-                    onChange={(e) => setAdminNotesInput(e.target.value)}
-                    placeholder="General status tracking notes..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-brand-navy"
-                  />
-                </div>
-              </div>
-
-              {feedback && (
-                <div
-                  className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
-                    feedback.type === "success"
-                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                      : "bg-red-50 text-red-800 border border-red-200"
-                  }`}
-                >
-                  {feedback.type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                  <span>{feedback.text}</span>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedRequest(null)}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  disabled={updatingStatus}
-                  onClick={handleUpdateStatusOnly}
-                  className="px-4 py-2 text-xs font-bold text-white bg-brand-navy hover:bg-brand-secondary rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  {updatingStatus && <Loader2 size={13} className="animate-spin" />}
-                  Update Status Only
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}

@@ -15,6 +15,10 @@ export async function getCustomerSourcingRequestsAction() {
   const requests = await prisma.sourcingRequest.findMany({
     where: { customerId: customer.id },
     include: {
+      sourcingItems: {
+        where: { isPublished: true },
+        orderBy: { sortOrder: "asc" },
+      },
       priceHistory: {
         orderBy: { createdAt: "desc" },
       },
@@ -35,10 +39,13 @@ export async function getCustomerSourcingRequestsAction() {
       originalQuantity: r.originalQuantity ?? r.quantity,
       preferredSizeColor: r.preferredSizeColor,
       additionalInstructions: r.additionalInstructions,
+      adminNotes: r.adminNotes,
       status: r.status,
       creditsUsed: r.creditsUsed,
       unitPrice,
       totalCost,
+      isDraft: r.isDraft ?? true,
+      publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
       priceUpdatedAt: r.priceUpdatedAt ? r.priceUpdatedAt.toISOString() : null,
       priceUpdatedBy: r.priceUpdatedBy ?? null,
       priceNotes: r.priceNotes ?? null,
@@ -46,6 +53,15 @@ export async function getCustomerSourcingRequestsAction() {
       customerConfirmationStatus: r.customerConfirmationStatus ?? "PENDING",
       createdAt: r.createdAt.toISOString().split("T")[0],
       updatedAt: r.updatedAt.toISOString(),
+      sourcingItems: (r.sourcingItems || []).map((it) => ({
+        id: it.id,
+        productName: it.productName,
+        description: it.description,
+        unitPrice: it.unitPrice,
+        quantity: it.quantity,
+        subtotal: it.subtotal,
+        imageUrl: it.imageUrl,
+      })),
       priceHistory: (r.priceHistory || []).map((ph) => ({
         id: ph.id,
         unitPrice: ph.unitPrice,
@@ -231,6 +247,9 @@ export async function getAllSourcingRequestsAction() {
   const requests = await prisma.sourcingRequest.findMany({
     include: {
       customer: true,
+      sourcingItems: {
+        orderBy: { sortOrder: "asc" },
+      },
       priceHistory: {
         orderBy: { createdAt: "desc" },
       },
@@ -261,6 +280,8 @@ export async function getAllSourcingRequestsAction() {
       adminNotes: r.adminNotes,
       unitPrice,
       totalCost,
+      isDraft: r.isDraft ?? true,
+      publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
       priceUpdatedAt: r.priceUpdatedAt ? r.priceUpdatedAt.toISOString() : null,
       priceUpdatedBy: r.priceUpdatedBy ?? null,
       priceNotes: r.priceNotes ?? null,
@@ -268,6 +289,16 @@ export async function getAllSourcingRequestsAction() {
       customerConfirmationStatus: r.customerConfirmationStatus ?? "PENDING",
       createdAt: r.createdAt.toISOString().split("T")[0],
       updatedAt: r.updatedAt.toISOString(),
+      sourcingItems: (r.sourcingItems || []).map((it) => ({
+        id: it.id,
+        productName: it.productName,
+        description: it.description,
+        unitPrice: it.unitPrice,
+        quantity: it.quantity,
+        subtotal: it.subtotal,
+        imageUrl: it.imageUrl,
+        isPublished: it.isPublished,
+      })),
       priceHistory: (r.priceHistory || []).map((ph) => ({
         id: ph.id,
         unitPrice: ph.unitPrice,
@@ -289,6 +320,9 @@ export async function getSourcingRequestDetailsAction(requestId: string) {
     where: { id: requestId },
     include: {
       customer: true,
+      sourcingItems: {
+        orderBy: { sortOrder: "asc" },
+      },
       priceHistory: {
         orderBy: { createdAt: "desc" },
       },
@@ -311,10 +345,13 @@ export async function getSourcingRequestDetailsAction(requestId: string) {
       originalQuantity: request.originalQuantity ?? request.quantity,
       preferredSizeColor: request.preferredSizeColor,
       additionalInstructions: request.additionalInstructions,
+      adminNotes: request.adminNotes,
       status: request.status,
       creditsUsed: request.creditsUsed,
       unitPrice,
       totalCost,
+      isDraft: request.isDraft ?? true,
+      publishedAt: request.publishedAt ? request.publishedAt.toISOString() : null,
       priceUpdatedAt: request.priceUpdatedAt ? request.priceUpdatedAt.toISOString() : null,
       priceUpdatedBy: request.priceUpdatedBy,
       priceNotes: request.priceNotes,
@@ -329,6 +366,16 @@ export async function getSourcingRequestDetailsAction(requestId: string) {
         email: request.customer.email,
         phone: request.customer.phone,
       },
+      sourcingItems: (request.sourcingItems || []).map((it) => ({
+        id: it.id,
+        productName: it.productName,
+        description: it.description,
+        unitPrice: it.unitPrice,
+        quantity: it.quantity,
+        subtotal: it.subtotal,
+        imageUrl: it.imageUrl,
+        isPublished: it.isPublished,
+      })),
       priceHistory: request.priceHistory.map((ph) => ({
         id: ph.id,
         unitPrice: ph.unitPrice,
@@ -340,6 +387,172 @@ export async function getSourcingRequestDetailsAction(requestId: string) {
       })),
     },
   };
+}
+
+export async function adminSaveOrPublishSourcingWorkspaceAction(params: {
+  requestId: string;
+  adminNotes?: string;
+  status?: string;
+  action: "draft" | "publish";
+  items: Array<{
+    id?: string;
+    productName: string;
+    description?: string;
+    unitPrice: number;
+    quantity: number;
+    imageUrl?: string;
+  }>;
+}) {
+  const admin = await requireAdminSession();
+  await ensureSourcingSchema();
+
+  const { requestId, adminNotes, status, action, items } = params;
+  if (!requestId) return { error: "Request ID is required." };
+
+  const request = await prisma.sourcingRequest.findUnique({
+    where: { id: requestId },
+    include: { customer: true, sourcingItems: true },
+  });
+
+  if (!request) return { error: "Sourcing request not found." };
+
+  const isPublish = action === "publish";
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      // 1. Remove items not in list
+      const incomingIds = items.map(i => i.id).filter(Boolean);
+      if (incomingIds.length > 0) {
+        await tx.sourcingItem.deleteMany({
+          where: {
+            sourcingRequestId: requestId,
+            id: { notIn: incomingIds as string[] },
+          },
+        });
+      } else {
+        await tx.sourcingItem.deleteMany({
+          where: { sourcingRequestId: requestId },
+        });
+      }
+
+      let calculatedTotalCost = 0;
+
+      // 2. Upsert items
+      for (let idx = 0; idx < items.length; idx++) {
+        const it = items[idx];
+        const qty = it.quantity > 0 ? it.quantity : 1;
+        const price = it.unitPrice >= 0 ? it.unitPrice : 0;
+        const subtotal = Math.round(price * qty * 100) / 100;
+        calculatedTotalCost += subtotal;
+
+        if (it.id) {
+          await tx.sourcingItem.update({
+            where: { id: it.id },
+            data: {
+              productName: it.productName.trim(),
+              description: it.description?.trim() || null,
+              unitPrice: price,
+              quantity: qty,
+              subtotal,
+              imageUrl: it.imageUrl?.trim() || null,
+              isPublished: isPublish,
+              sortOrder: idx,
+            },
+          });
+        } else {
+          await tx.sourcingItem.create({
+            data: {
+              sourcingRequestId: requestId,
+              productName: it.productName.trim(),
+              description: it.description?.trim() || null,
+              unitPrice: price,
+              quantity: qty,
+              subtotal,
+              imageUrl: it.imageUrl?.trim() || null,
+              isPublished: isPublish,
+              sortOrder: idx,
+            },
+          });
+        }
+      }
+
+      const newStatus = status ? status : (isPublish && request.status === "PENDING" ? "QUOTED" : request.status);
+
+      const updatedReq = await tx.sourcingRequest.update({
+        where: { id: requestId },
+        data: {
+          adminNotes: adminNotes?.trim() || null,
+          status: newStatus as any,
+          unitPrice: items.length > 0 ? items[0].unitPrice : request.unitPrice,
+          totalCost: calculatedTotalCost > 0 ? calculatedTotalCost : request.totalCost,
+          isDraft: !isPublish,
+          publishedAt: isPublish ? new Date() : request.publishedAt,
+          customerConfirmationStatus: isPublish ? "AWAITING_CONFIRMATION" : request.customerConfirmationStatus,
+          priceUpdatedAt: isPublish ? new Date() : request.priceUpdatedAt,
+          priceUpdatedBy: isPublish ? admin.name : request.priceUpdatedBy,
+        },
+      });
+
+      if (isPublish && calculatedTotalCost > 0) {
+        await tx.sourcingPriceHistory.create({
+          data: {
+            sourcingRequestId: request.id,
+            unitPrice: items.length > 0 ? items[0].unitPrice : 0,
+            quantity: items.reduce((sum, i) => sum + i.quantity, 0),
+            totalCost: calculatedTotalCost,
+            notes: adminNotes?.trim() || "Published product quotation update",
+            updatedById: admin.id,
+            updatedByName: admin.name,
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          action: isPublish ? "SOURCING_UPDATE_PUBLISHED" : "SOURCING_DRAFT_SAVED",
+          entityType: "SourcingRequest",
+          entityId: request.id,
+          description: `${isPublish ? "Published" : "Saved draft"} sourcing update for ${request.requestNumber} by ${admin.name} (${items.length} items, Total: GH₵${calculatedTotalCost.toFixed(2)})`,
+          adminId: admin.id,
+        },
+      });
+
+      return updatedReq;
+    });
+
+    if (isPublish) {
+      try {
+        const { createNotificationInternal } = await import("@/app/actions/notifications");
+        await createNotificationInternal({
+          customerId: request.customerId,
+          type: "SOURCING_REQUEST",
+          title: `Sourcing Quotation Ready: ${request.requestNumber}`,
+          message: `Our procurement team has updated and published product details & pricing for your sourcing request ${request.requestNumber} (Total: GH₵${updated.totalCost?.toFixed(2) || "0.00"}). Please review in your portal.`,
+          actionUrl: `/portal/sourcing`,
+          idempotencyKey: `sourcing-pub-${request.id}-${Date.now()}`,
+          sourcingRequestId: request.id,
+        });
+      } catch (notifErr) {
+        console.warn("Notice sending in-app notification:", notifErr);
+      }
+
+      try {
+        const { sendSourcingPriceUpdatedEmail } = await import("@/lib/email/brevo");
+        sendSourcingPriceUpdatedEmail(request.id).catch((emailErr) =>
+          console.error("[Brevo] Error sending sourcing update email:", emailErr)
+        );
+      } catch (emailErr) {
+        console.warn("Notice sending email:", emailErr);
+      }
+    }
+
+    revalidatePath("/admin/sourcing");
+    revalidatePath("/portal/sourcing");
+    return { success: true };
+  } catch (err: any) {
+    console.error("[adminSaveOrPublishSourcingWorkspaceAction] Error:", err);
+    return { error: err?.message || "Failed to save sourcing update." };
+  }
 }
 
 export async function adminUpdateSourcingPriceAction(params: {

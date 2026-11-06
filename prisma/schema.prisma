@@ -247,11 +247,33 @@ model SourcingRequest {
   imageUrl                   String?
   customerConfirmationStatus String?                @default("PENDING")
 
+  isDraft                    Boolean                @default(true)
+  publishedAt                DateTime?
+
   customerId                 String
   customer                   Customer               @relation(fields: [customerId], references: [id])
   priceHistory               SourcingPriceHistory[]
+  sourcingItems              SourcingItem[]
 
   @@index([customerId])
+}
+
+model SourcingItem {
+  id                String          @id @default(uuid())
+  sourcingRequestId String
+  sourcingRequest   SourcingRequest @relation(fields: [sourcingRequestId], references: [id], onDelete: Cascade)
+  productName       String
+  description       String?
+  unitPrice         Float           @default(0.0)
+  quantity          Int             @default(1)
+  subtotal          Float           @default(0.0)
+  imageUrl          String?
+  isPublished       Boolean         @default(false)
+  sortOrder         Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([sourcingRequestId])
 }
 
 model SourcingPriceHistory {

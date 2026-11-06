@@ -14,6 +14,8 @@ import { Shipment } from "@/lib/db";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrandSettings } from "@/components/brand-provider";
 
+export const dynamic = "force-dynamic";
+
 // 100% deterministic currency formatter to prevent locale hydration issues
 function formatCurrencyDeterministic(amount: number) {
   const numericVal = typeof amount === "number" ? amount : parseFloat(String(amount)) || 0;

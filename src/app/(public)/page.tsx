@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Search, Truck, PackageSearch, ShieldCheck, Box, Globe, Clock, CheckCircle, Plane, Ship } from "lucide-react";
 import { useBrandSettings } from "@/components/brand-provider";
 
+export const dynamic = "force-dynamic";
+
 export default function Home() {
   const router = useRouter();
   const [quickTrackingId, setQuickTrackingId] = useState("");

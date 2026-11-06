@@ -101,9 +101,27 @@ export function BrandProvider({
 
 export function useBrandSettings() {
   try {
-    const context = useContext(BrandContext);
-    return context || null;
+    if (typeof React === "undefined" || !React || typeof (React as any).useContext !== "function") {
+      return {
+        branding: DEFAULT_BRANDING as ResolvedBrandSettings,
+        refreshBranding: async () => {},
+        getLogoUrl: () => null,
+      };
+    }
+    const context = (React as any).useContext(BrandContext);
+    if (!context) {
+      return {
+        branding: DEFAULT_BRANDING as ResolvedBrandSettings,
+        refreshBranding: async () => {},
+        getLogoUrl: () => null,
+      };
+    }
+    return context;
   } catch {
-    return null;
+    return {
+      branding: DEFAULT_BRANDING as ResolvedBrandSettings,
+      refreshBranding: async () => {},
+      getLogoUrl: () => null,
+    };
   }
 }

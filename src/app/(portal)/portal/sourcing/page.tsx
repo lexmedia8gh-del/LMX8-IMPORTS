@@ -17,6 +17,8 @@ import {
 import { CREDIT_PACKAGES } from "@/lib/credit-packages";
 import { useBrandSettings } from "@/components/brand-provider";
 
+export const dynamic = "force-dynamic";
+
 function newUUID(): string {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random()}`;
 }
@@ -534,107 +536,133 @@ export default function SourcingPage() {
                       </div>
                     </div>
 
-                    <div className="grid md:grid-cols-3 gap-6 pt-4">
-                      {/* Product Info */}
-                      <div className="md:col-span-2 flex items-start gap-4">
-                        {req.imageUrl ? (
-                          <div className="w-20 h-20 shrink-0 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                            <img 
-                              src={req.imageUrl} 
-                              alt="Product" 
-                              className="w-full h-full object-cover" 
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-16 h-16 shrink-0 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 border border-gray-200">
-                            <PackageSearch size={24} />
-                          </div>
-                        )}
-                        <div className="space-y-1">
-                          <p className="font-bold text-sm text-[#172236] leading-snug">
-                            {req.productDetails}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            Requested Quantity: <strong>{req.quantity || 1}</strong>
-                            {req.preferredSizeColor && (
-                              <span> · Specs: <strong>{req.preferredSizeColor}</strong></span>
-                            )}
-                          </p>
-                          {req.additionalInstructions && (
-                            <p className="text-xs text-gray-500 italic mt-1">
-                              &ldquo;{req.additionalInstructions}&rdquo;
-                            </p>
-                          )}
-                          {req.priceNotes && (
-                            <div className="mt-2 p-2.5 rounded-lg bg-blue-50/70 border border-blue-100 text-xs text-blue-900">
-                              <span className="font-bold">Admin Pricing Note:</span> {req.priceNotes}
+                    <div className="space-y-5 pt-4">
+                      {/* Original Request Banner */}
+                      <div className="bg-[#F8FAFC] rounded-xl p-4 border border-gray-200 space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                          Your Original Submission
+                        </span>
+                        <div className="flex items-start gap-3">
+                          {req.imageUrl ? (
+                            <img src={req.imageUrl} alt="Request" className="w-14 h-14 object-cover rounded-lg border border-gray-200 shrink-0" />
+                          ) : (
+                            <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
+                              <PackageSearch size={20} />
                             </div>
                           )}
+                          <div>
+                            <p className="font-bold text-xs text-[#172236]">{req.productDetails}</p>
+                            <p className="text-[11px] text-gray-600">
+                              Requested Qty: <strong>{req.quantity || 1}</strong>
+                              {req.preferredSizeColor && ` · Specs: ${req.preferredSizeColor}`}
+                            </p>
+                            {req.additionalInstructions && (
+                              <p className="text-[11px] text-gray-500 italic mt-0.5">&ldquo;{req.additionalInstructions}&rdquo;</p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Pricing Card */}
-                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200/80 flex flex-col justify-between">
-                        <div>
-                          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-                            Pricing Breakdown
+                      {/* Admin Sourced Product Cards */}
+                      {req.sourcingItems && req.sourcingItems.length > 0 ? (
+                        <div className="space-y-3">
+                          <p className="text-xs font-bold text-[#141B47] uppercase tracking-wider flex items-center gap-1.5">
+                            <span>Sourced Product Quotation</span>
+                            <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
+                              {req.sourcingItems.length} Item{req.sourcingItems.length > 1 ? "s" : ""}
+                            </span>
                           </p>
-                          {req.unitPrice != null ? (
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs text-gray-600">
-                                <span>Unit Price:</span>
-                                <span className="font-semibold text-gray-900">GH₵ {req.unitPrice.toFixed(2)}</span>
+
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            {req.sourcingItems.map((item: any) => (
+                              <div key={item.id} className="bg-white rounded-xl p-4 border border-gray-200 shadow-2xs space-y-2.5 flex flex-col justify-between">
+                                <div className="flex items-start gap-3">
+                                  {item.imageUrl ? (
+                                    <img src={item.imageUrl} alt={item.productName} className="w-16 h-16 object-cover rounded-lg border border-gray-200 shrink-0" />
+                                  ) : (
+                                    <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
+                                      <PackageSearch size={20} />
+                                    </div>
+                                  )}
+                                  <div className="space-y-1 min-w-0">
+                                    <h5 className="font-bold text-xs text-[#172236] truncate">{item.productName}</h5>
+                                    {item.description && (
+                                      <p className="text-[11px] text-gray-600 line-clamp-2">{item.description}</p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+                                  <span className="text-gray-500">
+                                    GH₵ {item.unitPrice.toFixed(2)} × {item.quantity}
+                                  </span>
+                                  <span className="font-extrabold text-[#141B47]">
+                                    GH₵ {item.subtotal.toFixed(2)}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex justify-between text-xs text-gray-600">
-                                <span>Quantity:</span>
-                                <span>{req.quantity || 1}</span>
-                              </div>
-                              <div className="pt-2 border-t border-gray-200 flex justify-between items-baseline">
-                                <span className="text-xs font-bold text-gray-700">Total Item Cost:</span>
-                                <span className="text-base font-extrabold text-[#141B47]">
-                                  GH₵ {(req.totalCost || (req.unitPrice * (req.quantity || 1))).toFixed(2)}
-                                </span>
-                              </div>
-                              {req.priceUpdatedBy && (
-                                <p className="text-[10px] text-gray-500 text-right mt-1">
-                                  Updated by {req.priceUpdatedBy}
+                            ))}
+                          </div>
+
+                          {/* Grand Total & Notes */}
+                          <div className="bg-[#141B47] text-white rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              {req.adminNotes && (
+                                <p className="text-xs text-gray-200 mb-1">
+                                  <strong>Admin Notes:</strong> {req.adminNotes}
                                 </p>
                               )}
+                              <p className="text-[11px] text-[#F2901F]">Please review quotation and confirm below.</p>
                             </div>
-                          ) : (
-                            <div className="py-3 text-center">
-                              <p className="text-xs font-semibold text-gray-600">Awaiting Quotation</p>
-                              <p className="text-[11px] text-gray-400 mt-0.5">Procurement review in progress</p>
+                            <div className="text-right shrink-0">
+                              <span className="text-[10px] uppercase text-gray-300 font-semibold block">Total Quotation Amount</span>
+                              <span className="text-lg font-black text-[#F2901F]">
+                                GH₵ {(req.totalCost || req.sourcingItems.reduce((s: number, i: any) => s + i.subtotal, 0)).toFixed(2)}
+                              </span>
                             </div>
-                          )}
-                        </div>
-
-                        {/* Customer Confirmation Action if Awaiting */}
-                        {isAwaitingConfirmation && (
-                          <div className="mt-4 pt-3 border-t border-amber-200 flex gap-2">
-                            <button
-                              onClick={() => handleCustomerResponse(req.id, "CONFIRM")}
-                              disabled={respondingId === req.id}
-                              className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                            >
-                              {respondingId === req.id ? (
-                                <Loader2 size={13} className="animate-spin" />
-                              ) : (
-                                <>
-                                  <Check size={13} /> Confirm Quote
-                                </>
-                              )}
-                            </button>
-                            <button
-                              onClick={() => handleCustomerResponse(req.id, "DECLINE")}
-                              disabled={respondingId === req.id}
-                              className="py-1.5 px-2.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold cursor-pointer transition-colors"
-                            >
-                              Decline
-                            </button>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        /* Fallback single price view */
+                        <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-bold text-gray-700">Single Quotation Summary</p>
+                            {req.unitPrice != null ? (
+                              <p className="text-xs text-gray-600 mt-0.5">
+                                GH₵ {req.unitPrice.toFixed(2)} / unit × {req.quantity || 1} = <strong>GH₵ {(req.totalCost || (req.unitPrice * (req.quantity || 1))).toFixed(2)}</strong>
+                              </p>
+                            ) : (
+                              <p className="text-xs text-amber-600 font-semibold mt-0.5">Awaiting Quotation Review</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Customer Confirmation Action if Awaiting */}
+                      {isAwaitingConfirmation && (
+                        <div className="pt-3 border-t border-amber-200 flex gap-3">
+                          <button
+                            onClick={() => handleCustomerResponse(req.id, "CONFIRM")}
+                            disabled={respondingId === req.id}
+                            className="flex-1 py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                          >
+                            {respondingId === req.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <>
+                                <Check size={14} /> Confirm Quotation
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleCustomerResponse(req.id, "DECLINE")}
+                            disabled={respondingId === req.id}
+                            className="py-2 px-4 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold cursor-pointer transition-colors"
+                          >
+                            Decline Quotation
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Price History Toggle */}
