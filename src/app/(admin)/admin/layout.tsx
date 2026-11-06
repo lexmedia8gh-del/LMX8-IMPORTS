@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { 
   Users, Truck, Package, CreditCard, Search, Bell, Settings, Menu, 
   LogOut, FileText, ArrowRightLeft, Paintbrush, PanelLeftClose, PanelLeftOpen, Database, Mail, Activity,
-  Receipt
+  Receipt, ShoppingBag
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { getCurrentAdminAction } from "@/app/actions";
@@ -35,6 +35,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/shipments", icon: <Truck className="w-5 h-5 shrink-0" />, label: "Shipments" },
     { href: "/admin/invoices", icon: <Receipt className="w-5 h-5 shrink-0" />, label: "Invoices" },
     { href: "/admin/sourcing", icon: <Search className="w-5 h-5 shrink-0" />, label: "Sourcing" },
+    { href: "/admin/buy-for-me", icon: <ShoppingBag className="w-5 h-5 shrink-0" />, label: "Buy for Me" },
     { href: "/admin/payments", icon: <CreditCard className="w-5 h-5 shrink-0" />, label: "Payments" },
     { href: "/admin/credits", icon: <div className="w-5 h-5 flex items-center justify-center border-2 border-current rounded-full text-[10px] font-bold shrink-0">C</div>, label: "Credits" },
     { href: "/admin/batches", icon: <FileText className="w-5 h-5 shrink-0" />, label: "Delivery (Batches)" },

@@ -390,6 +390,136 @@ async function runMigrate() {
       console.warn("[migrate-deploy] Expense/EOD setup notice:", eodErr?.message || eodErr);
     }
 
+    // ── 1d. Proactively ensure Sourcing & BuyForMe tables and columns exist ───
+    try {
+      const bfmStatements = [
+        `ALTER TABLE "public"."SourcingRequest" ADD COLUMN IF NOT EXISTS "unitPrice" DOUBLE PRECISION;`,
+        `ALTER TABLE "public"."SourcingRequest" ADD COLUMN IF NOT EXISTS "totalCost" DOUBLE PRECISION;`,
+        `ALTER TABLE "public"."SourcingRequest" ADD COLUMN IF NOT EXISTS "originalQuantity" INTEGER;`,
+        `ALTER TABLE "public"."SourcingRequest" ADD COLUMN IF NOT EXISTS "priceUpdatedAt" TIMESTAMP(3);`,
+        `ALTER TABLE "public"."SourcingRequest" ADD COLUMN IF NOT EXISTS "priceUpdatedBy" TEXT;`,
+        `ALTER TABLE "public"."SourcingRequest" ADD COLUMN IF NOT EXISTS "priceNotes" TEXT;`,
+        `ALTER TABLE "public"."SourcingRequest" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;`,
+        `ALTER TABLE "public"."SourcingRequest" ADD COLUMN IF NOT EXISTS "customerConfirmationStatus" TEXT DEFAULT 'PENDING';`,
+        `CREATE TABLE IF NOT EXISTS "public"."SourcingPriceHistory" (
+            "id" TEXT NOT NULL,
+            "sourcingRequestId" TEXT NOT NULL,
+            "unitPrice" DOUBLE PRECISION NOT NULL,
+            "quantity" INTEGER NOT NULL,
+            "totalCost" DOUBLE PRECISION NOT NULL,
+            "notes" TEXT,
+            "updatedById" TEXT,
+            "updatedByName" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "SourcingPriceHistory_pkey" PRIMARY KEY ("id")
+        );`,
+        `CREATE INDEX IF NOT EXISTS "SourcingPriceHistory_sourcingRequestId_idx" ON "public"."SourcingPriceHistory"("sourcingRequestId");`,
+        `CREATE INDEX IF NOT EXISTS "SourcingPriceHistory_createdAt_idx" ON "public"."SourcingPriceHistory"("createdAt");`,
+        `CREATE TABLE IF NOT EXISTS "public"."BuyForMeRequest" (
+            "id" TEXT NOT NULL,
+            "requestNumber" TEXT NOT NULL,
+            "customerId" TEXT NOT NULL,
+            "submissionType" TEXT NOT NULL DEFAULT 'MANUAL_LIST',
+            "status" TEXT NOT NULL DEFAULT 'SUBMITTED',
+            "additionalInstructions" TEXT,
+            "purchasingPreferences" TEXT,
+            "deliveryPreferences" TEXT,
+            "adminNotes" TEXT,
+            "idempotencyKey" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "BuyForMeRequest_pkey" PRIMARY KEY ("id")
+        );`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BuyForMeRequest_requestNumber_key" ON "public"."BuyForMeRequest"("requestNumber");`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BuyForMeRequest_idempotencyKey_key" ON "public"."BuyForMeRequest"("idempotencyKey");`,
+        `CREATE INDEX IF NOT EXISTS "BuyForMeRequest_customerId_idx" ON "public"."BuyForMeRequest"("customerId");`,
+        `CREATE INDEX IF NOT EXISTS "BuyForMeRequest_status_idx" ON "public"."BuyForMeRequest"("status");`,
+        `CREATE INDEX IF NOT EXISTS "BuyForMeRequest_createdAt_idx" ON "public"."BuyForMeRequest"("createdAt");`,
+        `CREATE TABLE IF NOT EXISTS "public"."BuyForMeItem" (
+            "id" TEXT NOT NULL,
+            "requestId" TEXT NOT NULL,
+            "productName" TEXT NOT NULL,
+            "description" TEXT,
+            "productUrl" TEXT,
+            "quantity" INTEGER NOT NULL DEFAULT 1,
+            "preferredSpecs" TEXT,
+            "budget" DOUBLE PRECISION,
+            "imageUrl" TEXT,
+            "unitPrice" DOUBLE PRECISION,
+            "subtotal" DOUBLE PRECISION,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "BuyForMeItem_pkey" PRIMARY KEY ("id")
+        );`,
+        `CREATE INDEX IF NOT EXISTS "BuyForMeItem_requestId_idx" ON "public"."BuyForMeItem"("requestId");`,
+        `CREATE TABLE IF NOT EXISTS "public"."BuyForMeQuotation" (
+            "id" TEXT NOT NULL,
+            "requestId" TEXT NOT NULL,
+            "version" INTEGER NOT NULL DEFAULT 1,
+            "status" TEXT NOT NULL DEFAULT 'DRAFT',
+            "totalProductCost" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "shippingFee" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "sourcingFee" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "serviceFee" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "otherCharges" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "otherChargesNotes" TEXT,
+            "grandTotal" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "currency" TEXT NOT NULL DEFAULT 'GHS',
+            "adminNotes" TEXT,
+            "publishedAt" TIMESTAMP(3),
+            "publishedById" TEXT,
+            "publishedByName" TEXT,
+            "isPaid" BOOLEAN NOT NULL DEFAULT false,
+            "paidAt" TIMESTAMP(3),
+            "paymentReference" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "BuyForMeQuotation_pkey" PRIMARY KEY ("id")
+        );`,
+        `CREATE INDEX IF NOT EXISTS "BuyForMeQuotation_requestId_idx" ON "public"."BuyForMeQuotation"("requestId");`,
+        `CREATE INDEX IF NOT EXISTS "BuyForMeQuotation_status_idx" ON "public"."BuyForMeQuotation"("status");`,
+        `CREATE TABLE IF NOT EXISTS "public"."BuyForMeQuotationLineItem" (
+            "id" TEXT NOT NULL,
+            "quotationId" TEXT NOT NULL,
+            "itemId" TEXT,
+            "productName" TEXT NOT NULL,
+            "unitPrice" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "quantity" INTEGER NOT NULL DEFAULT 1,
+            "subtotal" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "notes" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "BuyForMeQuotationLineItem_pkey" PRIMARY KEY ("id")
+        );`,
+        `CREATE INDEX IF NOT EXISTS "BuyForMeQuotationLineItem_quotationId_idx" ON "public"."BuyForMeQuotationLineItem"("quotationId");`,
+        `CREATE TABLE IF NOT EXISTS "public"."BuyForMeStatusHistory" (
+            "id" TEXT NOT NULL,
+            "requestId" TEXT NOT NULL,
+            "status" TEXT NOT NULL,
+            "note" TEXT,
+            "changedById" TEXT,
+            "changedByName" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "BuyForMeStatusHistory_pkey" PRIMARY KEY ("id")
+        );`,
+        `CREATE INDEX IF NOT EXISTS "BuyForMeStatusHistory_requestId_idx" ON "public"."BuyForMeStatusHistory"("requestId");`,
+        `ALTER TABLE "public"."Payment" ADD COLUMN IF NOT EXISTS "buyForMeRequestId" TEXT;`,
+        `ALTER TABLE "public"."Payment" ADD COLUMN IF NOT EXISTS "buyForMeQuotationId" TEXT;`,
+        `ALTER TABLE "public"."Notification" ADD COLUMN IF NOT EXISTS "buyForMeRequestId" TEXT;`,
+        `DO $$ BEGIN ALTER TYPE "PaymentType" ADD VALUE IF NOT EXISTS 'BUY_FOR_ME'; EXCEPTION WHEN OTHERS THEN null; END $$;`,
+        `DO $$ BEGIN ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'BUY_FOR_ME'; EXCEPTION WHEN OTHERS THEN null; END $$;`
+      ];
+      for (const stmt of bfmStatements) {
+        try {
+          await prisma.$executeRawUnsafe(stmt);
+        } catch (sErr) {
+          console.warn("[migrate-deploy] BuyForMe / Sourcing DDL notice:", sErr?.message || sErr);
+        }
+      }
+      console.log("[migrate-deploy] Sourcing price management and BuyForMe tables verified.");
+    } catch (bfmErr) {
+      console.warn("[migrate-deploy] BuyForMe setup notice:", bfmErr?.message || bfmErr);
+    }
+
     // ── 2. Diagnose & clean up _prisma_migrations table state ────────────────
     const migrationsTableExists = await prisma.$queryRawUnsafe(`
       SELECT table_name FROM information_schema.tables 

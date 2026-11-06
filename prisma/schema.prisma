@@ -67,6 +67,7 @@ model Customer {
   creditAccount      CreditAccount?
   creditTransactions CreditTransaction[]
   sourcingRequests   SourcingRequest[]
+  buyForMeRequests   BuyForMeRequest[]
   payments           Payment[]
   notifications      Notification[]
   emailLogs          EmailLog[]
@@ -225,28 +226,155 @@ model CreditTransaction {
 }
 
 model SourcingRequest {
-  id                     String          @id @default(uuid())
-  requestNumber          String          @unique
-  productDetails         String
-  quantity               Int?
-  preferredSizeColor     String?
-  additionalInstructions String?
-  status                 SourcingStatus  @default(PENDING)
-  creditsUsed            Int             @default(0)
-  adminNotes             String?
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
-  idempotencyKey         String?         @unique
+  id                         String                 @id @default(uuid())
+  requestNumber              String                 @unique
+  productDetails             String
+  quantity                   Int?
+  originalQuantity           Int?
+  preferredSizeColor         String?
+  additionalInstructions     String?
+  status                     SourcingStatus         @default(PENDING)
+  creditsUsed                Int                    @default(0)
+  adminNotes                 String?
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+  idempotencyKey             String?                @unique
+  unitPrice                  Float?
+  totalCost                  Float?
+  priceUpdatedAt             DateTime?
+  priceUpdatedBy             String?
+  priceNotes                 String?
+  imageUrl                   String?
+  customerConfirmationStatus String?                @default("PENDING")
 
-  customerId             String
-  customer               Customer        @relation(fields: [customerId], references: [id])
+  customerId                 String
+  customer                   Customer               @relation(fields: [customerId], references: [id])
+  priceHistory               SourcingPriceHistory[]
 
   @@index([customerId])
+}
+
+model SourcingPriceHistory {
+  id                String          @id @default(uuid())
+  sourcingRequestId String
+  sourcingRequest   SourcingRequest @relation(fields: [sourcingRequestId], references: [id], onDelete: Cascade)
+  unitPrice         Float
+  quantity          Int
+  totalCost         Float
+  notes             String?
+  updatedById       String?
+  updatedByName     String?
+  createdAt         DateTime        @default(now())
+
+  @@index([sourcingRequestId])
+  @@index([createdAt])
+}
+
+model BuyForMeRequest {
+  id                     String                 @id @default(uuid())
+  requestNumber          String                 @unique
+  customerId             String
+  customer               Customer               @relation(fields: [customerId], references: [id])
+  submissionType         String                 @default("MANUAL_LIST") // IMAGE_UPLOAD, MANUAL_LIST, PRODUCT_LINK
+  status                 String                 @default("SUBMITTED") // SUBMITTED, UNDER_REVIEW, QUOTATION_READY, AWAITING_PAYMENT, PAYMENT_CONFIRMED, PURCHASING_IN_PROGRESS, PURCHASED, SHIPMENT_PROCESSING, COMPLETED, CANCELLED
+  additionalInstructions String?
+  purchasingPreferences  String?
+  deliveryPreferences    String?
+  adminNotes             String?
+  idempotencyKey         String?                @unique
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  items                  BuyForMeItem[]
+  quotations             BuyForMeQuotation[]
+  payments               Payment[]
+  statusHistory          BuyForMeStatusHistory[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model BuyForMeItem {
+  id             String          @id @default(uuid())
+  requestId      String
+  request        BuyForMeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  productName    String
+  description    String?
+  productUrl     String?
+  quantity       Int             @default(1)
+  preferredSpecs String?
+  budget         Float?
+  imageUrl       String?
+  unitPrice      Float?
+  subtotal       Float?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([requestId])
+}
+
+model BuyForMeQuotation {
+  id                String                     @id @default(uuid())
+  requestId         String
+  request           BuyForMeRequest            @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  version           Int                        @default(1)
+  status            String                     @default("DRAFT") // DRAFT, PUBLISHED, REVISED, PAID
+  totalProductCost  Float                      @default(0.0)
+  shippingFee       Float                      @default(0.0)
+  sourcingFee       Float                      @default(0.0)
+  serviceFee        Float                      @default(0.0)
+  otherCharges      Float                      @default(0.0)
+  otherChargesNotes String?
+  grandTotal        Float                      @default(0.0)
+  currency          String                     @default("GHS")
+  adminNotes        String?
+  publishedAt       DateTime?
+  publishedById     String?
+  publishedByName   String?
+  isPaid            Boolean                    @default(false)
+  paidAt            DateTime?
+  paymentReference  String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  lineItems         BuyForMeQuotationLineItem[]
+
+  @@index([requestId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model BuyForMeQuotationLineItem {
+  id          String            @id @default(uuid())
+  quotationId String
+  quotation   BuyForMeQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  itemId      String?
+  productName String
+  unitPrice   Float             @default(0.0)
+  quantity    Int               @default(1)
+  subtotal    Float             @default(0.0)
+  notes       String?
+  createdAt   DateTime          @default(now())
+
+  @@index([quotationId])
+}
+
+model BuyForMeStatusHistory {
+  id            String          @id @default(uuid())
+  requestId     String
+  request       BuyForMeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  status        String
+  note          String?
+  changedById   String?
+  changedByName String?
+  createdAt     DateTime        @default(now())
+
+  @@index([requestId])
 }
 
 enum PaymentType {
   CREDIT_PURCHASE
   SHIPPING_FEE
+  BUY_FOR_ME
 }
 
 model Payment {
@@ -268,11 +396,16 @@ model Payment {
   shipmentId            String?
   shipment              Shipment?      @relation(fields: [shipmentId], references: [id])
 
+  buyForMeRequestId     String?
+  buyForMeRequest       BuyForMeRequest? @relation(fields: [buyForMeRequestId], references: [id], onDelete: SetNull)
+  buyForMeQuotationId   String?
+
   creditTransactions    CreditTransaction[]
 
   @@index([customerId])
   @@index([reference])
   @@index([shipmentId])
+  @@index([buyForMeRequestId])
 }
 
 model AuditLog {
@@ -298,6 +431,7 @@ enum NotificationType {
   ACCOUNT
   SYSTEM
   SOURCING_REQUEST
+  BUY_FOR_ME
 }
 
 model Notification {
@@ -315,6 +449,7 @@ model Notification {
   shipmentId      String?
   paymentId       String?
   sourcingRequestId String?
+  buyForMeRequestId String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 

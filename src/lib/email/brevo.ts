@@ -1841,5 +1841,248 @@ export async function sendSourcingRequestAdminNotificationEmail(requestId: strin
   }
 }
 
+// 4. Sourcing Price Updated (Customer Alert)
+export async function sendSourcingPriceUpdatedEmail(requestId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureEmailLogSchema();
+    const request = await prisma.sourcingRequest.findUnique({
+      where: { id: requestId },
+      include: { customer: true },
+    });
 
+    if (!request || !request.customer || !request.customer.email) {
+      return { success: false, error: "Recipient email not found." };
+    }
 
+    const portalBase = getPortalBaseUrl();
+    const portalUrl = `${portalBase}/portal/sourcing`;
+    const unitPrice = request.unitPrice || 0;
+    const totalCost = request.totalCost || unitPrice * (request.quantity || 1);
+
+    const htmlContent = await wrapInBrandedLayout(
+      "Price Update on Your Sourcing Request",
+      `
+      <p class="greeting">Hello ${request.customer.name},</p>
+      <p class="lead">Great news! Our procurement desk has reviewed and updated the price quotation for your sourcing request <strong>${request.requestNumber}</strong>.</p>
+      <div class="status-card" style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 20px; border-radius: 12px;">
+        <div class="status-badge" style="background: #141B47; color: #FFFFFF; font-weight: 700; margin-bottom: 12px;">PRICE QUOTATION CONFIRMED</div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td class="label">Request Number</td><td class="val" style="font-family: monospace;">${request.requestNumber}</td></tr>
+          <tr><td class="label">Product Details</td><td class="val">${request.productDetails}</td></tr>
+          <tr><td class="label">Quantity</td><td class="val">${request.quantity || 1} units</td></tr>
+          <tr><td class="label">Unit Price</td><td class="val" style="color: #141B47; font-weight: 800;">GH₵ ${unitPrice.toFixed(2)}</td></tr>
+          <tr style="border-top: 2px solid #E2E8F0;"><td class="label" style="font-size: 14px; font-weight: 800; color: #0F172A; padding-top: 10px;">Total Estimated Cost</td><td class="val" style="font-size: 16px; font-weight: 900; color: #F2901F; padding-top: 10px;">GH₵ ${totalCost.toFixed(2)}</td></tr>
+          ${request.priceNotes ? `<tr><td class="label" style="padding-top: 8px;">Admin Notes</td><td class="val" style="padding-top: 8px; font-style: italic;">${request.priceNotes}</td></tr>` : ""}
+        </table>
+      </div>
+      <p class="lead">Please log in to your portal to review and confirm this quotation so we can proceed with sourcing and procurement.</p>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${portalUrl}" class="btn" style="background: #F2901F; color: #FFFFFF;">Review & Confirm Quotation</a>
+      </div>
+      `
+    );
+
+    const subject = `Price Quotation Ready: Sourcing Request ${request.requestNumber} — LMX8 IMPORTS`;
+
+    const result = await sendBrevoEmail({
+      to: [{ email: request.customer.email.trim(), name: request.customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    return { success: result.success, error: result.error };
+  } catch (err: any) {
+    console.error("[sendSourcingPriceUpdatedEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// 5. Buy for Me Submitted (Admin Alert)
+export async function sendBuyForMeSubmittedAdminEmail(requestId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureEmailLogSchema();
+    const request = await (prisma as any).buyForMeRequest.findUnique({
+      where: { id: requestId },
+      include: { customer: true, items: true },
+    });
+
+    if (!request) return { success: false, error: "Buy for Me request not found." };
+    const customer = request.customer;
+    const adminEmail = "lexmedia8gh@gmail.com";
+    const portalBase = getPortalBaseUrl();
+    const adminUrl = `${portalBase}/admin/buy-for-me`;
+
+    const itemsSummary = request.items
+      ?.map((it: any) => `<li><strong>${it.productName}</strong> (Qty: ${it.quantity})${it.productUrl ? ` - <a href="${it.productUrl}">Link</a>` : ""}</li>`)
+      .join("") || "<li>1 or more products requested</li>";
+
+    const htmlContent = await wrapInBrandedLayout(
+      "New Buy for Me Request",
+      `
+      <p class="greeting">Hello Administrator,</p>
+      <p class="lead">A customer has submitted a new <strong>Buy for Me</strong> purchasing request requiring a quotation.</p>
+      <div class="status-card">
+        <div class="status-badge" style="background: #F2901F;">BUY FOR ME REQUEST</div>
+        <table>
+          <tr><td class="label">Reference</td><td class="val">${request.requestNumber}</td></tr>
+          <tr><td class="label">Customer</td><td class="val">${customer.name} (${customer.customerIdentifier})</td></tr>
+          <tr><td class="label">Items Count</td><td class="val">${request.items?.length || 1} product(s)</td></tr>
+          <tr><td class="label">Submission Type</td><td class="val">${request.submissionType}</td></tr>
+          <tr><td class="label">Purchasing Preference</td><td class="val">${request.purchasingPreferences || "Standard"}</td></tr>
+          <tr><td class="label">Delivery Preference</td><td class="val">${request.deliveryPreferences || "Standard"}</td></tr>
+        </table>
+        <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid #E2E8F0;">
+          <strong style="font-size: 12px; color: #141B47;">Requested Items:</strong>
+          <ul style="font-size: 13px; color: #334155; padding-left: 18px; margin: 6px 0 0 0;">
+            ${itemsSummary}
+          </ul>
+        </div>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${adminUrl}" class="btn" style="background: #141B47; color: #FFFFFF;">Open Admin Buy for Me Workspace</a>
+      </div>
+      `
+    );
+
+    const subject = `New Buy for Me Request: ${request.requestNumber} (${customer.name}) — LMX8 IMPORTS`;
+
+    const result = await sendBrevoEmail({
+      to: [{ email: adminEmail }],
+      subject,
+      htmlContent,
+    });
+
+    return { success: result.success, error: result.error };
+  } catch (err: any) {
+    console.error("[sendBuyForMeSubmittedAdminEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// 6. Buy for Me Quotation Ready (Customer Alert)
+export async function sendBuyForMeQuotationReadyEmail(requestId: string, quotationId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureEmailLogSchema();
+    const request = await (prisma as any).buyForMeRequest.findUnique({
+      where: { id: requestId },
+      include: { customer: true },
+    });
+    const quotation = await (prisma as any).buyForMeQuotation.findUnique({
+      where: { id: quotationId },
+      include: { lineItems: true },
+    });
+
+    if (!request || !request.customer || !request.customer.email || !quotation) {
+      return { success: false, error: "Request or quotation details missing." };
+    }
+
+    const portalBase = getPortalBaseUrl();
+    const viewUrl = `${portalBase}/portal/buy-for-me/${request.id}`;
+
+    const lineItemsHtml = quotation.lineItems
+      ?.map((li: any) => `
+        <tr>
+          <td style="padding: 6px 0; font-size: 13px; color: #334155;">${li.productName} (x${li.quantity})</td>
+          <td style="padding: 6px 0; font-size: 13px; color: #0F172A; font-weight: 700; text-align: right;">GH₵ ${li.subtotal.toFixed(2)}</td>
+        </tr>
+      `).join("") || "";
+
+    const htmlContent = await wrapInBrandedLayout(
+      "Your Buy for Me Quotation is Ready",
+      `
+      <p class="greeting">Hello ${request.customer.name},</p>
+      <p class="lead">Your official quotation for Buy for Me request <strong>${request.requestNumber}</strong> has been prepared and published by our procurement team.</p>
+      <div class="status-card" style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 20px; border-radius: 12px;">
+        <div class="status-badge" style="background: #141B47; color: #FFFFFF; font-weight: 700; margin-bottom: 12px;">QUOTATION BREAKDOWN (v${quotation.version})</div>
+        <table style="width: 100%; border-collapse: collapse;">
+          ${lineItemsHtml}
+          <tr style="border-top: 1px solid #E2E8F0;"><td class="label" style="padding-top: 8px;">Product Subtotal</td><td class="val" style="padding-top: 8px;">GH₵ ${quotation.totalProductCost.toFixed(2)}</td></tr>
+          ${quotation.shippingFee > 0 ? `<tr><td class="label">Shipping / Freight</td><td class="val">GH₵ ${quotation.shippingFee.toFixed(2)}</td></tr>` : ""}
+          ${quotation.sourcingFee > 0 ? `<tr><td class="label">Sourcing Fee</td><td class="val">GH₵ ${quotation.sourcingFee.toFixed(2)}</td></tr>` : ""}
+          ${quotation.serviceFee > 0 ? `<tr><td class="label">Service Fee</td><td class="val">GH₵ ${quotation.serviceFee.toFixed(2)}</td></tr>` : ""}
+          ${quotation.otherCharges > 0 ? `<tr><td class="label">Other Charges${quotation.otherChargesNotes ? ` (${quotation.otherChargesNotes})` : ""}</td><td class="val">GH₵ ${quotation.otherCharges.toFixed(2)}</td></tr>` : ""}
+          <tr style="border-top: 2px solid #141B47;">
+            <td class="label" style="font-size: 15px; font-weight: 900; color: #141B47; padding-top: 12px;">Grand Total Payable</td>
+            <td class="val" style="font-size: 18px; font-weight: 900; color: #F2901F; padding-top: 12px;">GH₵ ${quotation.grandTotal.toFixed(2)}</td>
+          </tr>
+        </table>
+        ${quotation.adminNotes ? `<p style="margin-top: 14px; font-size: 12px; color: #64748B; font-style: italic;">Note: ${quotation.adminNotes}</p>` : ""}
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${viewUrl}" class="btn" style="background: #F2901F; color: #FFFFFF; font-weight: 800;">View Quotation & Pay Now</a>
+      </div>
+      `
+    );
+
+    const subject = `Quotation Ready: Buy for Me ${request.requestNumber} — LMX8 IMPORTS`;
+
+    const result = await sendBrevoEmail({
+      to: [{ email: request.customer.email.trim(), name: request.customer.name }],
+      subject,
+      htmlContent,
+    });
+
+    return { success: result.success, error: result.error };
+  } catch (err: any) {
+    console.error("[sendBuyForMeQuotationReadyEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}
+
+// 7. Buy for Me Payment Confirmed (Customer & Admin Alert)
+export async function sendBuyForMePaymentConfirmedEmail(paymentId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureEmailLogSchema();
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { customer: true },
+    });
+
+    if (!payment || !payment.customer) return { success: false, error: "Payment record not found." };
+    const customer = payment.customer;
+
+    const portalBase = getPortalBaseUrl();
+    const portalUrl = `${portalBase}/portal/buy-for-me`;
+
+    const htmlContent = await wrapInBrandedLayout(
+      "Payment Confirmed - Buy for Me",
+      `
+      <p class="greeting">Hello ${customer.name},</p>
+      <p class="lead">We have successfully verified your payment of <strong>GH₵ ${payment.amount.toFixed(2)}</strong> for your Buy for Me order. Our procurement department in China has now been authorized to purchase your products.</p>
+      <div class="status-card" style="background: #ECFDF5; border: 1px solid #A7F3D0; padding: 20px; border-radius: 12px;">
+        <div class="status-badge" style="background: #10B981; color: #FFFFFF; font-weight: 700;">PAYMENT VERIFIED</div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td class="label">Reference</td><td class="val" style="font-family: monospace;">${payment.reference}</td></tr>
+          <tr><td class="label">Amount Paid</td><td class="val" style="color: #065F46; font-weight: 800;">GH₵ ${payment.amount.toFixed(2)}</td></tr>
+          <tr><td class="label">Status</td><td class="val" style="color: #065F46; font-weight: 700;">Purchasing In Progress</td></tr>
+        </table>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${portalUrl}" class="btn" style="background: #10B981; color: #FFFFFF;">Track Your Buy for Me Order</a>
+      </div>
+      `
+    );
+
+    const subject = `Payment Verified: Buy for Me Order — LMX8 IMPORTS`;
+
+    if (customer.email) {
+      await sendBrevoEmail({
+        to: [{ email: customer.email.trim(), name: customer.name }],
+        subject,
+        htmlContent,
+      });
+    }
+
+    // Also notify admin
+    await sendBrevoEmail({
+      to: [{ email: "lexmedia8gh@gmail.com" }],
+      subject: `[PAYMENT RECEIVED] Buy for Me - GH₵ ${payment.amount.toFixed(2)} from ${customer.name}`,
+      htmlContent: `<p>Payment reference <strong>${payment.reference}</strong> of <strong>GH₵ ${payment.amount.toFixed(2)}</strong> was verified for customer ${customer.name} (${customer.customerIdentifier}). Please initiate procurement.</p>`,
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("[sendBuyForMePaymentConfirmedEmail] Exception:", err);
+    return { success: false, error: err?.message || "Internal error." };
+  }
+}

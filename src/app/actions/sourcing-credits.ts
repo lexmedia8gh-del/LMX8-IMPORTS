@@ -3,28 +3,60 @@
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession, requireAdminSession } from "@/lib/auth";
 import { ensureCreditAccountSchema } from "@/lib/credit-account";
+import { ensureSourcingSchema } from "@/lib/sourcing-schema";
+import { revalidatePath } from "next/cache";
 
 // ── SOURCING ─────────────────────────────────────────────────────────────────
 
 export async function getCustomerSourcingRequestsAction() {
   const customer = await requireCustomerSession();
+  await ensureSourcingSchema();
 
   const requests = await prisma.sourcingRequest.findMany({
     where: { customerId: customer.id },
+    include: {
+      priceHistory: {
+        orderBy: { createdAt: "desc" },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
 
-  return requests.map((r) => ({
-    id: r.id,
-    requestNumber: r.requestNumber,
-    productDetails: r.productDetails,
-    quantity: r.quantity,
-    preferredSizeColor: r.preferredSizeColor,
-    additionalInstructions: r.additionalInstructions,
-    status: r.status,
-    creditsUsed: r.creditsUsed,
-    createdAt: r.createdAt.toISOString().split("T")[0],
-  }));
+  return requests.map((r) => {
+    const unitPrice = r.unitPrice ?? null;
+    const qty = r.quantity || 1;
+    const totalCost = r.totalCost ?? (unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : null);
+
+    return {
+      id: r.id,
+      requestNumber: r.requestNumber,
+      productDetails: r.productDetails,
+      quantity: r.quantity,
+      originalQuantity: r.originalQuantity ?? r.quantity,
+      preferredSizeColor: r.preferredSizeColor,
+      additionalInstructions: r.additionalInstructions,
+      status: r.status,
+      creditsUsed: r.creditsUsed,
+      unitPrice,
+      totalCost,
+      priceUpdatedAt: r.priceUpdatedAt ? r.priceUpdatedAt.toISOString() : null,
+      priceUpdatedBy: r.priceUpdatedBy ?? null,
+      priceNotes: r.priceNotes ?? null,
+      imageUrl: r.imageUrl ?? null,
+      customerConfirmationStatus: r.customerConfirmationStatus ?? "PENDING",
+      createdAt: r.createdAt.toISOString().split("T")[0],
+      updatedAt: r.updatedAt.toISOString(),
+      priceHistory: (r.priceHistory || []).map((ph) => ({
+        id: ph.id,
+        unitPrice: ph.unitPrice,
+        quantity: ph.quantity,
+        totalCost: ph.totalCost,
+        notes: ph.notes,
+        updatedByName: ph.updatedByName || "Admin",
+        createdAt: ph.createdAt.toISOString(),
+      })),
+    };
+  });
 }
 
 export async function createSourcingRequestAction(data: {
@@ -32,6 +64,7 @@ export async function createSourcingRequestAction(data: {
   quantity?: number;
   preferredSizeColor?: string;
   additionalInstructions?: string;
+  imageUrl?: string;
   idempotencyKey: string; // Required — generated client-side per logical submission
 }) {
   const customer = await requireCustomerSession();
@@ -54,9 +87,11 @@ export async function createSourcingRequestAction(data: {
   const quantityClean = data.quantity || 1;
   const preferredSizeColorClean = data.preferredSizeColor?.trim();
   const additionalInstructionsClean = data.additionalInstructions?.trim();
+  const imageUrlClean = data.imageUrl?.trim() || null;
   const creditCost = 1;
 
   await ensureCreditAccountSchema();
+  await ensureSourcingSchema();
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -112,8 +147,10 @@ export async function createSourcingRequestAction(data: {
           requestNumber,
           productDetails: productDetailsClean,
           quantity: quantityClean,
+          originalQuantity: quantityClean,
           preferredSizeColor: preferredSizeColorClean,
           additionalInstructions: additionalInstructionsClean,
+          imageUrl: imageUrlClean,
           creditsUsed: creditCost,
           customerId: customer.id,
           idempotencyKey,
@@ -149,11 +186,7 @@ export async function createSourcingRequestAction(data: {
       const { sendSourcingRequestAdminNotificationEmail } = await import("@/lib/email/brevo");
       
       const adminNotifPromise = createNotificationInternal({
-        customerId: customer.id, // For now, customerId is required in Notification model but I set it to optional in schema change (need to update the implementation of createNotificationInternal too?)
-        // Wait, schema change set customerId to optional: `customerId String?`
-        // But `createNotificationInternal` expects it to be required.
-        // Let's check `src/app/actions/notifications.ts` line 23.
-        // It's required in the type.
+        customerId: customer.id,
         type: "SOURCING_REQUEST",
         title: `New Sourcing Request: ${result.requestNumber}`,
         message: `Customer ${customer.name} (${customer.customerIdentifier}) submitted a new sourcing request: ${productDetailsClean.slice(0, 50)}`,
@@ -172,8 +205,6 @@ export async function createSourcingRequestAction(data: {
     return { success: true, requestNumber: result.requestNumber };
 
   } catch (err: any) {
-    // Unique constraint violation on idempotencyKey — concurrent duplicate that
-    // slipped past the initial findUnique check. Safe to treat as "already processed".
     if (err?.code === "P2002" && err?.meta?.target?.includes?.("idempotencyKey")) {
       const existing = await prisma.sourcingRequest.findUnique({
         where: { idempotencyKey },
@@ -195,28 +226,295 @@ export async function createSourcingRequestAction(data: {
 
 export async function getAllSourcingRequestsAction() {
   await requireAdminSession();
+  await ensureSourcingSchema();
 
   const requests = await prisma.sourcingRequest.findMany({
-    include: { customer: true },
+    include: {
+      customer: true,
+      priceHistory: {
+        orderBy: { createdAt: "desc" },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
 
-  return requests.map((r) => ({
-    id: r.id,
-    requestNumber: r.requestNumber,
-    productDetails: r.productDetails,
-    quantity: r.quantity,
-    status: r.status,
-    customerId: r.customer.customerIdentifier,
-    customerName: r.customer.name,
-    customerEmail: r.customer.email,
-    customerPhone: r.customer.phone,
-    creditsUsed: r.creditsUsed,
-    preferredSizeColor: r.preferredSizeColor,
-    additionalInstructions: r.additionalInstructions,
-    adminNotes: r.adminNotes,
-    createdAt: r.createdAt.toISOString().split("T")[0],
-  }));
+  return requests.map((r) => {
+    const unitPrice = r.unitPrice ?? null;
+    const qty = r.quantity || 1;
+    const totalCost = r.totalCost ?? (unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : null);
+
+    return {
+      id: r.id,
+      requestNumber: r.requestNumber,
+      productDetails: r.productDetails,
+      quantity: r.quantity,
+      originalQuantity: r.originalQuantity ?? r.quantity,
+      status: r.status,
+      customerId: r.customer.customerIdentifier,
+      customerDbId: r.customer.id,
+      customerName: r.customer.name,
+      customerEmail: r.customer.email,
+      customerPhone: r.customer.phone,
+      creditsUsed: r.creditsUsed,
+      preferredSizeColor: r.preferredSizeColor,
+      additionalInstructions: r.additionalInstructions,
+      adminNotes: r.adminNotes,
+      unitPrice,
+      totalCost,
+      priceUpdatedAt: r.priceUpdatedAt ? r.priceUpdatedAt.toISOString() : null,
+      priceUpdatedBy: r.priceUpdatedBy ?? null,
+      priceNotes: r.priceNotes ?? null,
+      imageUrl: r.imageUrl ?? null,
+      customerConfirmationStatus: r.customerConfirmationStatus ?? "PENDING",
+      createdAt: r.createdAt.toISOString().split("T")[0],
+      updatedAt: r.updatedAt.toISOString(),
+      priceHistory: (r.priceHistory || []).map((ph) => ({
+        id: ph.id,
+        unitPrice: ph.unitPrice,
+        quantity: ph.quantity,
+        totalCost: ph.totalCost,
+        notes: ph.notes,
+        updatedByName: ph.updatedByName || "Admin",
+        createdAt: ph.createdAt.toISOString(),
+      })),
+    };
+  });
+}
+
+export async function getSourcingRequestDetailsAction(requestId: string) {
+  await requireAdminSession();
+  await ensureSourcingSchema();
+
+  const request = await prisma.sourcingRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      customer: true,
+      priceHistory: {
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  });
+
+  if (!request) return { error: "Sourcing request not found." };
+
+  const unitPrice = request.unitPrice ?? null;
+  const qty = request.quantity || 1;
+  const totalCost = request.totalCost ?? (unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : null);
+
+  return {
+    success: true,
+    request: {
+      id: request.id,
+      requestNumber: request.requestNumber,
+      productDetails: request.productDetails,
+      quantity: request.quantity,
+      originalQuantity: request.originalQuantity ?? request.quantity,
+      preferredSizeColor: request.preferredSizeColor,
+      additionalInstructions: request.additionalInstructions,
+      status: request.status,
+      creditsUsed: request.creditsUsed,
+      unitPrice,
+      totalCost,
+      priceUpdatedAt: request.priceUpdatedAt ? request.priceUpdatedAt.toISOString() : null,
+      priceUpdatedBy: request.priceUpdatedBy,
+      priceNotes: request.priceNotes,
+      imageUrl: request.imageUrl,
+      customerConfirmationStatus: request.customerConfirmationStatus ?? "PENDING",
+      createdAt: request.createdAt.toISOString(),
+      updatedAt: request.updatedAt.toISOString(),
+      customer: {
+        id: request.customer.id,
+        name: request.customer.name,
+        customerIdentifier: request.customer.customerIdentifier,
+        email: request.customer.email,
+        phone: request.customer.phone,
+      },
+      priceHistory: request.priceHistory.map((ph) => ({
+        id: ph.id,
+        unitPrice: ph.unitPrice,
+        quantity: ph.quantity,
+        totalCost: ph.totalCost,
+        notes: ph.notes,
+        updatedByName: ph.updatedByName || "Admin",
+        createdAt: ph.createdAt.toISOString(),
+      })),
+    },
+  };
+}
+
+export async function adminUpdateSourcingPriceAction(params: {
+  requestId: string;
+  unitPrice: number;
+  quantity?: number;
+  priceNotes?: string;
+}) {
+  const admin = await requireAdminSession();
+  await ensureSourcingSchema();
+
+  const { requestId, unitPrice, priceNotes } = params;
+
+  if (!requestId) return { error: "Request ID is required." };
+  if (typeof unitPrice !== "number" || isNaN(unitPrice) || unitPrice < 0) {
+    return { error: "Please provide a valid non-negative unit price." };
+  }
+
+  const request = await prisma.sourcingRequest.findUnique({
+    where: { id: requestId },
+    include: { customer: true },
+  });
+
+  if (!request) return { error: "Sourcing request not found." };
+
+  const originalQty = request.originalQuantity ?? request.quantity ?? 1;
+  const updatedQty = params.quantity && params.quantity > 0 ? params.quantity : (request.quantity || 1);
+  const totalCost = Math.round(unitPrice * updatedQty * 100) / 100;
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      // 1. Create price revision history record
+      await tx.sourcingPriceHistory.create({
+        data: {
+          sourcingRequestId: request.id,
+          unitPrice,
+          quantity: updatedQty,
+          totalCost,
+          notes: priceNotes?.trim() || null,
+          updatedById: admin.id,
+          updatedByName: admin.name,
+        },
+      });
+
+      // 2. Update request with confirmed price & status
+      const updatedReq = await tx.sourcingRequest.update({
+        where: { id: request.id },
+        data: {
+          unitPrice,
+          quantity: updatedQty,
+          originalQuantity: originalQty,
+          totalCost,
+          priceUpdatedAt: new Date(),
+          priceUpdatedBy: admin.name,
+          priceNotes: priceNotes?.trim() || null,
+          status: request.status === "PENDING" ? "QUOTED" : request.status,
+          customerConfirmationStatus: "AWAITING_CONFIRMATION",
+        },
+      });
+
+      // 3. Record in Audit Log
+      await tx.auditLog.create({
+        data: {
+          action: "SOURCING_PRICE_UPDATE",
+          entityType: "SourcingRequest",
+          entityId: request.id,
+          description: `Price updated for ${request.requestNumber} by ${admin.name}: GH₵${unitPrice.toFixed(2)}/unit, Qty: ${updatedQty}, Total: GH₵${totalCost.toFixed(2)}`,
+          adminId: admin.id,
+          metadata: {
+            requestId: request.id,
+            previousUnitPrice: request.unitPrice,
+            newUnitPrice: unitPrice,
+            quantity: updatedQty,
+            totalCost,
+            priceNotes,
+          },
+        },
+      });
+
+      return updatedReq;
+    });
+
+    // 4. Send in-app notification to customer
+    try {
+      const { createNotificationInternal } = await import("@/app/actions/notifications");
+      await createNotificationInternal({
+        customerId: request.customerId,
+        type: "SOURCING_REQUEST",
+        title: `Price Quotation Ready: ${request.requestNumber}`,
+        message: `Our procurement team updated the price for "${request.productDetails.slice(0, 40)}" to GH₵${unitPrice.toFixed(2)} (Total: GH₵${totalCost.toFixed(2)}). Please review and confirm in your portal.`,
+        actionUrl: `/portal/sourcing`,
+        idempotencyKey: `sourcing-price-update-${request.id}-${Date.now()}`,
+        sourcingRequestId: request.id,
+      });
+    } catch (notifErr) {
+      console.warn("Notice sending in-app notification for price update:", notifErr);
+    }
+
+    // 5. Send Brevo email alert to customer
+    try {
+      const { sendSourcingPriceUpdatedEmail } = await import("@/lib/email/brevo");
+      sendSourcingPriceUpdatedEmail(request.id).catch((emailErr) =>
+        console.error("[Brevo] Error dispatching sourcing price update email:", emailErr)
+      );
+    } catch (emailErr) {
+      console.warn("Notice dispatching email for price update:", emailErr);
+    }
+
+    revalidatePath("/admin/sourcing");
+    revalidatePath("/portal/sourcing");
+
+    return { success: true, request: updated };
+  } catch (err: any) {
+    console.error("[adminUpdateSourcingPriceAction] Error:", err);
+    return { error: err?.message || "Failed to update sourcing item price." };
+  }
+}
+
+export async function customerRespondToSourcingPriceAction(params: {
+  requestId: string;
+  action: "CONFIRM" | "DECLINE";
+  note?: string;
+}) {
+  const customer = await requireCustomerSession();
+  await ensureSourcingSchema();
+
+  const { requestId, action, note } = params;
+  if (!requestId) return { error: "Request ID is required." };
+
+  const request = await prisma.sourcingRequest.findUnique({
+    where: { id: requestId },
+  });
+
+  if (!request || request.customerId !== customer.id) {
+    return { error: "Sourcing request not found." };
+  }
+
+  const isConfirm = action === "CONFIRM";
+  const newConfirmationStatus = isConfirm ? "CONFIRMED" : "DECLINED";
+  const newStatus = isConfirm ? "APPROVED" : "REJECTED";
+
+  try {
+    const updated = await prisma.sourcingRequest.update({
+      where: { id: requestId },
+      data: {
+        customerConfirmationStatus: newConfirmationStatus,
+        status: newStatus,
+        adminNotes: note?.trim() ? `${request.adminNotes ? request.adminNotes + "\n" : ""}Customer ${isConfirm ? "confirmed" : "declined"}: ${note.trim()}` : request.adminNotes,
+      },
+    });
+
+    // Notify admin
+    try {
+      const { createNotificationInternal } = await import("@/app/actions/notifications");
+      await createNotificationInternal({
+        customerId: customer.id,
+        type: "SOURCING_REQUEST",
+        title: `Customer ${isConfirm ? "Confirmed" : "Declined"} Quotation: ${request.requestNumber}`,
+        message: `Customer ${customer.name} has ${isConfirm ? "approved" : "declined"} the price quotation of GH₵${(request.totalCost || 0).toFixed(2)} for ${request.requestNumber}.${note ? ` Note: "${note}"` : ""}`,
+        actionUrl: `/admin/sourcing`,
+        idempotencyKey: `customer-price-resp-${request.id}-${Date.now()}`,
+        sourcingRequestId: request.id,
+      });
+    } catch (e) {
+      console.warn("Notice sending notification on price response:", e);
+    }
+
+    revalidatePath("/portal/sourcing");
+    revalidatePath("/admin/sourcing");
+
+    return { success: true, request: updated };
+  } catch (err: any) {
+    console.error("[customerRespondToSourcingPriceAction] Error:", err);
+    return { error: err?.message || "Failed to submit response." };
+  }
 }
 
 export async function updateSourcingRequestStatusAction(params: {

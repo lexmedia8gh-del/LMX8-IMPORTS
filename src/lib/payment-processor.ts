@@ -122,8 +122,40 @@ export async function processPaymentSuccess(reference: string) {
         }
       } else if (payment.type === "SHIPPING_FEE") {
         if (payment.shipmentId) {
-          // If we had an invoice model, we would update it here.
-          // For now, tracking the payment as SUCCESS is sufficient since shipment fee is paid.
+          // Shipment fee is paid.
+        }
+      } else if (payment.type === "BUY_FOR_ME") {
+        const metadata = (payment.metadata as any) || {};
+        const requestId = payment.buyForMeRequestId || metadata.requestId;
+        const quotationId = payment.buyForMeQuotationId || metadata.quotationId;
+
+        if (quotationId) {
+          await tx.buyForMeQuotation.update({
+            where: { id: quotationId },
+            data: {
+              isPaid: true,
+              paidAt: new Date(),
+              paymentReference: payment.reference,
+              status: "PUBLISHED",
+            },
+          });
+        }
+
+        if (requestId) {
+          await tx.buyForMeRequest.update({
+            where: { id: requestId },
+            data: {
+              status: "PAYMENT_CONFIRMED",
+            },
+          });
+
+          await tx.buyForMeStatusHistory.create({
+            data: {
+              requestId,
+              status: "PAYMENT_CONFIRMED",
+              note: `Payment confirmed via Paystack (Ref: ${payment.reference}, Amount: GHS ${payment.amount})`,
+            },
+          });
         }
       }
 
@@ -136,7 +168,15 @@ export async function processPaymentSuccess(reference: string) {
         },
       });
 
-      return { alreadyProcessed: false, payment: updatedPayment, customerId: payment.customerId, paymentId: payment.id, type: payment.type, amount: payment.amount };
+      return { 
+        alreadyProcessed: false, 
+        payment: updatedPayment, 
+        customerId: payment.customerId, 
+        paymentId: payment.id, 
+        type: payment.type, 
+        amount: payment.amount,
+        buyForMeRequestId: payment.buyForMeRequestId || (payment.metadata as any)?.requestId
+      };
     });
 
     // Fire notification after transaction completes
@@ -144,23 +184,38 @@ export async function processPaymentSuccess(reference: string) {
       try {
         const { createNotificationInternal } = await import("@/app/actions/notifications");
         const isCredit = result.type === "CREDIT_PURCHASE";
+        const isBuyForMe = result.type === "BUY_FOR_ME";
         await createNotificationInternal({
           customerId: result.customerId,
-          type: "PAYMENT",
-          title: isCredit ? "Credits Added" : "Payment Confirmed",
+          type: isBuyForMe ? "BUY_FOR_ME" : "PAYMENT",
+          title: isCredit
+            ? "Credits Added"
+            : isBuyForMe
+            ? "Buy for Me Payment Confirmed"
+            : "Payment Confirmed",
           message: isCredit
             ? `Your payment of GHS ${result.amount?.toFixed(2)} was successful. Credits have been added to your account.`
+            : isBuyForMe
+            ? `Your Buy for Me payment of GHS ${result.amount?.toFixed(2)} has been confirmed! Our team will now proceed with purchasing your items.`
             : `Your shipping fee payment of GHS ${result.amount?.toFixed(2)} was confirmed.`,
-          actionUrl: "/portal/payments",
+          actionUrl: isBuyForMe && result.buyForMeRequestId
+            ? `/portal/buy-for-me/${result.buyForMeRequestId}`
+            : "/portal/payments",
           idempotencyKey: `payment-success-${result.paymentId}`,
           paymentId: result.paymentId,
+          buyForMeRequestId: result.buyForMeRequestId,
         });
       } catch (notifErr) {
         console.error("Payment notification failed:", notifErr);
       }
 
       try {
-        const { sendCreditPurchaseSuccessEmail, sendShippingFeePaidSuccessEmail } = await import("@/lib/email/brevo");
+        const { 
+          sendCreditPurchaseSuccessEmail, 
+          sendShippingFeePaidSuccessEmail,
+          sendBuyForMePaymentConfirmedEmail
+        } = await import("@/lib/email/brevo");
+
         if (result.type === "CREDIT_PURCHASE") {
           sendCreditPurchaseSuccessEmail(result.paymentId).catch((err) =>
             console.error("[Brevo] Error dispatching credit purchase email:", err)
@@ -168,6 +223,10 @@ export async function processPaymentSuccess(reference: string) {
         } else if (result.type === "SHIPPING_FEE") {
           sendShippingFeePaidSuccessEmail(result.paymentId).catch((err) =>
             console.error("[Brevo] Error dispatching shipping fee email:", err)
+          );
+        } else if (result.type === "BUY_FOR_ME") {
+          sendBuyForMePaymentConfirmedEmail(result.paymentId).catch((err) =>
+            console.error("[Brevo] Error dispatching Buy for Me payment email:", err)
           );
         }
       } catch (emailErr) {

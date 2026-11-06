@@ -21,10 +21,11 @@ export async function createNotificationInternal({
   shipmentId,
   paymentId,
   sourcingRequestId,
+  buyForMeRequestId,
 }: {
   customerId?: string;
   adminId?: string;
-  type: "SHIPMENT" | "PAYMENT" | "DELIVERY" | "ACCOUNT" | "SYSTEM" | "SOURCING_REQUEST";
+  type: "SHIPMENT" | "PAYMENT" | "DELIVERY" | "ACCOUNT" | "SYSTEM" | "SOURCING_REQUEST" | "BUY_FOR_ME";
   title: string;
   message: string;
   actionUrl?: string;
@@ -32,6 +33,7 @@ export async function createNotificationInternal({
   shipmentId?: string;
   paymentId?: string;
   sourcingRequestId?: string;
+  buyForMeRequestId?: string;
 }) {
   try {
     if (idempotencyKey) {
@@ -45,7 +47,7 @@ export async function createNotificationInternal({
       data: {
         customerId,
         adminId,
-        type,
+        type: type as any,
         title,
         message,
         actionUrl,
@@ -53,6 +55,7 @@ export async function createNotificationInternal({
         shipmentId,
         paymentId,
         sourcingRequestId,
+        buyForMeRequestId,
       },
     });
   } catch (err) {

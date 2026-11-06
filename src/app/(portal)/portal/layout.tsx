@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   LayoutDashboard, Truck, CreditCard, Search, Bell, User, LogOut,
-  Menu, PanelLeftClose, PanelLeftOpen, X, Check, ChevronRight
+  Menu, PanelLeftClose, PanelLeftOpen, X, Check, ChevronRight, ShoppingBag
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { getCurrentCustomerAction } from "@/app/actions";
@@ -22,6 +22,7 @@ const NAV = [
   { href: "/portal",               icon: LayoutDashboard, label: "Dashboard" },
   { href: "/portal/shipments",     icon: Truck,           label: "My Shipments" },
   { href: "/portal/payments",      icon: CreditCard,      label: "Shipping Payments" },
+  { href: "/portal/buy-for-me",    icon: ShoppingBag,     label: "Buy for Me" },
   { href: "/portal/sourcing",      icon: Search,          label: "Product Sourcing" },
   { href: "/portal/notifications", icon: Bell,            label: "Notifications" },
   { href: "/portal/profile",       icon: User,            label: "My Profile" },
@@ -30,7 +31,7 @@ const NAV = [
 const BOTTOM_NAV = [
   { href: "/portal",               icon: LayoutDashboard, label: "Home" },
   { href: "/portal/shipments",     icon: Truck,           label: "Shipments" },
-  { href: "/portal/payments",      icon: CreditCard,      label: "Payments" },
+  { href: "/portal/buy-for-me",    icon: ShoppingBag,     label: "Buy for Me" },
   { href: "/portal/sourcing",      icon: Search,          label: "Sourcing" },
   { href: "/portal/profile",       icon: User,            label: "Profile" },
 ];

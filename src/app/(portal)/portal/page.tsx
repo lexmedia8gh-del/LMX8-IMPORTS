@@ -7,7 +7,8 @@ import { getOutstandingShipmentsAction } from "@/app/actions/customer-payments";
 import { getCustomerCreditAccountAction, getCustomerRecentActivitiesAction } from "@/app/actions/sourcing-credits";
 import { ShipmentStatusBadge } from "@/components/shipment-status";
 import {
-  Truck, CreditCard, Package, Wallet, Bell, Info, PackageX, Award, BarChart2, PlusCircle
+  Truck, CreditCard, Package, Wallet, Bell, Info, PackageX, Award, BarChart2, PlusCircle,
+  ShoppingBag, Search, ChevronRight
 } from "lucide-react";
 import { Shipment } from "@/lib/db";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -214,6 +215,59 @@ export default function CustomerDashboard() {
         <p className="text-sm" style={{ color: "#667085" }}>
           Here is what is happening with your account and shipments.
         </p>
+      </div>
+
+      {/* Quick Services: Buy for Me & Product Sourcing */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Link
+          href="/portal/buy-for-me"
+          className="bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs hover:border-[#141B47] hover:shadow-sm transition-all group flex items-start justify-between"
+        >
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-orange-50 text-[#F2901F] flex items-center justify-center shrink-0 border border-orange-100">
+              <ShoppingBag size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm text-[#172236] group-hover:text-[#141B47]">
+                  Buy for Me
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800">
+                  New Service
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5 leading-snug">
+                Paste product links, upload photos, or list items. We buy from China on your behalf.
+              </p>
+            </div>
+          </div>
+          <ChevronRight size={18} className="text-gray-400 group-hover:text-[#141B47] group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+        </Link>
+
+        <Link
+          href="/portal/sourcing"
+          className="bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs hover:border-[#141B47] hover:shadow-sm transition-all group flex items-start justify-between"
+        >
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#141B47] flex items-center justify-center shrink-0 border border-blue-100">
+              <Search size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm text-[#172236] group-hover:text-[#141B47]">
+                  Product Sourcing
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  Price Quotes
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5 leading-snug">
+                Find factory suppliers, review admin-updated unit prices, and confirm quotations.
+              </p>
+            </div>
+          </div>
+          <ChevronRight size={18} className="text-gray-400 group-hover:text-[#141B47] group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+        </Link>
       </div>
 
       {/* Hero: Active Shipment */}
