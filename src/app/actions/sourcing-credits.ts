@@ -498,10 +498,68 @@ export async function adminSaveOrPublishSourcingWorkspaceAction(params: {
 
   const isPublish = action === "publish";
 
+  // Validate and strictly convert items to numeric types
+  const rawItems = Array.isArray(items) ? items : [];
+  if (rawItems.length === 0) {
+    return { error: "At least one product item is required." };
+  }
+
+  const validatedItems: Array<{
+    id?: string;
+    productName: string;
+    description: string | null;
+    unitPrice: number;
+    quantity: number;
+    subtotal: number;
+    imageUrl: string | null;
+    sortOrder: number;
+  }> = [];
+
+  let calculatedTotalCost = 0;
+
+  for (let idx = 0; idx < rawItems.length; idx++) {
+    const it = rawItems[idx];
+    const productNameClean = String(it.productName || "").trim();
+    if (!productNameClean) {
+      return { error: `Product item #${idx + 1} must have a valid title.` };
+    }
+
+    // Convert unitPrice strictly to JS Number
+    const rawPrice = it.unitPrice;
+    const parsedUnitPrice = typeof rawPrice === "number" ? rawPrice : parseFloat(String(rawPrice));
+    if (!Number.isFinite(parsedUnitPrice) || parsedUnitPrice < 0) {
+      return { error: `Please enter a valid non-negative unit price for "${productNameClean}".` };
+    }
+
+    // Convert quantity strictly to JS Number
+    const rawQty = it.quantity;
+    const parsedQty = typeof rawQty === "number" ? rawQty : parseInt(String(rawQty), 10);
+    if (!Number.isFinite(parsedQty) || parsedQty < 1) {
+      return { error: `Please enter a valid quantity (at least 1) for "${productNameClean}".` };
+    }
+
+    // Calculate subtotal
+    const subtotal = Math.round(parsedUnitPrice * parsedQty * 100) / 100;
+    calculatedTotalCost += subtotal;
+
+    validatedItems.push({
+      id: it.id ? String(it.id).trim() : undefined,
+      productName: productNameClean,
+      description: it.description ? String(it.description).trim() : null,
+      unitPrice: parsedUnitPrice,
+      quantity: parsedQty,
+      subtotal,
+      imageUrl: it.imageUrl ? String(it.imageUrl).trim() : null,
+      sortOrder: Number(idx),
+    });
+  }
+
+  calculatedTotalCost = Math.round(calculatedTotalCost * 100) / 100;
+
   try {
     const updated = await prisma.$transaction(async (tx) => {
       // 1. Remove items not in list
-      const incomingIds = items.map(i => i.id).filter(Boolean);
+      const incomingIds = validatedItems.map(i => i.id).filter(Boolean);
       if (incomingIds.length > 0) {
         await tx.sourcingItem.deleteMany({
           where: {
@@ -515,56 +573,52 @@ export async function adminSaveOrPublishSourcingWorkspaceAction(params: {
         });
       }
 
-      let calculatedTotalCost = 0;
-
-      // 2. Upsert items
-      for (let idx = 0; idx < items.length; idx++) {
-        const it = items[idx];
-        const qty = it.quantity > 0 ? it.quantity : 1;
-        const price = it.unitPrice >= 0 ? it.unitPrice : 0;
-        const subtotal = Math.round(price * qty * 100) / 100;
-        calculatedTotalCost += subtotal;
-
-        if (it.id) {
+      // 2. Upsert validated items with strict numeric types
+      for (const item of validatedItems) {
+        if (item.id) {
           await tx.sourcingItem.update({
-            where: { id: it.id },
+            where: { id: item.id },
             data: {
-              productName: it.productName.trim(),
-              description: it.description?.trim() || null,
-              unitPrice: price,
-              quantity: qty,
-              subtotal,
-              imageUrl: it.imageUrl?.trim() || null,
+              productName: item.productName,
+              description: item.description,
+              unitPrice: item.unitPrice,
+              quantity: item.quantity,
+              subtotal: item.subtotal,
+              imageUrl: item.imageUrl,
               isPublished: isPublish,
-              sortOrder: idx,
+              sortOrder: item.sortOrder,
             },
           });
         } else {
           await tx.sourcingItem.create({
             data: {
               sourcingRequestId: requestId,
-              productName: it.productName.trim(),
-              description: it.description?.trim() || null,
-              unitPrice: price,
-              quantity: qty,
-              subtotal,
-              imageUrl: it.imageUrl?.trim() || null,
+              productName: item.productName,
+              description: item.description,
+              unitPrice: item.unitPrice,
+              quantity: item.quantity,
+              subtotal: item.subtotal,
+              imageUrl: item.imageUrl,
               isPublished: isPublish,
-              sortOrder: idx,
+              sortOrder: item.sortOrder,
             },
           });
         }
       }
 
-      const newStatus = status ? status : (isPublish && request.status === "PENDING" ? "QUOTED" : request.status);
+      const newStatus = status ? String(status).trim() : (isPublish && request.status === "PENDING" ? "QUOTED" : request.status);
+
+      const firstUnitPrice = validatedItems.length > 0 ? validatedItems[0].unitPrice : (Number(request.unitPrice) || 0);
+      const totalQuantity = validatedItems.length > 0 ? validatedItems.reduce((sum, i) => sum + i.quantity, 0) : (Number(request.quantity) || 1);
 
       const updatedReq = await tx.sourcingRequest.update({
         where: { id: requestId },
         data: {
-          adminNotes: adminNotes?.trim() || null,
+          adminNotes: adminNotes ? String(adminNotes).trim() : null,
           status: newStatus as any,
-          unitPrice: items.length > 0 ? items[0].unitPrice : request.unitPrice,
-          totalCost: calculatedTotalCost > 0 ? calculatedTotalCost : request.totalCost,
+          unitPrice: firstUnitPrice,
+          quantity: totalQuantity,
+          totalCost: calculatedTotalCost > 0 ? calculatedTotalCost : (Number(request.totalCost) || 0),
           isDraft: !isPublish,
           publishedAt: isPublish ? new Date() : request.publishedAt,
           customerConfirmationStatus: isPublish ? "AWAITING_CONFIRMATION" : request.customerConfirmationStatus,
@@ -577,10 +631,10 @@ export async function adminSaveOrPublishSourcingWorkspaceAction(params: {
         await tx.sourcingPriceHistory.create({
           data: {
             sourcingRequestId: request.id,
-            unitPrice: items.length > 0 ? items[0].unitPrice : 0,
-            quantity: items.reduce((sum, i) => sum + i.quantity, 0),
+            unitPrice: firstUnitPrice,
+            quantity: totalQuantity,
             totalCost: calculatedTotalCost,
-            notes: adminNotes?.trim() || "Published product quotation update",
+            notes: adminNotes ? String(adminNotes).trim() : "Published product quotation update",
             updatedById: admin.id,
             updatedByName: admin.name,
           },
@@ -592,7 +646,7 @@ export async function adminSaveOrPublishSourcingWorkspaceAction(params: {
           action: isPublish ? "SOURCING_UPDATE_PUBLISHED" : "SOURCING_DRAFT_SAVED",
           entityType: "SourcingRequest",
           entityId: request.id,
-          description: `${isPublish ? "Published" : "Saved draft"} sourcing update for ${request.requestNumber} by ${admin.name} (${items.length} items, Total: GH₵${calculatedTotalCost.toFixed(2)})`,
+          description: `${isPublish ? "Published" : "Saved draft"} sourcing update for ${request.requestNumber} by ${admin.name} (${validatedItems.length} items, Total: GH₵${calculatedTotalCost.toFixed(2)})`,
           adminId: admin.id,
         },
       });
@@ -637,17 +691,19 @@ export async function adminSaveOrPublishSourcingWorkspaceAction(params: {
 
 export async function adminUpdateSourcingPriceAction(params: {
   requestId: string;
-  unitPrice: number;
-  quantity?: number;
+  unitPrice: any;
+  quantity?: any;
   priceNotes?: string;
 }) {
   const admin = await requireAdminSession();
   await ensureSourcingSchema();
 
-  const { requestId, unitPrice, priceNotes } = params;
+  const { requestId, priceNotes } = params;
 
   if (!requestId) return { error: "Request ID is required." };
-  if (typeof unitPrice !== "number" || isNaN(unitPrice) || unitPrice < 0) {
+
+  const parsedUnitPrice = Number(params.unitPrice);
+  if (!Number.isFinite(parsedUnitPrice) || parsedUnitPrice < 0) {
     return { error: "Please provide a valid non-negative unit price." };
   }
 
@@ -658,9 +714,12 @@ export async function adminUpdateSourcingPriceAction(params: {
 
   if (!request) return { error: "Sourcing request not found." };
 
-  const originalQty = request.originalQuantity ?? request.quantity ?? 1;
-  const updatedQty = params.quantity && params.quantity > 0 ? params.quantity : (request.quantity || 1);
-  const totalCost = Math.round(unitPrice * updatedQty * 100) / 100;
+  const originalQty = Math.max(1, Math.floor(Number(request.originalQuantity || request.quantity || 1)));
+  const rawInputQty = params.quantity !== undefined && params.quantity !== null ? params.quantity : request.quantity;
+  const parsedInputQty = Number(rawInputQty);
+  const updatedQty = Number.isFinite(parsedInputQty) && parsedInputQty > 0 ? Math.floor(parsedInputQty) : originalQty;
+
+  const totalCost = Math.round(parsedUnitPrice * updatedQty * 100) / 100;
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
@@ -668,10 +727,10 @@ export async function adminUpdateSourcingPriceAction(params: {
       await tx.sourcingPriceHistory.create({
         data: {
           sourcingRequestId: request.id,
-          unitPrice,
+          unitPrice: parsedUnitPrice,
           quantity: updatedQty,
           totalCost,
-          notes: priceNotes?.trim() || null,
+          notes: priceNotes ? String(priceNotes).trim() : null,
           updatedById: admin.id,
           updatedByName: admin.name,
         },
@@ -681,13 +740,13 @@ export async function adminUpdateSourcingPriceAction(params: {
       const updatedReq = await tx.sourcingRequest.update({
         where: { id: request.id },
         data: {
-          unitPrice,
+          unitPrice: parsedUnitPrice,
           quantity: updatedQty,
           originalQuantity: originalQty,
           totalCost,
           priceUpdatedAt: new Date(),
           priceUpdatedBy: admin.name,
-          priceNotes: priceNotes?.trim() || null,
+          priceNotes: priceNotes ? String(priceNotes).trim() : null,
           status: request.status === "PENDING" ? "QUOTED" : request.status,
           customerConfirmationStatus: "AWAITING_CONFIRMATION",
         },
@@ -699,12 +758,12 @@ export async function adminUpdateSourcingPriceAction(params: {
           action: "SOURCING_PRICE_UPDATE",
           entityType: "SourcingRequest",
           entityId: request.id,
-          description: `Price updated for ${request.requestNumber} by ${admin.name}: GH₵${unitPrice.toFixed(2)}/unit, Qty: ${updatedQty}, Total: GH₵${totalCost.toFixed(2)}`,
+          description: `Price updated for ${request.requestNumber} by ${admin.name}: GH₵${parsedUnitPrice.toFixed(2)}/unit, Qty: ${updatedQty}, Total: GH₵${totalCost.toFixed(2)}`,
           adminId: admin.id,
           metadata: {
             requestId: request.id,
             previousUnitPrice: request.unitPrice,
-            newUnitPrice: unitPrice,
+            newUnitPrice: parsedUnitPrice,
             quantity: updatedQty,
             totalCost,
             priceNotes,
@@ -722,7 +781,7 @@ export async function adminUpdateSourcingPriceAction(params: {
         customerId: request.customerId,
         type: "SOURCING_REQUEST",
         title: `Price Quotation Ready: ${request.requestNumber}`,
-        message: `Our procurement team updated the price for "${request.productDetails.slice(0, 40)}" to GH₵${unitPrice.toFixed(2)} (Total: GH₵${totalCost.toFixed(2)}). Please review and confirm in your portal.`,
+        message: `Our procurement team updated the price for "${request.productDetails.slice(0, 40)}" to GH₵${parsedUnitPrice.toFixed(2)} (Total: GH₵${totalCost.toFixed(2)}). Please review and confirm in your portal.`,
         actionUrl: `/portal/sourcing`,
         idempotencyKey: `sourcing-price-update-${request.id}-${Date.now()}`,
         sourcingRequestId: request.id,

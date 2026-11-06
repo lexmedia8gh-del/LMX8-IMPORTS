@@ -263,11 +263,9 @@ export default function AdminSourcingPage() {
     setWorkspaceItems((prev) => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
-      if (field === "unitPrice" || field === "quantity") {
-        const p = field === "unitPrice" ? parseFloat(value) || 0 : updated[index].unitPrice;
-        const q = field === "quantity" ? parseInt(value) || 1 : updated[index].quantity;
-        updated[index].subtotal = Math.round(p * q * 100) / 100;
-      }
+      const p = parseFloat(String(updated[index].unitPrice)) || 0;
+      const q = parseInt(String(updated[index].quantity), 10) || 1;
+      updated[index].subtotal = Math.round(p * q * 100) / 100;
       return updated;
     });
   };
@@ -281,15 +279,31 @@ export default function AdminSourcingPage() {
       return;
     }
 
+    const sanitizedItems = [];
     for (const it of workspaceItems) {
       if (!it.productName.trim()) {
         setFeedback({ type: "error", text: "All product items must have a valid product name." });
         return;
       }
-      if (isNaN(it.unitPrice) || it.unitPrice < 0) {
-        setFeedback({ type: "error", text: "Please enter a valid non-negative unit price for all items." });
+      const uPrice = parseFloat(String(it.unitPrice));
+      if (!Number.isFinite(uPrice) || uPrice < 0) {
+        setFeedback({ type: "error", text: `Please enter a valid non-negative unit price for "${it.productName}".` });
         return;
       }
+      const qty = parseInt(String(it.quantity), 10);
+      if (!Number.isFinite(qty) || qty < 1) {
+        setFeedback({ type: "error", text: `Please enter a valid quantity (at least 1) for "${it.productName}".` });
+        return;
+      }
+
+      sanitizedItems.push({
+        id: it.id,
+        productName: it.productName.trim(),
+        description: it.description?.trim() || "",
+        unitPrice: uPrice,
+        quantity: qty,
+        imageUrl: it.imageUrl || "",
+      });
     }
 
     setSavingAction(true);
@@ -300,7 +314,7 @@ export default function AdminSourcingPage() {
         adminNotes: adminNotesInput.trim(),
         status: statusInput,
         action,
-        items: workspaceItems,
+        items: sanitizedItems,
       });
 
       if (res.error) {
