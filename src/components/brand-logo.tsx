@@ -31,7 +31,7 @@ export function BrandLogo({
 }: BrandLogoProps) {
   // Try getting branding from context
   const context = useBrandSettings();
-  const [localBranding, setLocalBranding] = useState<ResolvedBrandSettings | null>(DEFAULT_BRANDING as ResolvedBrandSettings);
+  const [localBranding, setLocalBranding] = useState<ResolvedBrandSettings | null>(null);
 
   // If used outside of BrandProvider, load branding locally and listen for updates
   useEffect(() => {

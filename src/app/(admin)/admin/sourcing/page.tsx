@@ -39,6 +39,16 @@ interface SourcingItemEntry {
   isPublished?: boolean;
 }
 
+interface BulkImageItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: "pending" | "uploading" | "success" | "error";
+  objectPath?: string;
+  errorMessage?: string;
+  assignedItemIndex: number | "new";
+}
+
 interface SourcingRequestItem {
   id: string;
   requestNumber: string;
@@ -95,6 +105,10 @@ export default function AdminSourcingPage() {
   const [adminNotesInput, setAdminNotesInput] = useState<string>("");
   const [statusInput, setStatusInput] = useState<string>("QUOTED");
 
+  // Bulk Image Upload Queue State
+  const [bulkQueue, setBulkQueue] = useState<BulkImageItem[]>([]);
+  const [isBulkDragging, setIsBulkDragging] = useState(false);
+
   const [savingAction, setSavingAction] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -118,6 +132,7 @@ export default function AdminSourcingPage() {
     setSelectedRequest(req);
     setLoadingDetails(true);
     setFeedback(null);
+    setBulkQueue([]);
     try {
       const res = await getSourcingRequestDetailsAction(req.id);
       if (res.success && res.request) {
@@ -142,6 +157,157 @@ export default function AdminSourcingPage() {
       console.error("Failed to load request details:", err);
     } finally {
       setLoadingDetails(false);
+    }
+  };
+
+  const processBulkFileUpload = async (queueId: string, file: File, initialTarget: number | "new") => {
+    setBulkQueue((prev) =>
+      prev.map((item) =>
+        item.id === queueId ? { ...item, status: "uploading", errorMessage: undefined } : item
+      )
+    );
+
+    try {
+      const authRes = await initiateSourcingItemPhotoUploadAction(file.name, file.type, file.size);
+      if (authRes.error || !authRes.signedUrl || !authRes.objectPath) {
+        throw new Error(authRes.error || "Failed to authorize file upload.");
+      }
+
+      const uploadRes = await fetch(authRes.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error(`Direct storage upload failed with status ${uploadRes.status}`);
+      }
+
+      const objectPath = authRes.objectPath;
+      const previewUrl = authRes.signedUrl || URL.createObjectURL(file);
+
+      setBulkQueue((prev) =>
+        prev.map((item) =>
+          item.id === queueId ? { ...item, status: "success", objectPath } : item
+        )
+      );
+
+      // Associate photo with workspace item
+      setWorkspaceItems((prevItems) => {
+        let updated = [...prevItems];
+        if (initialTarget === "new") {
+          updated.push({
+            productName: file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "),
+            description: "",
+            unitPrice: 0,
+            quantity: selectedRequest?.quantity || 1,
+            subtotal: 0,
+            imageUrl: objectPath,
+            previewUrl: previewUrl,
+          });
+        } else if (typeof initialTarget === "number" && updated[initialTarget]) {
+          updated[initialTarget] = {
+            ...updated[initialTarget],
+            imageUrl: objectPath,
+            previewUrl: previewUrl,
+            uploadError: null,
+          };
+        }
+        return updated;
+      });
+    } catch (err: any) {
+      console.error("Bulk file upload error:", err);
+      setBulkQueue((prev) =>
+        prev.map((item) =>
+          item.id === queueId
+            ? { ...item, status: "error", errorMessage: err?.message || "Upload failed. Click to retry." }
+            : item
+        )
+      );
+    }
+  };
+
+  const handleAddBulkFiles = (filesList: FileList | File[]) => {
+    const files = Array.from(filesList);
+    if (files.length === 0) return;
+
+    const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    const newQueueItems: BulkImageItem[] = [];
+
+    files.forEach((file, idx) => {
+      if (!allowedMimeTypes.includes(file.type.toLowerCase())) {
+        alert(`File "${file.name}" is not a supported image format (JPG, PNG, WEBP).`);
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`File "${file.name}" exceeds the 10MB size limit.`);
+        return;
+      }
+
+      const queueId = `bulk-${Date.now()}-${Math.random().toString(36).substring(2, 7)}-${idx}`;
+      const previewUrl = URL.createObjectURL(file);
+
+      const defaultTarget: number | "new" = workspaceItems.length > 0 && idx < workspaceItems.length ? idx : "new";
+
+      newQueueItems.push({
+        id: queueId,
+        file,
+        previewUrl,
+        status: "pending",
+        assignedItemIndex: defaultTarget,
+      });
+    });
+
+    if (newQueueItems.length === 0) return;
+
+    setBulkQueue((prev) => [...prev, ...newQueueItems]);
+
+    // Asynchronously process uploads
+    newQueueItems.forEach((qItem) => {
+      processBulkFileUpload(qItem.id, qItem.file, qItem.assignedItemIndex);
+    });
+  };
+
+  const handleReassignBulkImage = (queueId: string, newTarget: number | "new") => {
+    setBulkQueue((prev) => {
+      const updatedQueue = prev.map((q) => (q.id === queueId ? { ...q, assignedItemIndex: newTarget } : q));
+      const targetQueueItem = updatedQueue.find((q) => q.id === queueId);
+
+      if (targetQueueItem && targetQueueItem.status === "success" && targetQueueItem.objectPath) {
+        setWorkspaceItems((prevItems) => {
+          let updatedItems = [...prevItems];
+          if (newTarget === "new") {
+            updatedItems.push({
+              productName: targetQueueItem.file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "),
+              description: "",
+              unitPrice: 0,
+              quantity: selectedRequest?.quantity || 1,
+              subtotal: 0,
+              imageUrl: targetQueueItem.objectPath,
+              previewUrl: targetQueueItem.previewUrl,
+            });
+          } else if (typeof newTarget === "number" && updatedItems[newTarget]) {
+            updatedItems[newTarget] = {
+              ...updatedItems[newTarget],
+              imageUrl: targetQueueItem.objectPath,
+              previewUrl: targetQueueItem.previewUrl,
+            };
+          }
+          return updatedItems;
+        });
+      }
+      return updatedQueue;
+    });
+  };
+
+  const handleRemoveBulkImage = (queueId: string) => {
+    setBulkQueue((prev) => prev.filter((q) => q.id !== queueId));
+  };
+
+  const handleRetryBulkImage = (queueId: string) => {
+    const item = bulkQueue.find((q) => q.id === queueId);
+    if (item) {
+      processBulkFileUpload(item.id, item.file, item.assignedItemIndex);
     }
   };
 
@@ -593,6 +759,149 @@ export default function AdminSourcingPage() {
                     >
                       <Plus size={14} /> Add Product Item
                     </button>
+                  </div>
+
+                  {/* Bulk Upload Dropzone & Queue Manager */}
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsBulkDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      setIsBulkDragging(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsBulkDragging(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        handleAddBulkFiles(e.dataTransfer.files);
+                      }
+                    }}
+                    className={`rounded-2xl border-2 border-dashed p-4 transition-all ${
+                      isBulkDragging
+                        ? "border-[#141B47] bg-blue-50/60"
+                        : "border-[#E5E7EB] bg-[#F8FAFC] hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center shrink-0 text-[#141B47] shadow-2xs">
+                          <UploadCloud size={20} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-[#172236]">Bulk Image Upload Manager</p>
+                          <p className="text-[11px] text-gray-500">
+                            Select multiple photos at once to upload in batch & auto-assign to items.
+                          </p>
+                        </div>
+                      </div>
+                      <label className="px-3.5 py-2 bg-white border border-[#E5E7EB] hover:bg-gray-50 text-[#172236] rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs flex items-center justify-center gap-1.5 shrink-0">
+                        <Plus size={14} className="text-[#F2901F]" /> Select Multiple Images
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp,image/jpg"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              handleAddBulkFiles(e.target.files);
+                              e.target.value = "";
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {/* Bulk Queue Items List */}
+                    {bulkQueue.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-gray-200 space-y-2">
+                        <p className="text-[11px] font-bold text-gray-700 uppercase tracking-wider flex items-center justify-between">
+                          <span>Upload Queue ({bulkQueue.filter((q) => q.status === "success").length}/{bulkQueue.length} Uploaded)</span>
+                          {bulkQueue.some((q) => q.status === "uploading") && (
+                            <span className="text-[#141B47] flex items-center gap-1 font-normal lowercase">
+                              <Loader2 size={12} className="animate-spin" /> uploading batch...
+                            </span>
+                          )}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-48 overflow-y-auto pr-1">
+                          {bulkQueue.map((q) => (
+                            <div
+                              key={q.id}
+                              className="bg-white p-2.5 rounded-xl border border-gray-200 flex items-center gap-2.5 shadow-2xs text-xs"
+                            >
+                              <img
+                                src={q.previewUrl}
+                                alt={q.file.name}
+                                className="w-10 h-10 object-cover rounded-lg border border-gray-200 shrink-0 bg-gray-50"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-gray-800 truncate text-[11px]" title={q.file.name}>
+                                  {q.file.name}
+                                </p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  {q.status === "uploading" && (
+                                    <span className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
+                                      <Loader2 size={10} className="animate-spin" /> Uploading...
+                                    </span>
+                                  )}
+                                  {q.status === "success" && (
+                                    <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                                      <CheckCircle2 size={10} /> Uploaded
+                                    </span>
+                                  )}
+                                  {q.status === "error" && (
+                                    <span className="text-[10px] text-red-600 font-bold flex items-center gap-1">
+                                      <AlertCircle size={10} /> Failed
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] text-gray-400">
+                                    ({(q.file.size / 1024).toFixed(0)} KB)
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <select
+                                  value={typeof q.assignedItemIndex === "number" ? q.assignedItemIndex : "new"}
+                                  onChange={(e) =>
+                                    handleReassignBulkImage(
+                                      q.id,
+                                      e.target.value === "new" ? "new" : parseInt(e.target.value, 10)
+                                    )
+                                  }
+                                  className="text-[10px] py-1 px-1.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none"
+                                >
+                                  <option value="new">+ New Item</option>
+                                  {workspaceItems.map((wItem, wIdx) => (
+                                    <option key={wIdx} value={wIdx}>
+                                      Item #{wIdx + 1}
+                                    </option>
+                                  ))}
+                                </select>
+                                {q.status === "error" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRetryBulkImage(q.id)}
+                                    className="p-1 text-amber-600 hover:bg-amber-50 rounded-md"
+                                    title="Retry Upload"
+                                  >
+                                    <RefreshCw size={12} />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveBulkImage(q.id)}
+                                  className="p-1 text-gray-400 hover:text-red-600 hover:bg-gray-100 rounded-md"
+                                  title="Remove from queue"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {workspaceItems.length === 0 ? (
