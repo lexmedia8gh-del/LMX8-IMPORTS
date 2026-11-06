@@ -6,6 +6,8 @@ import { ensureAnalyticsSchema } from "@/lib/analytics-schema";
 import { ensureInvoiceSchema } from "@/lib/invoice-schema";
 import { ensureEodAndExpenseSchema } from "@/lib/eod-schema";
 import { revalidatePath } from "next/cache";
+import { EXPENSE_CATEGORIES, PAYMENT_METHOD_LABELS } from "@/lib/expense-constants";
+
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────────────────────
 
@@ -282,27 +284,8 @@ export interface EodReportData {
   }[];
 }
 
-export const EXPENSE_CATEGORIES: Record<string, string> = {
-  CUSTOMS_CLEARANCE: "Customs & Port Clearance",
-  PORT_HANDLING: "Port & Terminal Handling",
-  TRANSPORT_DELIVERY: "Transport & Local Haulage",
-  WAREHOUSE: "Warehouse & Storage",
-  OFFICE_UTILITIES: "Office & Utilities",
-  PACKAGING: "Packaging & Supplies",
-  ADMINISTRATIVE: "Administrative & Agency Fees",
-  OTHER: "Other Operational Expenses",
-};
 
-export const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  CASH: "Cash",
-  BANK_TRANSFER: "Bank Transfer",
-  MTN_MOMO: "MTN Mobile Money",
-  TELECEL_CASH: "Telecel Cash",
-  AT_MONEY: "AT Money",
-  CARD: "Card / Online",
-  CHEQUE: "Cheque",
-  OTHER: "Other Offline",
-};
+
 
 const PATH_LABELS: Record<string, string> = {
   "/portal": "Portal Dashboard",

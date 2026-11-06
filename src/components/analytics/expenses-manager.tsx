@@ -15,9 +15,9 @@ import {
 import {
   recordExpenseAction,
   deleteExpenseAction,
-  EXPENSE_CATEGORIES,
-  PAYMENT_METHOD_LABELS,
 } from "@/app/actions/analytics";
+import { EXPENSE_CATEGORIES, PAYMENT_METHOD_LABELS } from "@/lib/expense-constants";
+
 import { formatCurrency } from "@/lib/currency";
 
 interface ExpensesManagerProps {
