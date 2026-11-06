@@ -8,6 +8,68 @@ import { revalidatePath } from "next/cache";
 
 // ── SOURCING ─────────────────────────────────────────────────────────────────
 
+async function resolveStorageImageUrl(path: string | null | undefined): Promise<string | null> {
+  if (!path) return null;
+  if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) {
+    return path;
+  }
+  try {
+    const { generateSignedUrl, STORAGE_BUCKET } = await import("@/lib/storage");
+    const signedUrl = await generateSignedUrl(path, 86400, STORAGE_BUCKET);
+    return signedUrl || path;
+  } catch (err) {
+    console.error("[Sourcing Action] Error signing image URL:", err);
+    return path;
+  }
+}
+
+export async function initiateSourcingItemPhotoUploadAction(
+  filename: string,
+  mimeType: string,
+  size: number
+) {
+  await requireAdminSession();
+
+  const MAX_SIZE = 10 * 1024 * 1024;
+  if (size > MAX_SIZE) {
+    return { error: "Product photo files are restricted to a maximum of 10MB." };
+  }
+
+  const allowedMimeTypes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ];
+  if (!allowedMimeTypes.includes(mimeType.toLowerCase())) {
+    return { error: `Unsupported file format (${mimeType}). Allowed formats: JPG, JPEG, PNG, WEBP.` };
+  }
+
+  const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const uniqueId = crypto.randomUUID();
+  const objectPath = `sourcing/items/${uniqueId}-${safeFilename}`;
+
+  const { generateSignedUploadUrl, STORAGE_BUCKET } = await import("@/lib/storage");
+  const uploadResult = await generateSignedUploadUrl(objectPath, STORAGE_BUCKET);
+
+  if ("error" in uploadResult) {
+    console.error("[Sourcing Upload Action] Signed upload URL failed:", uploadResult.error);
+    return {
+      error: uploadResult.error === "Storage not configured."
+        ? "SUPABASE_SERVICE_ROLE_KEY is not configured in .env. Real file storage requires Supabase service role key."
+        : `Upload authorization failed: ${uploadResult.error}`,
+    };
+  }
+
+  return {
+    success: true,
+    signedUrl: uploadResult.signedUrl,
+    token: uploadResult.token,
+    objectPath: uploadResult.path,
+  };
+}
+
 export async function getCustomerSourcingRequestsAction() {
   const customer = await requireCustomerSession();
   await ensureSourcingSchema();
@@ -26,53 +88,59 @@ export async function getCustomerSourcingRequestsAction() {
     orderBy: { createdAt: "desc" },
   });
 
-  return requests.map((r) => {
-    const unitPrice = r.unitPrice ?? null;
-    const qty = r.quantity || 1;
-    const totalCost = r.totalCost ?? (unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : null);
+  return Promise.all(
+    requests.map(async (r) => {
+      const unitPrice = r.unitPrice ?? null;
+      const qty = r.quantity || 1;
+      const totalCost = r.totalCost ?? (unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : null);
 
-    return {
-      id: r.id,
-      requestNumber: r.requestNumber,
-      productDetails: r.productDetails,
-      quantity: r.quantity,
-      originalQuantity: r.originalQuantity ?? r.quantity,
-      preferredSizeColor: r.preferredSizeColor,
-      additionalInstructions: r.additionalInstructions,
-      adminNotes: r.adminNotes,
-      status: r.status,
-      creditsUsed: r.creditsUsed,
-      unitPrice,
-      totalCost,
-      isDraft: r.isDraft ?? true,
-      publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
-      priceUpdatedAt: r.priceUpdatedAt ? r.priceUpdatedAt.toISOString() : null,
-      priceUpdatedBy: r.priceUpdatedBy ?? null,
-      priceNotes: r.priceNotes ?? null,
-      imageUrl: r.imageUrl ?? null,
-      customerConfirmationStatus: r.customerConfirmationStatus ?? "PENDING",
-      createdAt: r.createdAt.toISOString().split("T")[0],
-      updatedAt: r.updatedAt.toISOString(),
-      sourcingItems: (r.sourcingItems || []).map((it) => ({
-        id: it.id,
-        productName: it.productName,
-        description: it.description,
-        unitPrice: it.unitPrice,
-        quantity: it.quantity,
-        subtotal: it.subtotal,
-        imageUrl: it.imageUrl,
-      })),
-      priceHistory: (r.priceHistory || []).map((ph) => ({
-        id: ph.id,
-        unitPrice: ph.unitPrice,
-        quantity: ph.quantity,
-        totalCost: ph.totalCost,
-        notes: ph.notes,
-        updatedByName: ph.updatedByName || "Admin",
-        createdAt: ph.createdAt.toISOString(),
-      })),
-    };
-  });
+      const itemsWithSignedUrls = await Promise.all(
+        (r.sourcingItems || []).map(async (it) => ({
+          id: it.id,
+          productName: it.productName,
+          description: it.description,
+          unitPrice: it.unitPrice,
+          quantity: it.quantity,
+          subtotal: it.subtotal,
+          imageUrl: await resolveStorageImageUrl(it.imageUrl),
+        }))
+      );
+
+      return {
+        id: r.id,
+        requestNumber: r.requestNumber,
+        productDetails: r.productDetails,
+        quantity: r.quantity,
+        originalQuantity: r.originalQuantity ?? r.quantity,
+        preferredSizeColor: r.preferredSizeColor,
+        additionalInstructions: r.additionalInstructions,
+        adminNotes: r.adminNotes,
+        status: r.status,
+        creditsUsed: r.creditsUsed,
+        unitPrice,
+        totalCost,
+        isDraft: r.isDraft ?? true,
+        publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+        priceUpdatedAt: r.priceUpdatedAt ? r.priceUpdatedAt.toISOString() : null,
+        priceUpdatedBy: r.priceUpdatedBy ?? null,
+        priceNotes: r.priceNotes ?? null,
+        imageUrl: await resolveStorageImageUrl(r.imageUrl),
+        customerConfirmationStatus: r.customerConfirmationStatus ?? "PENDING",
+        createdAt: r.createdAt.toISOString().split("T")[0],
+        updatedAt: r.updatedAt.toISOString(),
+        sourcingItems: itemsWithSignedUrls,
+        priceHistory: (r.priceHistory || []).map((ph) => ({
+          id: ph.id,
+          unitPrice: ph.unitPrice,
+          quantity: ph.quantity,
+          totalCost: ph.totalCost,
+          notes: ph.notes,
+          updatedByName: ph.updatedByName || "Admin",
+          createdAt: ph.createdAt.toISOString(),
+        })),
+      };
+    })
+  );
 }
 
 export async function createSourcingRequestAction(data: {
@@ -257,59 +325,66 @@ export async function getAllSourcingRequestsAction() {
     orderBy: { createdAt: "desc" },
   });
 
-  return requests.map((r) => {
-    const unitPrice = r.unitPrice ?? null;
-    const qty = r.quantity || 1;
-    const totalCost = r.totalCost ?? (unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : null);
+  return Promise.all(
+    requests.map(async (r) => {
+      const unitPrice = r.unitPrice ?? null;
+      const qty = r.quantity || 1;
+      const totalCost = r.totalCost ?? (unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : null);
 
-    return {
-      id: r.id,
-      requestNumber: r.requestNumber,
-      productDetails: r.productDetails,
-      quantity: r.quantity,
-      originalQuantity: r.originalQuantity ?? r.quantity,
-      status: r.status,
-      customerId: r.customer.customerIdentifier,
-      customerDbId: r.customer.id,
-      customerName: r.customer.name,
-      customerEmail: r.customer.email,
-      customerPhone: r.customer.phone,
-      creditsUsed: r.creditsUsed,
-      preferredSizeColor: r.preferredSizeColor,
-      additionalInstructions: r.additionalInstructions,
-      adminNotes: r.adminNotes,
-      unitPrice,
-      totalCost,
-      isDraft: r.isDraft ?? true,
-      publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
-      priceUpdatedAt: r.priceUpdatedAt ? r.priceUpdatedAt.toISOString() : null,
-      priceUpdatedBy: r.priceUpdatedBy ?? null,
-      priceNotes: r.priceNotes ?? null,
-      imageUrl: r.imageUrl ?? null,
-      customerConfirmationStatus: r.customerConfirmationStatus ?? "PENDING",
-      createdAt: r.createdAt.toISOString().split("T")[0],
-      updatedAt: r.updatedAt.toISOString(),
-      sourcingItems: (r.sourcingItems || []).map((it) => ({
-        id: it.id,
-        productName: it.productName,
-        description: it.description,
-        unitPrice: it.unitPrice,
-        quantity: it.quantity,
-        subtotal: it.subtotal,
-        imageUrl: it.imageUrl,
-        isPublished: it.isPublished,
-      })),
-      priceHistory: (r.priceHistory || []).map((ph) => ({
-        id: ph.id,
-        unitPrice: ph.unitPrice,
-        quantity: ph.quantity,
-        totalCost: ph.totalCost,
-        notes: ph.notes,
-        updatedByName: ph.updatedByName || "Admin",
-        createdAt: ph.createdAt.toISOString(),
-      })),
-    };
-  });
+      const itemsWithSignedUrls = await Promise.all(
+        (r.sourcingItems || []).map(async (it) => ({
+          id: it.id,
+          productName: it.productName,
+          description: it.description,
+          unitPrice: it.unitPrice,
+          quantity: it.quantity,
+          subtotal: it.subtotal,
+          imageUrl: await resolveStorageImageUrl(it.imageUrl),
+          imagePath: it.imageUrl,
+          isPublished: it.isPublished,
+        }))
+      );
+
+      return {
+        id: r.id,
+        requestNumber: r.requestNumber,
+        productDetails: r.productDetails,
+        quantity: r.quantity,
+        originalQuantity: r.originalQuantity ?? r.quantity,
+        status: r.status,
+        customerId: r.customer.customerIdentifier,
+        customerDbId: r.customer.id,
+        customerName: r.customer.name,
+        customerEmail: r.customer.email,
+        customerPhone: r.customer.phone,
+        creditsUsed: r.creditsUsed,
+        preferredSizeColor: r.preferredSizeColor,
+        additionalInstructions: r.additionalInstructions,
+        adminNotes: r.adminNotes,
+        unitPrice,
+        totalCost,
+        isDraft: r.isDraft ?? true,
+        publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+        priceUpdatedAt: r.priceUpdatedAt ? r.priceUpdatedAt.toISOString() : null,
+        priceUpdatedBy: r.priceUpdatedBy ?? null,
+        priceNotes: r.priceNotes ?? null,
+        imageUrl: await resolveStorageImageUrl(r.imageUrl),
+        customerConfirmationStatus: r.customerConfirmationStatus ?? "PENDING",
+        createdAt: r.createdAt.toISOString().split("T")[0],
+        updatedAt: r.updatedAt.toISOString(),
+        sourcingItems: itemsWithSignedUrls,
+        priceHistory: (r.priceHistory || []).map((ph) => ({
+          id: ph.id,
+          unitPrice: ph.unitPrice,
+          quantity: ph.quantity,
+          totalCost: ph.totalCost,
+          notes: ph.notes,
+          updatedByName: ph.updatedByName || "Admin",
+          createdAt: ph.createdAt.toISOString(),
+        })),
+      };
+    })
+  );
 }
 
 export async function getSourcingRequestDetailsAction(requestId: string) {
@@ -335,6 +410,20 @@ export async function getSourcingRequestDetailsAction(requestId: string) {
   const qty = request.quantity || 1;
   const totalCost = request.totalCost ?? (unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : null);
 
+  const itemsWithSignedUrls = await Promise.all(
+    (request.sourcingItems || []).map(async (it) => ({
+      id: it.id,
+      productName: it.productName,
+      description: it.description,
+      unitPrice: it.unitPrice,
+      quantity: it.quantity,
+      subtotal: it.subtotal,
+      imageUrl: await resolveStorageImageUrl(it.imageUrl),
+      imagePath: it.imageUrl,
+      isPublished: it.isPublished,
+    }))
+  );
+
   return {
     success: true,
     request: {
@@ -355,7 +444,7 @@ export async function getSourcingRequestDetailsAction(requestId: string) {
       priceUpdatedAt: request.priceUpdatedAt ? request.priceUpdatedAt.toISOString() : null,
       priceUpdatedBy: request.priceUpdatedBy,
       priceNotes: request.priceNotes,
-      imageUrl: request.imageUrl,
+      imageUrl: await resolveStorageImageUrl(request.imageUrl),
       customerConfirmationStatus: request.customerConfirmationStatus ?? "PENDING",
       createdAt: request.createdAt.toISOString(),
       updatedAt: request.updatedAt.toISOString(),
@@ -366,16 +455,7 @@ export async function getSourcingRequestDetailsAction(requestId: string) {
         email: request.customer.email,
         phone: request.customer.phone,
       },
-      sourcingItems: (request.sourcingItems || []).map((it) => ({
-        id: it.id,
-        productName: it.productName,
-        description: it.description,
-        unitPrice: it.unitPrice,
-        quantity: it.quantity,
-        subtotal: it.subtotal,
-        imageUrl: it.imageUrl,
-        isPublished: it.isPublished,
-      })),
+      sourcingItems: itemsWithSignedUrls,
       priceHistory: request.priceHistory.map((ph) => ({
         id: ph.id,
         unitPrice: ph.unitPrice,

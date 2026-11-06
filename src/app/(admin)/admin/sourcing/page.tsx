@@ -5,10 +5,12 @@ import {
   getAllSourcingRequestsAction,
   getSourcingRequestDetailsAction,
   adminSaveOrPublishSourcingWorkspaceAction,
+  initiateSourcingItemPhotoUploadAction,
 } from "@/app/actions/sourcing-credits";
 import { 
   PackageSearch, CheckCircle2, AlertCircle, Search, RefreshCw, 
-  Loader2, X, History, Calculator, Plus, Trash2, Image as ImageIcon
+  Loader2, X, History, Calculator, Plus, Trash2, Image as ImageIcon,
+  UploadCloud, Upload
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,9 @@ interface SourcingItemEntry {
   quantity: number;
   subtotal: number;
   imageUrl?: string;
+  previewUrl?: string;
+  uploading?: boolean;
+  uploadError?: string | null;
   isPublished?: boolean;
 }
 
@@ -128,6 +133,7 @@ export default function AdminSourcingPage() {
             quantity: it.quantity || 1,
             subtotal: it.subtotal || 0,
             imageUrl: it.imageUrl || "",
+            previewUrl: it.imageUrl || "",
             isPublished: it.isPublished,
           }))
         );
@@ -148,9 +154,105 @@ export default function AdminSourcingPage() {
         unitPrice: 0,
         quantity: selectedRequest?.quantity || 1,
         subtotal: 0,
-        imageUrl: selectedRequest?.imageUrl || "",
+        imageUrl: "",
+        previewUrl: "",
       },
     ]);
+  };
+
+  const handleItemFileUpload = async (index: number, file: File) => {
+    if (!file) return;
+
+    const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedMimeTypes.includes(file.type.toLowerCase())) {
+      setWorkspaceItems((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          uploadError: "Invalid image format. Supported formats: JPG, JPEG, PNG, WEBP.",
+        };
+        return updated;
+      });
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setWorkspaceItems((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          uploadError: "File size exceeds 10MB limit.",
+        };
+        return updated;
+      });
+      return;
+    }
+
+    const localPreview = URL.createObjectURL(file);
+
+    setWorkspaceItems((prev) => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        previewUrl: localPreview,
+        uploading: true,
+        uploadError: null,
+      };
+      return updated;
+    });
+
+    try {
+      const authRes = await initiateSourcingItemPhotoUploadAction(file.name, file.type, file.size);
+      if (authRes.error || !authRes.signedUrl || !authRes.objectPath) {
+        throw new Error(authRes.error || "Failed to authorize file upload.");
+      }
+
+      const uploadRes = await fetch(authRes.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error(`Direct storage upload failed with status ${uploadRes.status}`);
+      }
+
+      setWorkspaceItems((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          imageUrl: authRes.objectPath,
+          previewUrl: localPreview,
+          uploading: false,
+          uploadError: null,
+        };
+        return updated;
+      });
+    } catch (err: any) {
+      console.error("Sourcing item photo upload error:", err);
+      setWorkspaceItems((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          uploading: false,
+          uploadError: err?.message || "Failed to upload photo. Please try again.",
+        };
+        return updated;
+      });
+    }
+  };
+
+  const handleRemoveItemPhoto = (index: number) => {
+    setWorkspaceItems((prev) => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        imageUrl: "",
+        previewUrl: "",
+        uploadError: null,
+      };
+      return updated;
+    });
   };
 
   const handleRemoveItem = (index: number) => {
@@ -507,7 +609,7 @@ export default function AdminSourcingPage() {
 
                           <div className="grid sm:grid-cols-3 gap-3">
                             {/* Product Name */}
-                            <div className="sm:col-span-2">
+                            <div className="sm:col-span-3">
                               <label className="text-[11px] font-semibold text-gray-700 block mb-1">
                                 Product Name / Title <span className="text-red-500">*</span>
                               </label>
@@ -519,22 +621,81 @@ export default function AdminSourcingPage() {
                                 className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47]"
                               />
                             </div>
+                          </div>
 
-                            {/* Image URL / Preview */}
-                            <div>
-                              <label className="text-[11px] font-semibold text-gray-700 block mb-1">
-                                Product Photo URL / Image
-                              </label>
-                              <div className="flex gap-2 items-center">
-                                <input
-                                  type="url"
-                                  placeholder="https://... image link"
-                                  value={item.imageUrl || ""}
-                                  onChange={(e) => handleItemChange(index, "imageUrl", e.target.value)}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#141B47]"
-                                />
+                          {/* Product Photo Upload Section */}
+                          <div>
+                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                              Product Photo
+                            </label>
+                            
+                            {item.uploading ? (
+                              <div className="border border-gray-200 rounded-xl p-3 bg-gray-50 flex items-center justify-center gap-2 text-xs font-semibold text-[#141B47] min-h-[80px]">
+                                <Loader2 size={18} className="animate-spin text-[#F2901F]" />
+                                <span>Uploading photo...</span>
                               </div>
-                            </div>
+                            ) : item.previewUrl || item.imageUrl ? (
+                              <div className="border border-gray-200 rounded-xl p-3 bg-gray-50 flex items-center gap-3">
+                                <img
+                                  src={item.previewUrl || item.imageUrl || ""}
+                                  alt={item.productName || "Product Preview"}
+                                  className="w-16 h-16 object-cover rounded-lg border border-gray-200 shrink-0 bg-white shadow-2xs"
+                                />
+                                <div className="space-y-1.5 flex-1 min-w-0">
+                                  <p className="text-[11px] font-bold text-gray-700 truncate">Photo Attached</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    <label className="px-2.5 py-1 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 rounded-lg text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs">
+                                      <Upload size={12} /> Replace Photo
+                                      <input
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp,image/jpg"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0];
+                                          if (f) handleItemFileUpload(index, f);
+                                        }}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveItemPhoto(index)}
+                                      className="px-2.5 py-1 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 rounded-lg text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                    >
+                                      <Trash2 size={12} /> Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="relative border-2 border-dashed border-gray-300 hover:border-[#141B47] bg-gray-50 hover:bg-white rounded-xl p-4 text-center transition-all cursor-pointer group">
+                                <input
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp,image/jpg"
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) handleItemFileUpload(index, f);
+                                  }}
+                                />
+                                <div className="flex flex-col items-center justify-center space-y-1">
+                                  <div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-[#141B47]/10 flex items-center justify-center transition-colors">
+                                    <UploadCloud size={18} className="text-[#141B47] group-hover:scale-110 transition-transform" />
+                                  </div>
+                                  <span className="text-xs font-bold text-[#141B47] group-hover:text-[#355DAF]">
+                                    Upload Photo
+                                  </span>
+                                  <span className="text-[10px] text-gray-500">
+                                    Click to upload or drag and drop (JPG, PNG, WEBP max 10MB)
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            {item.uploadError && (
+                              <p className="text-[11px] text-red-600 font-medium mt-1 flex items-center gap-1">
+                                <AlertCircle size={12} /> {item.uploadError}
+                              </p>
+                            )}
                           </div>
 
                           {/* Description / Specifications */}
